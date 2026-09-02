@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="dialogStore.isOpen"
-    class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none animate-in fade-in duration-150"
+    class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 select-none animate-in fade-in duration-150"
     @keydown.esc="dialogStore.handleCancel"
   >
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">

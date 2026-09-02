@@ -10,6 +10,8 @@ use crate::vault::VaultData;
 
 pub struct AppState {
     pub current_key: Arc<Mutex<Option<[u8; 32]>>>,
+    pub current_password: Arc<Mutex<Option<String>>>,
+    pub current_salt: Arc<Mutex<Option<String>>>,
     pub current_vault: Arc<Mutex<VaultData>>,
     pub sync_service: SyncService,
     pub ssh_manager: Arc<SshManager>,
@@ -24,15 +26,17 @@ pub fn init_or_unlock_vault(
     user_salt: String,
 ) -> Result<bool, String> {
     let key = CryptoEngine::derive_master_key(&master_password, &user_salt)?;
-    let mut key_guard = state.current_key.lock();
-    *key_guard = Some(key);
+    *state.current_key.lock() = Some(key);
+    *state.current_password.lock() = Some(master_password);
+    *state.current_salt.lock() = Some(user_salt);
     Ok(true)
 }
 
 #[tauri::command]
 pub fn lock_vault(state: State<AppState>) -> Result<bool, String> {
-    let mut key_guard = state.current_key.lock();
-    *key_guard = None;
+    *state.current_key.lock() = None;
+    *state.current_password.lock() = None;
+    *state.current_salt.lock() = None;
     Ok(true)
 }
 
@@ -46,16 +50,25 @@ pub fn save_local_vault(
     state: State<AppState>,
     snapshot: VaultData,
 ) -> Result<String, String> {
-    let key = {
-        let key_guard = state.current_key.lock();
-        key_guard
-            .ok_or_else(|| "Vault is locked. Unlock before saving.".to_string())?
+    let (key, password, salt) = {
+        (
+            *state.current_key.lock(),
+            state.current_password.lock().clone(),
+            state.current_salt.lock().clone(),
+        )
     };
 
     let serialized = serde_json::to_string(&snapshot)
         .map_err(|e| format!("Failed to serialize vault: {}", e))?;
 
-    let encrypted_blob = CryptoEngine::encrypt(&key, &serialized)?;
+    let encrypted_blob = if let (Some(pwd), Some(s)) = (password, salt) {
+        CryptoEngine::encrypt_with_salt(&pwd, &s, &serialized)?
+    } else if let Some(k) = key {
+        CryptoEngine::encrypt(&k, &serialized)?
+    } else {
+        return Err("Vault is locked. Unlock before saving.".to_string());
+    };
+
     *state.current_vault.lock() = snapshot;
     Ok(encrypted_blob)
 }
@@ -65,13 +78,30 @@ pub fn decrypt_remote_vault_blob(
     state: State<AppState>,
     encrypted_blob: String,
 ) -> Result<VaultData, String> {
-    let key = {
-        let key_guard = state.current_key.lock();
-        key_guard
-            .ok_or_else(|| "Vault is locked. Unlock before decrypting.".to_string())?
+    let (current_key, password, salt) = {
+        (
+            *state.current_key.lock(),
+            state.current_password.lock().clone(),
+            state.current_salt.lock().clone(),
+        )
     };
 
-    let decrypted = CryptoEngine::decrypt(&key, &encrypted_blob)?;
+    if current_key.is_none() && password.is_none() {
+        return Err("Vault is locked. Unlock before decrypting.".to_string());
+    }
+
+    let (decrypted, new_derived_key) = CryptoEngine::decrypt_smart(
+        current_key,
+        password.as_deref(),
+        salt.as_deref(),
+        &encrypted_blob,
+    )?;
+
+    // If a new key was derived (e.g. from salt inside blob), update active key
+    if let Some(new_key) = new_derived_key {
+        *state.current_key.lock() = Some(new_key);
+    }
+
     let snapshot: VaultData = serde_json::from_str(&decrypted)
         .map_err(|e| format!("Failed to parse decrypted vault data: {}", e))?;
 
@@ -127,12 +157,23 @@ pub async fn sync_push_vault(
     expected_version: i64,
 ) -> Result<i64, String> {
     let (encrypted_data, checksum) = {
-        let key_guard = state.current_key.lock();
-        let key = key_guard
-            .ok_or_else(|| "Vault is locked. Unlock before syncing.".to_string())?;
+        let (key, password, salt) = {
+            (
+                *state.current_key.lock(),
+                state.current_password.lock().clone(),
+                state.current_salt.lock().clone(),
+            )
+        };
         let serialized = serde_json::to_string(&snapshot)
             .map_err(|e| format!("Failed to serialize vault: {}", e))?;
-        let encrypted = CryptoEngine::encrypt(&key, &serialized)?;
+        
+        let encrypted = if let (Some(pwd), Some(s)) = (password, salt) {
+            CryptoEngine::encrypt_with_salt(&pwd, &s, &serialized)?
+        } else if let Some(k) = key {
+            CryptoEngine::encrypt(&k, &serialized)?
+        } else {
+            return Err("Vault is locked. Unlock before syncing.".to_string());
+        };
         
         let mut hasher = Sha256::new();
         hasher.update(encrypted.as_bytes());

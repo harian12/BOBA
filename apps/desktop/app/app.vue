@@ -225,8 +225,6 @@
     </div>
 
     <!-- Modals & Overlays -->
-    <AppDialog />
-    <VaultLockModal />
     <TransferTray />
     <SyncModal :is-open="isSyncOpen" @close="isSyncOpen = false" />
     <KeyManagerModal :is-open="isKeyManagerOpen" @close="isKeyManagerOpen = false" />
@@ -236,6 +234,8 @@
       :folder-id="activeFolderId"
       @close="isNewSessionOpen = false"
     />
+    <VaultLockModal />
+    <AppDialog />
   </div>
 </template>
 

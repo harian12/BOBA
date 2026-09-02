@@ -43,6 +43,14 @@ export const useSyncStore = defineStore('sync', () => {
       localStorage.setItem('boba_user_email', userEmail.value);
       localStorage.setItem('boba_user_salt', userSalt.value);
 
+      const vaultStore = useVaultStore();
+      const activePassword = passwordHash || vaultStore.masterPassword;
+      if (activePassword) {
+        await tauriBridge.initOrUnlockVault(activePassword, userSalt.value);
+        vaultStore.masterPassword = activePassword;
+        vaultStore.salt = userSalt.value;
+      }
+
       startPeriodicSync();
       return true;
     } catch (err: any) {
@@ -63,6 +71,15 @@ export const useSyncStore = defineStore('sync', () => {
       localStorage.setItem('boba_auth_token', token.value);
       localStorage.setItem('boba_user_email', userEmail.value);
       if (res.salt) localStorage.setItem('boba_user_salt', userSalt.value);
+
+      const vaultStore = useVaultStore();
+      // Re-init / update master key in Rust backend with cloud account salt and password
+      const activePassword = passwordHash || vaultStore.masterPassword;
+      if (activePassword) {
+        await tauriBridge.initOrUnlockVault(activePassword, userSalt.value || 'boba_default_offline_salt_123');
+        vaultStore.masterPassword = activePassword;
+        vaultStore.salt = userSalt.value;
+      }
 
       // Auto-pull remote vault after login
       await forcePullRemote();

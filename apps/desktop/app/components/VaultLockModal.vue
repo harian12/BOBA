@@ -108,7 +108,7 @@ async function handleUnlock() {
 async function handleResetVault() {
   const confirmed = await dialogStore.confirm({
     title: 'Reset Local Vault?',
-    description: 'Yakin ingin mereset vault lokal? Data sesi lokal yang belum di-sync ke cloud akan dihapus.',
+    description: 'Yakin ingin mereset vault lokal? Data sesi lokal pada perangkat ini akan dibersihkan agar Anda dapat mengatur Master Password baru.',
     confirmText: 'Reset Vault',
     isDestructive: true,
   });
@@ -117,10 +117,6 @@ async function handleResetVault() {
   localStorage.removeItem('boba_local_vault_blob');
   hasExistingVault.value = false;
   errorMessage.value = '';
-  
-  if (passwordInput.value) {
-    const userSalt = syncStore.userSalt || localStorage.getItem('boba_user_salt') || 'boba_default_offline_salt_123';
-    await vaultStore.unlock(passwordInput.value, userSalt, undefined);
-  }
+  passwordInput.value = '';
 }
 </script>

@@ -15,6 +15,8 @@ use vault::VaultData;
 pub fn run() {
     let app_state = AppState {
         current_key: Arc::new(Mutex::new(None)),
+        current_password: Arc::new(Mutex::new(None)),
+        current_salt: Arc::new(Mutex::new(None)),
         current_vault: Arc::new(Mutex::new(VaultData::default())),
         sync_service: SyncService::new(),
         ssh_manager: Arc::new(SshManager::new()),

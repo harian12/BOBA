@@ -6,6 +6,8 @@ use argon2::Argon2;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use sha2::{Digest, Sha256};
 
+pub const DEFAULT_OFFLINE_SALT: &str = "boba_default_offline_salt_123";
+
 pub struct CryptoEngine;
 
 impl CryptoEngine {
@@ -43,7 +45,14 @@ impl CryptoEngine {
         Ok(BASE64.encode(combined))
     }
 
-    /// Decrypt Base64 ciphertext using AES-256-GCM -> Plaintext string
+    /// Encrypt plaintext string with embedded salt metadata -> "v1$<salt>$<base64_ciphertext>"
+    pub fn encrypt_with_salt(password: &str, salt: &str, plaintext: &str) -> Result<String, String> {
+        let key = Self::derive_master_key(password, salt)?;
+        let raw_encrypted = Self::encrypt(&key, plaintext)?;
+        Ok(format!("v1${}${}", salt, raw_encrypted))
+    }
+
+    /// Decrypt raw Base64 ciphertext using AES-256-GCM -> Plaintext string
     pub fn decrypt(key: &[u8; 32], encoded_ciphertext: &str) -> Result<String, String> {
         let combined = BASE64
             .decode(encoded_ciphertext)
@@ -65,6 +74,64 @@ impl CryptoEngine {
 
         String::from_utf8(plaintext_bytes)
             .map_err(|e| format!("UTF-8 decode error: {}", e))
+    }
+
+    /// Smart decrypt that handles both "v1$<salt>$<ciphertext>" and legacy raw ciphertext blobs,
+    /// with multi-salt fallback when password is provided.
+    pub fn decrypt_smart(
+        current_key: Option<[u8; 32]>,
+        password: Option<&str>,
+        known_salt: Option<&str>,
+        blob: &str,
+    ) -> Result<(String, Option<[u8; 32]>), String> {
+        // Case 1: "v1$<salt>$<ciphertext>"
+        if let Some(rest) = blob.strip_prefix("v1$") {
+            if let Some(pos) = rest.find('$') {
+                let salt = &rest[..pos];
+                let ciphertext = &rest[pos + 1..];
+
+                if let Some(pwd) = password {
+                    if let Ok(key) = Self::derive_master_key(pwd, salt) {
+                        if let Ok(decrypted) = Self::decrypt(&key, ciphertext) {
+                            return Ok((decrypted, Some(key)));
+                        }
+                    }
+                }
+
+                if let Some(key) = current_key {
+                    if let Ok(decrypted) = Self::decrypt(&key, ciphertext) {
+                        return Ok((decrypted, None));
+                    }
+                }
+            }
+        }
+
+        // Case 2: Direct decryption with current_key
+        if let Some(key) = current_key {
+            if let Ok(decrypted) = Self::decrypt(&key, blob) {
+                return Ok((decrypted, None));
+            }
+        }
+
+        // Case 3: If current_key failed, try password with known_salt
+        if let (Some(pwd), Some(salt)) = (password, known_salt) {
+            if let Ok(key) = Self::derive_master_key(pwd, salt) {
+                if let Ok(decrypted) = Self::decrypt(&key, blob) {
+                    return Ok((decrypted, Some(key)));
+                }
+            }
+        }
+
+        // Case 4: Fallback to default offline salt
+        if let Some(pwd) = password {
+            if let Ok(key) = Self::derive_master_key(pwd, DEFAULT_OFFLINE_SALT) {
+                if let Ok(decrypted) = Self::decrypt(&key, blob) {
+                    return Ok((decrypted, Some(key)));
+                }
+            }
+        }
+
+        Err("Decryption error: Master password might be incorrect or salt mismatch.".into())
     }
 
     /// Compute SHA256 checksum hex string
