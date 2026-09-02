@@ -85,21 +85,27 @@
       <div
         v-for="folder in filteredFolders"
         :key="folder.id"
-        class="space-y-0.5 rounded-lg transition-all"
+        class="space-y-0.5 rounded-lg transition-all relative"
         :class="[
-          dragOverFolderId === folder.id ? 'bg-sky-950/40 ring-2 ring-sky-500/80' : ''
+          dragType === 'session' && dragOverFolderId === folder.id ? 'bg-sky-950/50 ring-2 ring-sky-500' : '',
+          dragType === 'folder' && dragOverFolderTargetId === folder.id && dragOverFolderPos === 'top' ? 'border-t-2 border-sky-400' : '',
+          dragType === 'folder' && dragOverFolderTargetId === folder.id && dragOverFolderPos === 'bottom' ? 'border-b-2 border-sky-400' : '',
+          draggingFolderId === folder.id ? 'opacity-30 border border-dashed border-sky-400' : ''
         ]"
-        @dragover.prevent="dragOverFolderId = folder.id"
-        @dragleave="handleDragLeaveFolder(folder.id)"
-        @drop.stop="handleDropOnFolder(folder.id)"
+        @dragover.prevent="handleFolderDragOver(folder.id, $event)"
+        @dragleave="handleFolderDragLeave(folder.id)"
+        @drop.stop="handleFolderDrop(folder.id)"
         @contextmenu.prevent="openFolderContextMenu($event, folder)"
       >
         <!-- Folder Row -->
         <div
+          draggable="true"
+          @dragstart="handleFolderDragStart(folder, $event)"
+          @dragend="handleDragEnd"
           @click="toggleFolder(folder.id)"
-          class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/70 rounded-lg group cursor-pointer transition select-none"
+          class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/70 rounded-lg group cursor-grab active:cursor-grabbing transition select-none"
         >
-          <div class="flex items-center space-x-2 truncate mr-2">
+          <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
             <!-- Chevron Dropdown Indicator -->
             <span class="text-[10px] text-slate-400 transition-transform duration-150 inline-block w-3 text-center">
               {{ isFolderCollapsed(folder.id) ? '▶' : '▼' }}
@@ -140,17 +146,22 @@
             v-for="session in getSessionsInFolder(folder.id)"
             :key="session.id"
             draggable="true"
-            @dragstart="handleDragStart(session, $event)"
+            @dragstart="handleSessionDragStart(session, $event)"
             @dragend="handleDragEnd"
+            @dragover.prevent="handleSessionDragOver(session.id, $event)"
+            @dragleave="handleSessionDragLeave(session.id)"
+            @drop.stop="handleSessionDrop(session, $event)"
             @dblclick="sessionStore.openSession(session, true)"
             @contextmenu.prevent="openSessionContextMenu($event, session)"
             class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-md cursor-grab active:cursor-grabbing group transition"
             :class="[
-              draggingSessionId === session.id ? 'opacity-40 border border-dashed border-sky-400' : ''
+              draggingSessionId === session.id ? 'opacity-30 border border-dashed border-sky-400' : '',
+              dragOverSessionId === session.id && dragOverSessionPos === 'top' ? 'border-t-2 border-sky-400' : '',
+              dragOverSessionId === session.id && dragOverSessionPos === 'bottom' ? 'border-b-2 border-sky-400' : ''
             ]"
-            title="Drag to move folder, double click to connect"
+            title="Drag to move or reorder, double click to connect"
           >
-            <div class="flex items-center space-x-2 truncate mr-2">
+            <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
               <span class="text-xs text-sky-400 font-mono font-bold">></span>
               <span class="text-slate-300 truncate font-mono text-[12px]">{{ session.name || session.host }}</span>
             </div>
@@ -178,7 +189,7 @@
       <div
         v-if="unorganizedSessions.length > 0"
         class="pt-1.5 space-y-0.5 rounded-lg"
-        :class="[dragOverRoot ? 'bg-sky-950/30 ring-1 ring-sky-500/50' : '']"
+        :class="[dragType === 'session' && dragOverRoot ? 'bg-sky-950/30 ring-1 ring-sky-500/50' : '']"
         @dragover.prevent="dragOverRoot = true"
         @dragleave="dragOverRoot = false"
         @drop.stop="handleDropRoot"
@@ -187,17 +198,22 @@
           v-for="session in unorganizedSessions"
           :key="session.id"
           draggable="true"
-          @dragstart="handleDragStart(session, $event)"
+          @dragstart="handleSessionDragStart(session, $event)"
           @dragend="handleDragEnd"
+          @dragover.prevent="handleSessionDragOver(session.id, $event)"
+          @dragleave="handleSessionDragLeave(session.id)"
+          @drop.stop="handleSessionDrop(session, $event)"
           @dblclick="sessionStore.openSession(session, true)"
           @contextmenu.prevent="openSessionContextMenu($event, session)"
           class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-lg cursor-grab active:cursor-grabbing group transition"
           :class="[
-            draggingSessionId === session.id ? 'opacity-40 border border-dashed border-sky-400' : ''
+            draggingSessionId === session.id ? 'opacity-30 border border-dashed border-sky-400' : '',
+            dragOverSessionId === session.id && dragOverSessionPos === 'top' ? 'border-t-2 border-sky-400' : '',
+            dragOverSessionId === session.id && dragOverSessionPos === 'bottom' ? 'border-b-2 border-sky-400' : ''
           ]"
-          title="Drag to move folder, double click to connect"
+          title="Drag to move or reorder, double click to connect"
         >
-          <div class="flex items-center space-x-2.5 truncate mr-2">
+          <div class="flex items-center space-x-2.5 truncate mr-2 pointer-events-none">
             <span class="text-xs text-sky-400 font-mono font-bold">></span>
             <span class="text-slate-300 truncate font-mono text-[12px]">{{ session.name || session.host }}</span>
           </div>
@@ -333,8 +349,16 @@ const searchQuery = ref('');
 const collapsedFolders = ref<Record<string, boolean>>({});
 
 // Drag and Drop States
+const dragType = ref<'session' | 'folder' | null>(null);
 const draggingSessionId = ref<string | null>(null);
+const draggingFolderId = ref<string | null>(null);
+
 const dragOverFolderId = ref<string | null>(null);
+const dragOverFolderTargetId = ref<string | null>(null);
+const dragOverFolderPos = ref<'top' | 'bottom' | null>(null);
+
+const dragOverSessionId = ref<string | null>(null);
+const dragOverSessionPos = ref<'top' | 'bottom' | null>(null);
 const dragOverRoot = ref(false);
 
 // Clipboard State for Cut/Copy/Paste
@@ -394,49 +418,137 @@ function getSessionsInFolder(folderId: string): SshSessionConfig[] {
   });
 }
 
-// Drag & Drop Handlers
-function handleDragStart(session: SshSessionConfig, e: DragEvent) {
-  draggingSessionId.value = session.id;
+// Drag & Drop Handlers - Folder
+function handleFolderDragStart(folder: Folder, e: DragEvent) {
+  dragType.value = 'folder';
+  draggingFolderId.value = folder.id;
   if (e.dataTransfer) {
-    e.dataTransfer.setData('text/plain', session.id);
+    e.dataTransfer.setData('text/plain', `folder:${folder.id}`);
     e.dataTransfer.effectAllowed = 'move';
   }
 }
 
-function handleDragEnd() {
-  draggingSessionId.value = null;
-  dragOverFolderId.value = null;
-  dragOverRoot.value = false;
+function handleFolderDragOver(targetFolderId: string, e: DragEvent) {
+  if (dragType.value === 'folder' && draggingFolderId.value !== targetFolderId) {
+    dragOverFolderTargetId.value = targetFolderId;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    dragOverFolderPos.value = e.clientY < mid ? 'top' : 'bottom';
+  } else if (dragType.value === 'session') {
+    dragOverFolderId.value = targetFolderId;
+  }
 }
 
-function handleDragLeaveFolder(folderId: string) {
+function handleFolderDragLeave(folderId: string) {
+  if (dragOverFolderTargetId.value === folderId) {
+    dragOverFolderTargetId.value = null;
+    dragOverFolderPos.value = null;
+  }
   if (dragOverFolderId.value === folderId) {
     dragOverFolderId.value = null;
   }
 }
 
-async function handleDropOnFolder(targetFolderId: string) {
+async function handleFolderDrop(targetFolderId: string) {
+  if (dragType.value === 'folder' && draggingFolderId.value && draggingFolderId.value !== targetFolderId) {
+    const folders = [...vaultStore.vault.folders];
+    const srcIndex = folders.findIndex(f => f.id === draggingFolderId.value);
+    const tgtIndex = folders.findIndex(f => f.id === targetFolderId);
+    if (srcIndex >= 0 && tgtIndex >= 0) {
+      const [moved] = folders.splice(srcIndex, 1);
+      const newTargetIndex = folders.findIndex(f => f.id === targetFolderId);
+      const insertIndex = dragOverFolderPos.value === 'top' ? newTargetIndex : newTargetIndex + 1;
+      folders.splice(insertIndex, 0, moved);
+      vaultStore.vault.folders = folders;
+      await vaultStore.persist(true);
+    }
+  } else if (dragType.value === 'session' && draggingSessionId.value) {
+    await handleDropOnFolder(targetFolderId);
+  }
+  handleDragEnd();
+}
+
+// Drag & Drop Handlers - Session
+function handleSessionDragStart(session: SshSessionConfig, e: DragEvent) {
+  dragType.value = 'session';
+  draggingSessionId.value = session.id;
+  if (e.dataTransfer) {
+    e.dataTransfer.setData('text/plain', `session:${session.id}`);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function handleSessionDragOver(targetSessionId: string, e: DragEvent) {
+  if (dragType.value === 'session' && draggingSessionId.value !== targetSessionId) {
+    dragOverSessionId.value = targetSessionId;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    dragOverSessionPos.value = e.clientY < mid ? 'top' : 'bottom';
+  }
+}
+
+function handleSessionDragLeave(sessionId: string) {
+  if (dragOverSessionId.value === sessionId) {
+    dragOverSessionId.value = null;
+    dragOverSessionPos.value = null;
+  }
+}
+
+async function handleSessionDrop(targetSession: SshSessionConfig, e: DragEvent) {
+  if (dragType.value === 'session' && draggingSessionId.value && draggingSessionId.value !== targetSession.id) {
+    const sessions = [...vaultStore.vault.sessions];
+    const srcIndex = sessions.findIndex(s => s.id === draggingSessionId.value);
+    if (srcIndex >= 0) {
+      const [moved] = sessions.splice(srcIndex, 1);
+      moved.folder_id = targetSession.folder_id;
+      const newTargetIndex = sessions.findIndex(s => s.id === targetSession.id);
+      const insertIndex = dragOverSessionPos.value === 'top' ? newTargetIndex : newTargetIndex + 1;
+      sessions.splice(insertIndex, 0, moved);
+      vaultStore.vault.sessions = sessions;
+      await vaultStore.persist(true);
+    }
+  }
+  handleDragEnd();
+}
+
+function handleDragEnd() {
+  dragType.value = null;
+  draggingSessionId.value = null;
+  draggingFolderId.value = null;
   dragOverFolderId.value = null;
+  dragOverFolderTargetId.value = null;
+  dragOverFolderPos.value = null;
+  dragOverSessionId.value = null;
+  dragOverSessionPos.value = null;
+  dragOverRoot.value = false;
+}
+
+async function handleDropOnFolder(targetFolderId: string) {
   if (!draggingSessionId.value) return;
 
-  const session = vaultStore.vault.sessions.find(s => s.id === draggingSessionId.value);
+  const sessions = [...vaultStore.vault.sessions];
+  const session = sessions.find(s => s.id === draggingSessionId.value);
   if (session && session.folder_id !== targetFolderId) {
     session.folder_id = targetFolderId;
+    // Auto expand folder when dropping inside
+    collapsedFolders.value[targetFolderId] = false;
+    vaultStore.vault.sessions = sessions;
     await vaultStore.persist(true);
   }
-  draggingSessionId.value = null;
+  handleDragEnd();
 }
 
 async function handleDropRoot() {
-  dragOverRoot.value = false;
-  if (!draggingSessionId.value) return;
-
-  const session = vaultStore.vault.sessions.find(s => s.id === draggingSessionId.value);
-  if (session && session.folder_id !== null) {
-    session.folder_id = null;
-    await vaultStore.persist(true);
+  if (dragType.value === 'session' && draggingSessionId.value) {
+    const sessions = [...vaultStore.vault.sessions];
+    const session = sessions.find(s => s.id === draggingSessionId.value);
+    if (session && session.folder_id !== null) {
+      session.folder_id = null;
+      vaultStore.vault.sessions = sessions;
+      await vaultStore.persist(true);
+    }
   }
-  draggingSessionId.value = null;
+  handleDragEnd();
 }
 
 // Context Menu Functions

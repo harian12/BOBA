@@ -9,6 +9,7 @@ export interface DialogOptions {
   defaultValue?: string;
   confirmText?: string;
   cancelText?: string;
+  inputType?: 'text' | 'password';
   isDestructive?: boolean;
   variant?: 'info' | 'success' | 'warning' | 'error';
 }
@@ -71,6 +72,7 @@ export const useDialogStore = defineStore('dialog', () => {
     defaultValue?: string;
     confirmText?: string;
     cancelText?: string;
+    inputType?: 'text' | 'password';
   }): Promise<string | null> {
     return new Promise((resolve) => {
       options.value = {
@@ -81,6 +83,7 @@ export const useDialogStore = defineStore('dialog', () => {
         defaultValue: opts.defaultValue || '',
         confirmText: opts.confirmText || 'Save',
         cancelText: opts.cancelText || 'Cancel',
+        inputType: opts.inputType || 'text',
       };
       inputValue.value = opts.defaultValue || '';
       resolvePromise = resolve;

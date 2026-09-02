@@ -27,7 +27,7 @@
         @new-session="handleOpenNewSession"
         @edit-session="handleOpenEditSession"
         @open-sync="isSyncOpen = true"
-        @open-keys="isKeyManagerOpen = true"
+        @open-keys="handleOpenKeyManager"
       />
 
       <!-- Right Workspace Area -->
@@ -268,6 +268,28 @@ const isKeyManagerOpen = ref(false);
 const isNewSessionOpen = ref(false);
 const sessionEditing = ref<SshSessionConfig | null>(null);
 const activeFolderId = ref<string | null>(null);
+
+async function handleOpenKeyManager() {
+  const enteredPassword = await dialogStore.prompt({
+    title: 'Verifikasi Master Password',
+    description: 'SSH Key Vault menyimpan private key terenkripsi. Masukkan Master Password untuk membuka akses:',
+    placeholder: 'Ketik Master Password...',
+    confirmText: 'Buka Key Vault',
+    inputType: 'password',
+  });
+
+  if (!enteredPassword) return;
+
+  if (enteredPassword === vaultStore.masterPassword) {
+    isKeyManagerOpen.value = true;
+  } else {
+    await dialogStore.alert({
+      title: 'Akses Ditolak',
+      description: 'Master Password salah. Akses ke SSH Key Vault tidak diizinkan.',
+      variant: 'error',
+    });
+  }
+}
 
 function isTabVisible(tabId: string): boolean {
   return sessionStore.visibleTabs.some(t => t.id === tabId);

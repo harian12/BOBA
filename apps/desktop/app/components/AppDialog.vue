@@ -30,7 +30,7 @@
         <input
           ref="inputRef"
           v-model="dialogStore.inputValue"
-          type="text"
+          :type="dialogStore.options.inputType || 'text'"
           :placeholder="dialogStore.options.placeholder"
           class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
         />
