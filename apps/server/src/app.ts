@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { authRouter } from './routes/auth';
-import { vaultRouter } from './routes/vault';
+import { authRouter } from './routes/auth.js';
+import { vaultRouter } from './routes/vault.js';
 
 export const app = new Hono();
 
