@@ -2,8 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'boba-sync-server',
-      script: 'apps/server/src/index.ts',
-      interpreter: 'bun',
+      script: 'apps/server/dist/index.js',
       instances: 1,
       autorestart: true,
       watch: false,
