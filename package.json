@@ -1,0 +1,14 @@
+{
+  "name": "boba-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "npm.cmd --prefix apps/server run dev",
+    "dev:desktop": "npm.cmd --prefix apps/desktop run tauri dev",
+    "build:server": "npm.cmd --prefix apps/server run build",
+    "build:desktop": "npm.cmd --prefix apps/desktop run tauri build"
+  }
+}
