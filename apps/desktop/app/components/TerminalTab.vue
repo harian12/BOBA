@@ -193,6 +193,17 @@
         <span class="text-[10px] font-mono opacity-60">Ctrl+L</span>
       </button>
 
+      <!-- Reset Terminal State (Fix Garbled Mouse Characters) -->
+      <button
+        @click="handleResetTerminal"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-1.5">
+          <span class="text-xs">⚙️</span>
+          <span>Reset Terminal State</span>
+        </div>
+      </button>
+
       <!-- Open SFTP -->
       <button
         @click="handleToggleSftp"
@@ -488,6 +499,16 @@ function handleClearScreen() {
   closeContextMenu();
   if (term) {
     term.clear();
+    term.focus();
+  }
+}
+
+function handleResetTerminal() {
+  closeContextMenu();
+  if (term) {
+    // Reset terminal state and disable stuck mouse tracking modes
+    term.write('\x1b[!p\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[c');
+    term.reset();
     term.focus();
   }
 }
@@ -1061,6 +1082,8 @@ async function connectSsh() {
 
     // Clear previous disconnect messages / history on successful connect
     term.clear();
+    // Disable any lingering mouse reporting modes from previous sessions
+    term.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l');
     props.tab.connected = true;
     term.focus();
 
