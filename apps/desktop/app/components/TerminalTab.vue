@@ -917,7 +917,7 @@ function initTerminal() {
         }
       }
 
-      // 2. Ctrl+C: Copy if text is selected, otherwise send interrupt to shell
+      // 2. Ctrl+C: Copy if text is selected, otherwise allow sending SIGINT (interrupt) to shell
       if (e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.shiftKey && !e.altKey) {
         if (term && term.hasSelection()) {
           const sel = term.getSelection();
@@ -928,17 +928,7 @@ function initTerminal() {
         }
       }
 
-      // 3. Ctrl+V: Paste from clipboard
-      if (e.ctrlKey && (e.key === 'v' || e.key === 'V') && !e.shiftKey && !e.altKey) {
-        navigator.clipboard.readText().then(text => {
-          if (text) {
-            tauriBridge.sshWrite(props.tab.id, text);
-          }
-        }).catch(() => {});
-        return false;
-      }
-
-      // 4. Tab Navigation Shortcuts
+      // 3. Tab Navigation Shortcuts
       if (e.ctrlKey && (e.key === 'Tab' || e.code === 'Tab')) {
         if (e.shiftKey) {
           sessionStore.prevTab();
