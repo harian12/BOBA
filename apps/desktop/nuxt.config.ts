@@ -20,6 +20,12 @@ export default defineNuxtConfig({
       routes: ['/'],
     },
   },
+  postcss: {
+    plugins: {
+      tailwindcss: {},
+      autoprefixer: {},
+    },
+  },
   vite: {
     clearScreen: false,
     server: {
