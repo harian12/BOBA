@@ -845,13 +845,13 @@ function initTerminal() {
   // Key Event Interception: Handle text selection with Shift+Arrow & Navigation shortcuts
   term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
     if (e.type === 'keydown') {
-      // 1. Text Selection with Shift + Left/Right/Up/Down/Home/End
-      if (e.shiftKey && !e.ctrlKey && !e.altKey) {
+      // 1. Text Selection with Shift + Arrows & Ctrl + Shift + Left/Right (Word-by-word selection)
+      if (e.shiftKey && !e.altKey) {
         if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
           if (!term) return false;
           const buffer = term.buffer.active;
 
-          // Initialize anchor and head on first Shift+Arrow press
+          // Initialize anchor and head on first selection key press
           if (!isKeyboardSelecting || selAnchorCol === -1) {
             selAnchorCol = buffer.cursorX;
             selAnchorRow = buffer.baseY + buffer.cursorY;
@@ -860,29 +860,80 @@ function initTerminal() {
             isKeyboardSelecting = true;
           }
 
-          // Move head according to key pressed
-          if (e.key === 'ArrowLeft') {
-            if (selHeadCol > 0) {
-              selHeadCol -= 1;
-            } else if (selHeadRow > 0) {
-              selHeadRow -= 1;
+          // Word-by-word jump with Ctrl+Shift+Left / Ctrl+Shift+Right
+          if (e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            const line = buffer.getLine(selHeadRow);
+            const lineStr = line ? line.translateToString(false) : '';
+            const isWordChar = (ch: string) => ch && /[a-zA-Z0-9_\-]/.test(ch);
+
+            if (e.key === 'ArrowLeft') {
+              let col = Math.min(selHeadCol, lineStr.length);
+              // If at start of line, jump to end of previous line
+              if (col <= 0) {
+                if (selHeadRow > 0) {
+                  selHeadRow -= 1;
+                  const prevLine = buffer.getLine(selHeadRow);
+                  selHeadCol = prevLine ? Math.max(0, prevLine.translateToString(true).length) : 0;
+                }
+              } else {
+                col--;
+                // Skip non-word chars backwards
+                while (col > 0 && !isWordChar(lineStr[col])) {
+                  col--;
+                }
+                // Skip word chars backwards
+                while (col > 0 && isWordChar(lineStr[col - 1])) {
+                  col--;
+                }
+                selHeadCol = Math.max(0, col);
+              }
+            } else if (e.key === 'ArrowRight') {
+              let col = selHeadCol;
+              const maxCol = lineStr.length;
+              // If at or past end of line, jump to start of next line
+              if (col >= maxCol || col >= term.cols) {
+                if (selHeadRow < buffer.baseY + term.rows - 1) {
+                  selHeadRow += 1;
+                  selHeadCol = 0;
+                }
+              } else {
+                // Skip current word chars forward
+                while (col < maxCol && isWordChar(lineStr[col])) {
+                  col++;
+                }
+                // Skip spaces/non-word chars forward to next word
+                while (col < maxCol && !isWordChar(lineStr[col])) {
+                  col++;
+                }
+                selHeadCol = Math.min(term.cols - 1, col);
+              }
+            }
+          }
+          // Character-by-character move with Shift+Left / Shift+Right / Up / Down / Home / End
+          else if (!e.ctrlKey) {
+            if (e.key === 'ArrowLeft') {
+              if (selHeadCol > 0) {
+                selHeadCol -= 1;
+              } else if (selHeadRow > 0) {
+                selHeadRow -= 1;
+                selHeadCol = term.cols - 1;
+              }
+            } else if (e.key === 'ArrowRight') {
+              if (selHeadCol < term.cols - 1) {
+                selHeadCol += 1;
+              } else {
+                selHeadRow += 1;
+                selHeadCol = 0;
+              }
+            } else if (e.key === 'ArrowUp') {
+              selHeadRow = Math.max(0, selHeadRow - 1);
+            } else if (e.key === 'ArrowDown') {
+              selHeadRow = Math.min(buffer.baseY + term.rows - 1, selHeadRow + 1);
+            } else if (e.key === 'Home') {
+              selHeadCol = 0;
+            } else if (e.key === 'End') {
               selHeadCol = term.cols - 1;
             }
-          } else if (e.key === 'ArrowRight') {
-            if (selHeadCol < term.cols - 1) {
-              selHeadCol += 1;
-            } else {
-              selHeadRow += 1;
-              selHeadCol = 0;
-            }
-          } else if (e.key === 'ArrowUp') {
-            selHeadRow = Math.max(0, selHeadRow - 1);
-          } else if (e.key === 'ArrowDown') {
-            selHeadRow = Math.min(buffer.baseY + term.rows - 1, selHeadRow + 1);
-          } else if (e.key === 'Home') {
-            selHeadCol = 0;
-          } else if (e.key === 'End') {
-            selHeadCol = term.cols - 1;
           }
 
           // Determine start and end points in linear buffer terms
