@@ -38,8 +38,8 @@ dev:
 
 # 3. Production Builds
 build-server:
-	@echo "Building server bundle (esbuild)..."
-	cd apps/server && npm run build
+	@echo "Ensuring server dependencies and building bundle (esbuild)..."
+	cd apps/server && (test -d node_modules || npm install --include=dev) && npm run build
 
 build-desktop:
 	@echo "Building desktop frontend & Tauri app..."
