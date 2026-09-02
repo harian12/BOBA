@@ -698,10 +698,22 @@ watch(
   }
 );
 
+function handleDocPaste(e: ClipboardEvent) {
+  const target = e.target as Node | null;
+  if (!terminalRef.value || !terminalRef.value.contains(target)) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  const text = e.clipboardData?.getData('text') || '';
+  if (text) {
+    tauriBridge.sshWrite(props.tab.id, text);
+  }
+}
+
 onMounted(async () => {
   await nextTick();
   initTerminal();
   connectSsh();
+  document.addEventListener('paste', handleDocPaste, true);
 
   if (terminalRef.value) {
     resizeObserver = new ResizeObserver(() => {
@@ -736,6 +748,7 @@ onUnmounted(() => {
     resizeObserver = null;
   }
   cleanupListeners();
+  document.removeEventListener('paste', handleDocPaste, true);
   if (term) term.dispose();
   tauriBridge.sshClose(props.tab.id).catch(() => {});
 });
@@ -1015,19 +1028,7 @@ function initTerminal() {
         }
       }
 
-      // 4. Ctrl+V & Ctrl+Shift+V: Paste from clipboard directly into SSH session
-      if (e.ctrlKey && (e.key === 'v' || e.key === 'V') && !e.altKey) {
-        navigator.clipboard.readText().then((text) => {
-          if (text) {
-            tauriBridge.sshWrite(props.tab.id, text);
-          }
-        }).catch((err) => {
-          console.warn('Clipboard read failed:', err);
-        });
-        return false; // Prevent xterm from sending raw \x16 character
-      }
-
-      // 5. Tab Navigation Shortcuts
+      // 4. Tab Navigation Shortcuts
       if (e.ctrlKey && (e.key === 'Tab' || e.code === 'Tab')) {
         if (e.shiftKey) {
           sessionStore.prevTab();
@@ -1087,14 +1088,9 @@ function initTerminal() {
         return false;
       }
     }, { capture: true });
-
-    // Block xterm's built-in paste handler to avoid double paste.
-    // Ctrl+V is handled manually in attachCustomKeyEventHandler which writes clipboard to SSH.
-    term.textarea.addEventListener('paste', (e: ClipboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
   }
+
+
 
   try {
     const webgl = new WebglAddon();
