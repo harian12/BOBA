@@ -968,7 +968,43 @@ function initTerminal() {
         }
       }
 
-      // 2. Ctrl+C: Copy if text is selected, otherwise allow sending SIGINT (interrupt) to shell
+      // 2. Delete selected text on Backspace or Delete key
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        if (term && term.hasSelection()) {
+          const selText = term.getSelection();
+          const pos = term.getSelectionPosition();
+          if (selText && pos) {
+            const buffer = term.buffer.active;
+            const curLinear = (buffer.baseY + buffer.cursorY) * term.cols + buffer.cursorX;
+            const endLinear = pos.end.y * term.cols + pos.end.x;
+            const length = Math.max(1, selText.length);
+
+            let keysToSend = '';
+            // Align cursor to the end of the selection before backspacing
+            if (curLinear < endLinear) {
+              const forwardSteps = endLinear - curLinear;
+              keysToSend += '\x1b[C'.repeat(forwardSteps);
+            } else if (curLinear > endLinear) {
+              const backSteps = curLinear - endLinear;
+              keysToSend += '\x1b[D'.repeat(backSteps);
+            }
+
+            // Send backspace for each character in selection
+            keysToSend += '\x7f'.repeat(length);
+            tauriBridge.sshWrite(props.tab.id, keysToSend);
+
+            term.clearSelection();
+            isKeyboardSelecting = false;
+            selAnchorCol = -1;
+            selAnchorRow = -1;
+            selHeadCol = -1;
+            selHeadRow = -1;
+            return false;
+          }
+        }
+      }
+
+      // 3. Ctrl+C: Copy if text is selected, otherwise allow sending SIGINT (interrupt) to shell
       if (e.ctrlKey && (e.key === 'c' || e.key === 'C') && !e.shiftKey && !e.altKey) {
         if (term && term.hasSelection()) {
           const sel = term.getSelection();
@@ -979,7 +1015,7 @@ function initTerminal() {
         }
       }
 
-      // 3. Tab Navigation Shortcuts
+      // 4. Tab Navigation Shortcuts
       if (e.ctrlKey && (e.key === 'Tab' || e.code === 'Tab')) {
         if (e.shiftKey) {
           sessionStore.prevTab();
@@ -1066,6 +1102,73 @@ function initTerminal() {
           tauriBridge.sshResize(props.tab.id, size.cols, size.rows).catch(() => {});
         }
       }, 100);
+    }
+  });
+
+  // Clamp selection so that dragging down into empty buffer space only selects up to the last content character
+  let isClamping = false;
+  const clampSelectionToContent = () => {
+    if (!term || !term.hasSelection()) return;
+    const pos = term.getSelectionPosition();
+    if (!pos) return;
+
+    const buffer = term.buffer.active;
+    let lastRow = -1;
+    let lastCol = -1;
+
+    // Scan backwards from bottom visible row to find the true last line with text content
+    const endScanRow = buffer.baseY + term.rows - 1;
+    for (let y = endScanRow; y >= 0; y--) {
+      const line = buffer.getLine(y);
+      if (line) {
+        const str = line.translateToString(true);
+        if (str.length > 0) {
+          lastRow = y;
+          lastCol = str.length;
+          break;
+        }
+      }
+    }
+
+    if (lastRow === -1) {
+      lastRow = buffer.baseY + buffer.cursorY;
+      lastCol = buffer.cursorX;
+    }
+
+    const endLinear = pos.end.y * term.cols + pos.end.x;
+    const maxLinear = lastRow * term.cols + lastCol;
+
+    if (endLinear > maxLinear) {
+      const startLinear = pos.start.y * term.cols + pos.start.x;
+      if (startLinear < maxLinear) {
+        const startCol = startLinear % term.cols;
+        const startRow = Math.floor(startLinear / term.cols);
+        const length = maxLinear - startLinear;
+        term.select(startCol, startRow, length);
+      } else {
+        term.clearSelection();
+      }
+    }
+  };
+
+  term.onSelectionChange(() => {
+    if (isClamping || !term || !term.hasSelection()) return;
+    isClamping = true;
+    try {
+      clampSelectionToContent();
+    } finally {
+      isClamping = false;
+    }
+  });
+
+  terminalRef.value?.addEventListener('mouseup', () => {
+    if (term && term.hasSelection()) {
+      isClamping = true;
+      try {
+        clampSelectionToContent();
+      } finally {
+        isClamping = false;
+      }
     }
   });
 
