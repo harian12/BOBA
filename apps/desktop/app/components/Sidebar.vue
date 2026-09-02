@@ -6,9 +6,7 @@
     <!-- Brand / Header -->
     <div class="px-4 py-3 border-b border-boba-800 flex items-center justify-between">
       <div class="flex items-center space-x-2.5">
-        <div class="w-7 h-7 rounded-lg bg-boba-accent flex items-center justify-center font-black text-sm text-white shadow-md">
-          B
-        </div>
+        <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30" />
         <span class="font-bold text-sm tracking-wide text-slate-100">BOBA</span>
       </div>
 
