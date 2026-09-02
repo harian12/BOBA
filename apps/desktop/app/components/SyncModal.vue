@@ -172,6 +172,17 @@ async function handleSyncNow() {
 
 async function handleForcePull() {
   await syncStore.forcePullRemote();
+  if (syncStore.syncError && syncStore.syncError.includes('tidak cocok')) {
+    const customPwd = await dialogStore.prompt({
+      title: 'Masukkan Master Password Cloud Vault',
+      description: 'Data di server dienkripsi dengan Master Password atau salt yang berbeda. Masukkan Master Password dari PC pembuat data untuk membuka enkripsi:',
+      placeholder: 'Master Password...',
+      confirmText: 'Buka & Pulihkan',
+    });
+    if (customPwd) {
+      await syncStore.forcePullRemote(customPwd);
+    }
+  }
 }
 
 async function handleAuthSubmit() {

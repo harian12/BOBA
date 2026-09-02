@@ -28,16 +28,17 @@ export const useSyncStore = defineStore('sync', () => {
     syncError.value = null;
     try {
       const generatedSalt = Math.random().toString(36).substring(2, 18);
-      const resToken = await tauriBridge.syncRegister(
+      const res: any = await tauriBridge.syncRegister(
         serverUrl.value,
         email,
         passwordHash,
         generatedSalt
       );
       
-      token.value = resToken;
-      userEmail.value = email;
-      userSalt.value = generatedSalt;
+      token.value = res.token;
+      userEmail.value = res.email || email;
+      userId.value = res.userId || '';
+      userSalt.value = res.salt || generatedSalt;
 
       localStorage.setItem('boba_auth_token', token.value);
       localStorage.setItem('boba_user_email', userEmail.value);
@@ -102,14 +103,17 @@ export const useSyncStore = defineStore('sync', () => {
     localStorage.removeItem('boba_user_id');
   }
 
-  async function forcePullRemote() {
+  async function forcePullRemote(customPassword?: string) {
     if (!token.value) return;
     const vaultStore = useVaultStore();
-    if (!vaultStore.isUnlocked) return;
 
     isSyncing.value = true;
     syncError.value = null;
     try {
+      if (customPassword) {
+        await tauriBridge.initOrUnlockVault(customPassword, userSalt.value || 'boba_default_offline_salt_123');
+        vaultStore.masterPassword = customPassword;
+      }
       const pullRes: any = await tauriBridge.syncPullVault(serverUrl.value, token.value);
       if (pullRes && pullRes.encryptedData) {
         const remoteVault = await tauriBridge.decryptRemoteVaultBlob(pullRes.encryptedData);
@@ -117,6 +121,7 @@ export const useSyncStore = defineStore('sync', () => {
           vaultStore.vault = remoteVault;
           vaultStore.vault.vault_version = pullRes.version || 0;
           vaultStore.isDirty = false;
+          vaultStore.isUnlocked = true;
           await vaultStore.persist(false);
         }
       }
@@ -126,7 +131,7 @@ export const useSyncStore = defineStore('sync', () => {
       hasConflict.value = false;
     } catch (err: any) {
       const errStr = String(err);
-      if (errStr.includes('aead::Error') || errStr.includes('Decryption error')) {
+      if (errStr.includes('aead::Error') || errStr.includes('Decryption error') || errStr.includes('incorrect')) {
         syncError.value = 'Master Password lokal tidak cocok untuk mendekripsi data server.';
       } else {
         syncError.value = 'Gagal menarik data dari server: ' + errStr;

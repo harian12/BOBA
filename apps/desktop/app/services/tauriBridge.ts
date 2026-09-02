@@ -25,7 +25,7 @@ export const tauriBridge = {
   },
 
   // Sync commands
-  async syncRegister(serverUrl: string, username: string, passwordHash: string, salt: string): Promise<string> {
+  async syncRegister(serverUrl: string, username: string, passwordHash: string, salt: string): Promise<{ token: string; salt: string; email: string; userId: string }> {
     return await invoke('sync_register', { serverUrl, username, passwordHash, salt });
   },
 

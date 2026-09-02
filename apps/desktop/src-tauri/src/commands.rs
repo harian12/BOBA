@@ -118,12 +118,11 @@ pub async fn sync_register(
     username: String,
     password_hash: String,
     _salt: String,
-) -> Result<String, String> {
-    let res = state
+) -> Result<AuthResponse, String> {
+    state
         .sync_service
         .register(&server_url, &username, &password_hash)
-        .await?;
-    Ok(res.token)
+        .await
 }
 
 #[tauri::command]
