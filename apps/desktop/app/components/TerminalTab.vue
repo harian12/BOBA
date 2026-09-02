@@ -698,14 +698,17 @@ watch(
   }
 );
 
-function handleDocPaste(e: ClipboardEvent) {
-  const target = e.target as Node | null;
-  if (!terminalRef.value || !terminalRef.value.contains(target)) return;
-  e.stopImmediatePropagation();
-  e.preventDefault();
-  const text = e.clipboardData?.getData('text') || '';
-  if (text) {
-    tauriBridge.sshWrite(props.tab.id, text);
+function handleKeydownCapture(e: KeyboardEvent) {
+  // Intercept Ctrl+V at capture phase (before xterm sees it).
+  // Read clipboard, send to SSH, drop the event entirely.
+  if (e.ctrlKey && (e.key === 'v' || e.key === 'V') && !e.shiftKey && !e.altKey) {
+    const target = e.target as Node | null;
+    if (!terminalRef.value?.contains(target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.readText().then((text) => {
+      if (text) tauriBridge.sshWrite(props.tab.id, text);
+    }).catch(() => {});
   }
 }
 
@@ -713,7 +716,7 @@ onMounted(async () => {
   await nextTick();
   initTerminal();
   connectSsh();
-  document.addEventListener('paste', handleDocPaste, true);
+  document.addEventListener('keydown', handleKeydownCapture, true);
 
   if (terminalRef.value) {
     resizeObserver = new ResizeObserver(() => {
@@ -748,7 +751,7 @@ onUnmounted(() => {
     resizeObserver = null;
   }
   cleanupListeners();
-  document.removeEventListener('paste', handleDocPaste, true);
+  document.removeEventListener('keydown', handleKeydownCapture, true);
   if (term) term.dispose();
   tauriBridge.sshClose(props.tab.id).catch(() => {});
 });
