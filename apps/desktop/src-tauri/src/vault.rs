@@ -22,6 +22,8 @@ pub struct SshSessionConfig {
     pub key_id: Option<String>,
     pub sftp_auto_open: bool,
     pub terminal_theme: Option<String>,
+    #[serde(default)]
+    pub snippets: Option<Vec<SnippetItem>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
