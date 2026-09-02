@@ -1015,7 +1015,19 @@ function initTerminal() {
         }
       }
 
-      // 4. Tab Navigation Shortcuts
+      // 4. Ctrl+V & Ctrl+Shift+V: Paste from clipboard directly into SSH session
+      if (e.ctrlKey && (e.key === 'v' || e.key === 'V') && !e.altKey) {
+        navigator.clipboard.readText().then((text) => {
+          if (text) {
+            tauriBridge.sshWrite(props.tab.id, text);
+          }
+        }).catch((err) => {
+          console.warn('Clipboard read failed:', err);
+        });
+        return false; // Prevent xterm from sending raw \x16 character
+      }
+
+      // 5. Tab Navigation Shortcuts
       if (e.ctrlKey && (e.key === 'Tab' || e.code === 'Tab')) {
         if (e.shiftKey) {
           sessionStore.prevTab();
@@ -1075,6 +1087,13 @@ function initTerminal() {
         return false;
       }
     }, { capture: true });
+
+    // Block xterm's built-in paste handler to avoid double paste.
+    // Ctrl+V is handled manually in attachCustomKeyEventHandler which writes clipboard to SSH.
+    term.textarea.addEventListener('paste', (e: ClipboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
   }
 
   try {
