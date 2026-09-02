@@ -98,12 +98,32 @@ export const tauriBridge = {
     return await invoke('sftp_delete_path', { sessionId, remotePath, isDir });
   },
 
+  async sftpDelete(sessionId: string, remotePath: string, isDir: boolean): Promise<void> {
+    return await invoke('sftp_delete_path', { sessionId, remotePath, isDir });
+  },
+
   async sftpCreateDirectory(sessionId: string, remotePath: string): Promise<void> {
+    return await invoke('sftp_create_directory', { sessionId, remotePath });
+  },
+
+  async sftpCreateDir(sessionId: string, remotePath: string): Promise<void> {
     return await invoke('sftp_create_directory', { sessionId, remotePath });
   },
 
   async sftpRenamePath(sessionId: string, oldPath: string, newPath: string): Promise<void> {
     return await invoke('sftp_rename_path', { sessionId, oldPath, newPath });
+  },
+
+  async sftpRename(sessionId: string, oldPath: string, newPath: string): Promise<void> {
+    return await invoke('sftp_rename_path', { sessionId, oldPath, newPath });
+  },
+
+  async sftpWriteText(sessionId: string, remotePath: string, content: string): Promise<void> {
+    return await invoke('sftp_write_file', { sessionId, remotePath, content });
+  },
+
+  async sftpReadText(sessionId: string, remotePath: string): Promise<string> {
+    return await invoke('sftp_read_file', { sessionId, remotePath });
   },
 
   async sftpDownloadStream(sessionId: string, transferId: string, remotePath: string, localPath: string): Promise<void> {

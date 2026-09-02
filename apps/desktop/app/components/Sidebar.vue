@@ -1,5 +1,8 @@
 <template>
-  <aside class="w-72 bg-boba-900 border-r border-boba-800 flex flex-col h-full select-none">
+  <aside
+    class="w-72 bg-boba-900 border-r border-boba-800 flex flex-col h-full select-none relative"
+    @click="closeContextMenu"
+  >
     <!-- Brand / Header -->
     <div class="px-4 py-3 border-b border-boba-800 flex items-center justify-between">
       <div class="flex items-center space-x-2.5">
@@ -70,14 +73,30 @@
       </div>
     </div>
 
-    <!-- Session Hierarchy Tree -->
-    <div class="flex-1 overflow-y-auto p-2.5 space-y-1 text-xs font-sans">
+    <!-- Session Hierarchy Tree (Supports Drag and Drop) -->
+    <div
+      class="flex-1 overflow-y-auto p-2.5 space-y-1 text-xs font-sans"
+      @dragover.prevent
+      @drop="handleDropRoot"
+    >
       <div v-if="filteredFolders.length === 0 && unorganizedSessions.length === 0" class="p-6 text-center text-slate-500">
         No sessions found. Click "+ Session" to add.
       </div>
 
       <!-- Folders -->
-      <div v-for="folder in filteredFolders" :key="folder.id" class="space-y-0.5">
+      <div
+        v-for="folder in filteredFolders"
+        :key="folder.id"
+        class="space-y-0.5 rounded-lg transition-all"
+        :class="[
+          dragOverFolderId === folder.id ? 'bg-sky-950/40 ring-2 ring-sky-500/80' : ''
+        ]"
+        @dragover.prevent="dragOverFolderId = folder.id"
+        @dragleave="handleDragLeaveFolder(folder.id)"
+        @drop.stop="handleDropOnFolder(folder.id)"
+        @contextmenu.prevent="openFolderContextMenu($event, folder)"
+      >
+        <!-- Folder Row -->
         <div
           @click="toggleFolder(folder.id)"
           class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/70 rounded-lg group cursor-pointer transition select-none"
@@ -116,15 +135,22 @@
             v-if="getSessionsInFolder(folder.id).length === 0"
             class="px-3 py-1 text-[11px] text-slate-600 italic"
           >
-            Empty folder
+            Empty folder (drop session here)
           </div>
 
           <div
             v-for="session in getSessionsInFolder(folder.id)"
             :key="session.id"
+            draggable="true"
+            @dragstart="handleDragStart(session, $event)"
+            @dragend="handleDragEnd"
             @dblclick="sessionStore.openSession(session, true)"
-            class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-md cursor-pointer group transition"
-            title="Double click to open new tab"
+            @contextmenu.prevent="openSessionContextMenu($event, session)"
+            class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-md cursor-grab active:cursor-grabbing group transition"
+            :class="[
+              draggingSessionId === session.id ? 'opacity-40 border border-dashed border-sky-400' : ''
+            ]"
+            title="Drag to move folder, double click to connect"
           >
             <div class="flex items-center space-x-2 truncate mr-2">
               <span class="text-xs text-sky-400 font-mono font-bold">></span>
@@ -150,14 +176,28 @@
         </div>
       </div>
 
-      <!-- Root / Unorganized Sessions -->
-      <div v-if="unorganizedSessions.length > 0" class="pt-1.5 space-y-0.5">
+      <!-- Root / Unorganized Sessions (Drop Target to remove from folder) -->
+      <div
+        v-if="unorganizedSessions.length > 0"
+        class="pt-1.5 space-y-0.5 rounded-lg"
+        :class="[dragOverRoot ? 'bg-sky-950/30 ring-1 ring-sky-500/50' : '']"
+        @dragover.prevent="dragOverRoot = true"
+        @dragleave="dragOverRoot = false"
+        @drop.stop="handleDropRoot"
+      >
         <div
           v-for="session in unorganizedSessions"
           :key="session.id"
+          draggable="true"
+          @dragstart="handleDragStart(session, $event)"
+          @dragend="handleDragEnd"
           @dblclick="sessionStore.openSession(session, true)"
-          class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-lg cursor-pointer group transition"
-          title="Double click to open new tab"
+          @contextmenu.prevent="openSessionContextMenu($event, session)"
+          class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-lg cursor-grab active:cursor-grabbing group transition"
+          :class="[
+            draggingSessionId === session.id ? 'opacity-40 border border-dashed border-sky-400' : ''
+          ]"
+          title="Drag to move folder, double click to connect"
         >
           <div class="flex items-center space-x-2.5 truncate mr-2">
             <span class="text-xs text-sky-400 font-mono font-bold">></span>
@@ -182,18 +222,109 @@
         </div>
       </div>
     </div>
+
+    <!-- Custom Session Context Menu -->
+    <div
+      v-if="contextMenu.show"
+      class="fixed z-[9999] bg-[#141721] border border-[#2e3748] rounded-lg shadow-2xl p-1 w-52 text-xs font-sans text-slate-200 select-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @click.stop
+    >
+      <!-- Session Menu Items -->
+      <template v-if="contextMenu.type === 'session' && contextMenu.session">
+        <button
+          @click="handleContextConnect(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>🚀</span>
+          <span>Connect Session</span>
+        </button>
+
+        <button
+          @click="handleContextCut(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>✂️</span>
+          <span>Cut (Move)</span>
+        </button>
+
+        <button
+          @click="handleContextCopy(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>📋</span>
+          <span>Copy (Duplicate)</span>
+        </button>
+
+        <div class="h-px bg-[#232936] my-1"></div>
+
+        <button
+          @click="handleContextEdit(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>✎</span>
+          <span>Edit Session</span>
+        </button>
+
+        <button
+          @click="handleContextDelete(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-300 transition"
+        >
+          <span>🗑️</span>
+          <span>Delete Session</span>
+        </button>
+      </template>
+
+      <!-- Folder Menu Items -->
+      <template v-else-if="contextMenu.type === 'folder' && contextMenu.folder">
+        <button
+          v-if="clipboardSession"
+          @click="handleContextPasteToFolder(contextMenu.folder.id)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded bg-sky-950/60 hover:bg-sky-600 hover:text-white text-sky-300 transition font-semibold"
+        >
+          <span>📥</span>
+          <span>Paste Session Here ({{ clipboardSession.session.name || clipboardSession.session.host }})</span>
+        </button>
+
+        <button
+          @click="handleContextNewSessionInFolder(contextMenu.folder.id)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>➕</span>
+          <span>New Session Here</span>
+        </button>
+
+        <button
+          @click="handleContextRenameFolder(contextMenu.folder)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>🏷️</span>
+          <span>Rename Folder</span>
+        </button>
+
+        <div class="h-px bg-[#232936] my-1"></div>
+
+        <button
+          @click="handleContextDeleteFolder(contextMenu.folder)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-300 transition"
+        >
+          <span>🗑️</span>
+          <span>Delete Folder</span>
+        </button>
+      </template>
+    </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useSyncStore } from '../stores/syncStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { SshSessionConfig, Folder } from '../types/index.js';
 
-defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys']);
+const emit = defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys']);
 
 const vaultStore = useVaultStore();
 const syncStore = useSyncStore();
@@ -202,6 +333,32 @@ const dialogStore = useDialogStore();
 
 const searchQuery = ref('');
 const collapsedFolders = ref<Record<string, boolean>>({});
+
+// Drag and Drop States
+const draggingSessionId = ref<string | null>(null);
+const dragOverFolderId = ref<string | null>(null);
+const dragOverRoot = ref(false);
+
+// Clipboard State for Cut/Copy/Paste
+const clipboardSession = ref<{
+  session: SshSessionConfig;
+  mode: 'cut' | 'copy';
+} | null>(null);
+
+// Context Menu State
+const contextMenu = ref<{
+  show: boolean;
+  type: 'session' | 'folder' | null;
+  x: number;
+  y: number;
+  session?: SshSessionConfig;
+  folder?: Folder;
+}>({
+  show: false,
+  type: null,
+  x: 0,
+  y: 0,
+});
 
 function toggleFolder(folderId: string) {
   collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
@@ -239,6 +396,168 @@ function getSessionsInFolder(folderId: string): SshSessionConfig[] {
   });
 }
 
+// Drag & Drop Handlers
+function handleDragStart(session: SshSessionConfig, e: DragEvent) {
+  draggingSessionId.value = session.id;
+  if (e.dataTransfer) {
+    e.dataTransfer.setData('text/plain', session.id);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function handleDragEnd() {
+  draggingSessionId.value = null;
+  dragOverFolderId.value = null;
+  dragOverRoot.value = false;
+}
+
+function handleDragLeaveFolder(folderId: string) {
+  if (dragOverFolderId.value === folderId) {
+    dragOverFolderId.value = null;
+  }
+}
+
+async function handleDropOnFolder(targetFolderId: string) {
+  dragOverFolderId.value = null;
+  if (!draggingSessionId.value) return;
+
+  const session = vaultStore.vault.sessions.find(s => s.id === draggingSessionId.value);
+  if (session && session.folder_id !== targetFolderId) {
+    session.folder_id = targetFolderId;
+    await vaultStore.persist(true);
+  }
+  draggingSessionId.value = null;
+}
+
+async function handleDropRoot() {
+  dragOverRoot.value = false;
+  if (!draggingSessionId.value) return;
+
+  const session = vaultStore.vault.sessions.find(s => s.id === draggingSessionId.value);
+  if (session && session.folder_id !== null) {
+    session.folder_id = null;
+    await vaultStore.persist(true);
+  }
+  draggingSessionId.value = null;
+}
+
+// Context Menu Functions
+function openSessionContextMenu(e: MouseEvent, session: SshSessionConfig) {
+  let posX = e.clientX;
+  let posY = e.clientY;
+  if (posX + 210 > window.innerWidth) posX = window.innerWidth - 220;
+  if (posY + 200 > window.innerHeight) posY = window.innerHeight - 210;
+
+  contextMenu.value = {
+    show: true,
+    type: 'session',
+    x: posX,
+    y: posY,
+    session,
+  };
+}
+
+function openFolderContextMenu(e: MouseEvent, folder: Folder) {
+  let posX = e.clientX;
+  let posY = e.clientY;
+  if (posX + 210 > window.innerWidth) posX = window.innerWidth - 220;
+  if (posY + 180 > window.innerHeight) posY = window.innerHeight - 190;
+
+  contextMenu.value = {
+    show: true,
+    type: 'folder',
+    x: posX,
+    y: posY,
+    folder,
+  };
+}
+
+function closeContextMenu() {
+  contextMenu.value.show = false;
+}
+
+function handleContextConnect(session: SshSessionConfig) {
+  closeContextMenu();
+  sessionStore.openSession(session, true);
+}
+
+function handleContextCut(session: SshSessionConfig) {
+  closeContextMenu();
+  clipboardSession.value = {
+    session,
+    mode: 'cut',
+  };
+}
+
+function handleContextCopy(session: SshSessionConfig) {
+  closeContextMenu();
+  clipboardSession.value = {
+    session,
+    mode: 'copy',
+  };
+}
+
+function handleContextEdit(session: SshSessionConfig) {
+  closeContextMenu();
+  emit('edit-session', session);
+}
+
+function handleContextDelete(session: SshSessionConfig) {
+  closeContextMenu();
+  deleteSession(session);
+}
+
+function handleContextNewSessionInFolder(folderId: string) {
+  closeContextMenu();
+  emit('new-session', folderId);
+}
+
+async function handleContextRenameFolder(folder: Folder) {
+  closeContextMenu();
+  const newName = await dialogStore.prompt({
+    title: `Rename Folder "${folder.name}"`,
+    description: 'Enter new folder name.',
+    defaultValue: folder.name,
+    confirmText: 'Rename',
+  });
+  if (newName && newName.trim() && newName.trim() !== folder.name) {
+    folder.name = newName.trim();
+    await vaultStore.persist(true);
+  }
+}
+
+function handleContextDeleteFolder(folder: Folder) {
+  closeContextMenu();
+  deleteFolder(folder);
+}
+
+async function handleContextPasteToFolder(targetFolderId: string | null) {
+  closeContextMenu();
+  if (!clipboardSession.value) return;
+
+  const { session, mode } = clipboardSession.value;
+
+  if (mode === 'cut') {
+    // Move session
+    const target = vaultStore.vault.sessions.find(s => s.id === session.id);
+    if (target) {
+      target.folder_id = targetFolderId;
+      await vaultStore.persist(true);
+    }
+    clipboardSession.value = null;
+  } else if (mode === 'copy') {
+    // Duplicate session into target folder
+    const newSession: SshSessionConfig = {
+      ...JSON.parse(JSON.stringify(session)),
+      id: `ses_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: `${session.name || session.host} (Copy)`,
+      folder_id: targetFolderId,
+    };
+    vaultStore.vault.sessions.push(newSession);
+    await vaultStore.persist(true);
+  }
+}
+
 async function promptNewFolder() {
   const name = await dialogStore.prompt({
     title: 'Create New Folder',
@@ -274,4 +593,12 @@ async function deleteSession(session: SshSessionConfig) {
     await vaultStore.removeSession(session.id);
   }
 }
+
+onMounted(() => {
+  window.addEventListener('click', closeContextMenu);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeContextMenu);
+});
 </script>

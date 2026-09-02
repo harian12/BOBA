@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { db } from '../db/index.js';
-import { vaultBlobs } from '../db/schema.js';
+import { db } from '../db/index';
+import { vaultBlobs } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth';
 
 export const vaultRouter = new Hono();
 

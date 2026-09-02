@@ -1,6 +1,6 @@
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
-import * as schema from './schema.js';
+import * as schema from './schema';
 import path from 'path';
 
 const dbPath = process.env.DATABASE_PATH || path.resolve(process.cwd(), 'boba_sync.sqlite');

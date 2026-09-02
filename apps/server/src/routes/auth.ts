@@ -2,10 +2,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { db } from '../db/index';
+import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { generateToken } from '../middleware/auth.js';
+import { generateToken } from '../middleware/auth';
 
 export const authRouter = new Hono();
 
