@@ -116,13 +116,16 @@
             />
           </div>
           <div>
-            <label class="block text-xs text-slate-300 mb-1">Account Password</label>
+            <label class="block text-xs text-slate-300 mb-1">Password Akun Cloud</label>
             <input
               v-model="passwordInput"
               type="password"
               required
               class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none"
             />
+            <p class="text-[10px] text-slate-400 mt-1">
+              Hanya untuk autentikasi server. Enkripsi E2EE vault tetap menggunakan Master Password Anda.
+            </p>
           </div>
 
           <div v-if="syncStore.syncError" class="text-xs text-rose-400 bg-rose-950/40 p-2.5 rounded border border-rose-900/50">

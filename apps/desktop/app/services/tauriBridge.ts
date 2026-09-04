@@ -1,11 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem } from '../types/index.js';
 
 export const tauriBridge = {
   // Vault commands
   async initOrUnlockVault(masterPassword: string, userSalt: string): Promise<boolean> {
     return await invoke('init_or_unlock_vault', { masterPassword, userSalt });
+  },
+
+  async changeMasterPassword(oldPassword: string, newPassword: string): Promise<boolean> {
+    return await invoke('change_master_password', { oldPassword, newPassword });
   },
 
   async lockVault(): Promise<boolean> {
@@ -126,16 +130,36 @@ export const tauriBridge = {
     return await invoke('sftp_read_file', { sessionId, remotePath });
   },
 
-  async sftpDownloadStream(sessionId: string, transferId: string, remotePath: string, localPath: string): Promise<void> {
-    return await invoke('sftp_download_stream', { sessionId, transferId, remotePath, localPath });
+  async sftpDownloadStream(sessionId: string, transferId: string, remotePath: string, localPath: string, resumeFrom?: number): Promise<void> {
+    return await invoke('sftp_download_stream', { sessionId, transferId, remotePath, localPath, resumeFrom: resumeFrom ?? null });
   },
 
-  async sftpUploadStream(sessionId: string, transferId: string, localPath: string, remotePath: string): Promise<void> {
-    return await invoke('sftp_upload_stream', { sessionId, transferId, localPath, remotePath });
+  async sftpUploadStream(sessionId: string, transferId: string, localPath: string, remotePath: string, resumeFrom?: number): Promise<void> {
+    return await invoke('sftp_upload_stream', { sessionId, transferId, localPath, remotePath, resumeFrom: resumeFrom ?? null });
+  },
+
+  async sftpDownloadFolder(sessionId: string, remoteFolder: string, localFolder: string): Promise<void> {
+    return await invoke('sftp_download_folder', { sessionId, remoteFolder, localFolder });
+  },
+
+  async sftpUploadFolder(sessionId: string, localFolder: string, remoteFolder: string): Promise<void> {
+    return await invoke('sftp_upload_folder', { sessionId, localFolder, remoteFolder });
+  },
+
+  async sftpTransferRemoteToRemote(srcSessionId: string, dstSessionId: string, transferId: string, srcPath: string, dstPath: string): Promise<void> {
+    return await invoke('sftp_transfer_remote_to_remote', { srcSessionId, dstSessionId, transferId, srcPath, dstPath });
   },
 
   async sftpCancelTransfer(transferId: string): Promise<void> {
     return await invoke('sftp_cancel_transfer', { transferId });
+  },
+
+  async fsListLocalDir(dirPath: string): Promise<LocalFileItem[]> {
+    return await invoke('fs_list_local_dir', { dirPath });
+  },
+
+  async fsGetLocalDrives(): Promise<LocalDriveItem[]> {
+    return await invoke('fs_get_local_drives');
   },
 
   async readLocalPrivateKeyFile(filePath: string): Promise<string> {

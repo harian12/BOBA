@@ -105,6 +105,39 @@ export const useSessionStore = defineStore('session', () => {
     activeTabId.value = newTab.id;
   }
 
+  function openSftpTab(parentTab?: ActiveTab, customConfig?: SshSessionConfig) {
+    const config = customConfig || parentTab?.sessionConfig;
+    const parentId = parentTab?.id;
+
+    if (config) {
+      const existing = tabs.value.find(
+        t => t.type === 'sftp' && t.sessionConfig.id === config.id
+      );
+
+      if (existing) {
+        activeTabId.value = existing.id;
+        return;
+      }
+    }
+
+    const uniqueId = `sftp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const sessionName = config?.name || (config ? `${config.username}@${config.host}` : 'Dual Transfer Workspace');
+
+    const newTab: ActiveTab = {
+      id: uniqueId,
+      type: 'sftp',
+      title: `SFTP: ${sessionName}`,
+      sessionConfig: config ? { ...config } : ({} as any),
+      connected: true,
+      sftpOpen: false,
+      currentRemotePath: '.',
+      parentSessionId: parentId,
+    };
+
+    tabs.value.push(newTab);
+    activeTabId.value = newTab.id;
+  }
+
   function duplicateTab(tabId: string) {
     const sourceTab = tabs.value.find(t => t.id === tabId);
     if (!sourceTab) return;
@@ -170,6 +203,7 @@ export const useSessionStore = defineStore('session', () => {
     setLayoutMode,
     openSession,
     openEditorTab,
+    openSftpTab,
     duplicateTab,
     closeTab,
     nextTab,

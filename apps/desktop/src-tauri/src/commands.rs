@@ -33,6 +33,29 @@ pub fn init_or_unlock_vault(
 }
 
 #[tauri::command]
+pub fn change_master_password(
+    state: State<AppState>,
+    old_password: String,
+    new_password: String,
+) -> Result<bool, String> {
+    let current_pwd = state.current_password.lock().clone();
+    let current_salt = state.current_salt.lock().clone();
+
+    match current_pwd {
+        Some(ref pwd) if pwd == &old_password => {
+            let salt = current_salt.unwrap_or_else(|| crate::crypto::DEFAULT_OFFLINE_SALT.to_string());
+            let new_key = CryptoEngine::derive_master_key(&new_password, &salt)?;
+            *state.current_key.lock() = Some(new_key);
+            *state.current_password.lock() = Some(new_password);
+            *state.current_salt.lock() = Some(salt);
+            Ok(true)
+        }
+        Some(_) => Err("Master password lama salah.".to_string()),
+        None => Err("Vault belum terbuka (locked).".to_string()),
+    }
+}
+
+#[tauri::command]
 pub fn lock_vault(state: State<AppState>) -> Result<bool, String> {
     *state.current_key.lock() = None;
     *state.current_password.lock() = None;
@@ -336,10 +359,11 @@ pub async fn sftp_download_stream(
     transfer_id: String,
     remote_path: String,
     local_path: String,
+    resume_from: Option<u64>,
 ) -> Result<(), String> {
     state
         .ssh_manager
-        .download_file_stream(app, session_id, transfer_id, remote_path, local_path)
+        .download_file_stream(app, session_id, transfer_id, remote_path, local_path, resume_from)
         .await
 }
 
@@ -351,10 +375,11 @@ pub async fn sftp_upload_stream(
     transfer_id: String,
     local_path: String,
     remote_path: String,
+    resume_from: Option<u64>,
 ) -> Result<(), String> {
     state
         .ssh_manager
-        .upload_file_stream(app, session_id, transfer_id, local_path, remote_path)
+        .upload_file_stream(app, session_id, transfer_id, local_path, remote_path, resume_from)
         .await
 }
 
@@ -365,6 +390,60 @@ pub fn sftp_cancel_transfer(
 ) -> Result<(), String> {
     state.ssh_manager.cancel_transfer(&transfer_id);
     Ok(())
+}
+
+#[tauri::command]
+pub fn fs_list_local_dir(dir_path: String) -> Result<Vec<crate::ssh_session::LocalFileItem>, String> {
+    crate::ssh_session::list_local_dir(&dir_path)
+}
+
+#[tauri::command]
+pub fn fs_get_local_drives() -> Vec<crate::ssh_session::LocalDriveItem> {
+    crate::ssh_session::get_local_drives()
+}
+
+#[tauri::command]
+pub async fn sftp_download_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    remote_folder: String,
+    local_folder: String,
+) -> Result<(), String> {
+    state
+        .ssh_manager
+        .download_folder_recursive(app, session_id, remote_folder, local_folder)
+        .await
+}
+
+#[tauri::command]
+pub async fn sftp_upload_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    local_folder: String,
+    remote_folder: String,
+) -> Result<(), String> {
+    state
+        .ssh_manager
+        .upload_folder_recursive(app, session_id, local_folder, remote_folder)
+        .await
+}
+
+#[tauri::command]
+pub async fn sftp_transfer_remote_to_remote(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    src_session_id: String,
+    dst_session_id: String,
+    transfer_id: String,
+    src_path: String,
+    dst_path: String,
+) -> Result<(), String> {
+    state
+        .ssh_manager
+        .transfer_remote_to_remote(app, src_session_id, dst_session_id, transfer_id, src_path, dst_path)
+        .await
 }
 
 #[tauri::command]

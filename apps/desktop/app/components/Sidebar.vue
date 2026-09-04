@@ -20,6 +20,15 @@
           🔑
         </button>
 
+        <!-- Change Master Password Button -->
+        <button
+          @click="$emit('open-change-password')"
+          title="Ubah Master Password (E2EE)"
+          class="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-boba-800 rounded-md transition text-xs"
+        >
+          🛡️
+        </button>
+
         <!-- Sync Trigger Button -->
         <button
           @click="$emit('open-sync')"
@@ -53,7 +62,15 @@
     <!-- Action Toolbar (Add Session / Folder) -->
     <div class="px-3.5 py-2 flex items-center justify-between border-b border-boba-800 text-xs">
       <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Sessions</span>
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-1.5">
+        <button
+          @click="sessionStore.openSftpTab()"
+          title="Buka SFTP Manager Dedicated (Dual Pane / Inter-Session)"
+          class="px-2 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded text-[11px] font-medium border border-sky-700/50 transition flex items-center space-x-1"
+        >
+          <span>⚡</span>
+          <span>SFTP</span>
+        </button>
         <button
           @click="promptNewFolder"
           title="New Folder"
@@ -253,7 +270,15 @@
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
           <span>🚀</span>
-          <span>Connect Session</span>
+          <span>Connect Terminal</span>
+        </button>
+
+        <button
+          @click="handleContextOpenSftp(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <span>📁</span>
+          <span>Open SFTP Manager</span>
         </button>
 
         <button
@@ -340,7 +365,7 @@ import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { SshSessionConfig, Folder } from '../types/index.js';
 
-const emit = defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys']);
+const emit = defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys', 'open-change-password']);
 
 const vaultStore = useVaultStore();
 const syncStore = useSyncStore();
@@ -664,6 +689,16 @@ function closeContextMenu() {
 function handleContextConnect(session: SshSessionConfig) {
   closeContextMenu();
   sessionStore.openSession(session, true);
+}
+
+function handleContextOpenSftp(session: SshSessionConfig) {
+  closeContextMenu();
+  // Open terminal tab if not open, then open sftp tab
+  sessionStore.openSession(session, false);
+  const tab = sessionStore.tabs.find(t => t.sessionConfig.id === session.id);
+  if (tab) {
+    sessionStore.openSftpTab(tab);
+  }
 }
 
 function handleContextCut(session: SshSessionConfig) {

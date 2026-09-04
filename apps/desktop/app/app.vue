@@ -28,6 +28,7 @@
         @edit-session="handleOpenEditSession"
         @open-sync="isSyncOpen = true"
         @open-keys="handleOpenKeyManager"
+        @open-change-password="isChangePasswordOpen = true"
       />
 
       <!-- Right Workspace Area -->
@@ -45,6 +46,9 @@
               <!-- Tab Type Icon / Indicator -->
               <span v-if="tab.type === 'editor'" class="text-xs shrink-0">
                 📄
+              </span>
+              <span v-else-if="tab.type === 'sftp'" class="text-xs shrink-0">
+                📁
               </span>
               <span
                 v-else
@@ -175,9 +179,10 @@
                 sessionStore.layoutMode !== '1' && sessionStore.activeTabId === tab.id ? 'border-sky-500/80 ring-1 ring-sky-500/40' : 'border-boba-800/80'
               ]"
             >
-              <!-- Render Editor Tab or Terminal Tab -->
+              <!-- Render Editor Tab, SFTP Manager Tab, or Terminal Tab -->
               <div class="flex-1 h-full overflow-hidden">
                 <EditorTab v-if="tab.type === 'editor'" :tab="tab" />
+                <SftpManagerTab v-else-if="tab.type === 'sftp'" :tab="tab" />
                 <TerminalTab v-else :tab="tab" />
               </div>
 
@@ -225,9 +230,9 @@
     </div>
 
     <!-- Modals & Overlays -->
-    <TransferTray />
     <SyncModal :is-open="isSyncOpen" @close="isSyncOpen = false" />
     <KeyManagerModal :is-open="isKeyManagerOpen" @close="isKeyManagerOpen = false" />
+    <ChangeMasterPasswordModal :is-open="isChangePasswordOpen" @close="isChangePasswordOpen = false" />
     <NewSessionModal
       :is-open="isNewSessionOpen"
       :session-to-edit="sessionEditing"
@@ -244,11 +249,12 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import TerminalTab from './components/TerminalTab.vue';
 import EditorTab from './components/EditorTab.vue';
+import SftpManagerTab from './components/SftpManagerTab.vue';
 import SftpDrawer from './components/SftpDrawer.vue';
-import TransferTray from './components/TransferTray.vue';
 import VaultLockModal from './components/VaultLockModal.vue';
 import SyncModal from './components/SyncModal.vue';
 import KeyManagerModal from './components/KeyManagerModal.vue';
+import ChangeMasterPasswordModal from './components/ChangeMasterPasswordModal.vue';
 import NewSessionModal from './components/NewSessionModal.vue';
 import AppDialog from './components/AppDialog.vue';
 
@@ -265,6 +271,7 @@ const dialogStore = useDialogStore();
 
 const isSyncOpen = ref(false);
 const isKeyManagerOpen = ref(false);
+const isChangePasswordOpen = ref(false);
 const isNewSessionOpen = ref(false);
 const sessionEditing = ref<SshSessionConfig | null>(null);
 const activeFolderId = ref<string | null>(null);

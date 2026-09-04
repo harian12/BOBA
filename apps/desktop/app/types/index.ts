@@ -51,6 +51,21 @@ export interface RemoteFileItem {
   permissions: number;
 }
 
+export interface LocalFileItem {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  is_hidden?: boolean;
+  is_system?: boolean;
+  size: number;
+  modified_time: number;
+}
+
+export interface LocalDriveItem {
+  name: string;
+  path: string;
+}
+
 export interface ServerMetrics {
   cpu_usage: number;
   ram_used_mb: number;
@@ -65,13 +80,14 @@ export interface ServerMetrics {
 
 export interface ActiveTab {
   id: string; // session ID or editor tab ID
-  type?: 'terminal' | 'editor';
+  type?: 'terminal' | 'editor' | 'sftp';
   title: string;
   sessionConfig: SshSessionConfig;
   connected: boolean;
   error?: string;
   sftpOpen: boolean;
   currentRemotePath: string;
+  parentSessionId?: string;
   metrics?: ServerMetrics;
   // Editor tab specific fields
   editorFile?: {

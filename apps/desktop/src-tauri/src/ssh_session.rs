@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex as TokioMutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use base64::Engine;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +22,144 @@ pub struct RemoteFileItem {
     pub size: u64,
     pub modified_time: i64,
     pub permissions: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalFileItem {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub is_hidden: bool,
+    pub is_system: bool,
+    pub size: u64,
+    pub modified_time: i64,
+}
+
+pub fn list_local_dir(dir_path: &str) -> Result<Vec<LocalFileItem>, String> {
+    let path = if dir_path.trim().is_empty() {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("C:\\"))
+    } else {
+        std::path::PathBuf::from(dir_path)
+    };
+
+    let entries = std::fs::read_dir(&path)
+        .map_err(|e| format!("Failed to read local directory '{}': {}", path.display(), e))?;
+
+    let mut items = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let meta = entry.metadata().ok();
+        let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let modified_time = meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let mut is_hidden = name.starts_with('.');
+        let mut is_system = false;
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if let Some(ref m) = meta {
+                let attrs = m.file_attributes();
+                // FILE_ATTRIBUTE_HIDDEN = 0x2
+                if (attrs & 0x2) != 0 {
+                    is_hidden = true;
+                }
+                // FILE_ATTRIBUTE_SYSTEM = 0x4
+                if (attrs & 0x4) != 0 {
+                    is_system = true;
+                }
+            }
+            // Filter well-known Windows system root entries like $Recycle.Bin, System Volume Information, dumpstack.log, pagefile.sys, hiberfil.sys
+            let upper_name = name.to_uppercase();
+            if upper_name.starts_with('$')
+                || upper_name == "SYSTEM VOLUME INFORMATION"
+                || upper_name == "PAGEFILE.SYS"
+                || upper_name == "HIBERFIL.SYS"
+                || upper_name == "DUMPSTACK.LOG"
+                || upper_name == "SWAPFILE.SYS"
+            {
+                is_system = true;
+            }
+        }
+
+        items.push(LocalFileItem {
+            name,
+            path: entry.path().to_string_lossy().to_string(),
+            is_dir,
+            is_hidden,
+            is_system,
+            size,
+            modified_time,
+        });
+    }
+
+    items.sort_by(|a, b| match (b.is_dir, a.is_dir) {
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(items)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalDriveItem {
+    pub name: String,
+    pub path: String,
+}
+
+pub fn get_local_drives() -> Vec<LocalDriveItem> {
+    let mut drives = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        // First item: User Home as default
+        if let Ok(userprofile) = std::env::var("USERPROFILE") {
+            drives.push(LocalDriveItem {
+                name: "Home (~/ User)".into(),
+                path: userprofile,
+            });
+        }
+        for letter in b'A'..=b'Z' {
+            let path_str = format!("{}:\\", letter as char);
+            let path = std::path::Path::new(&path_str);
+            if path.exists() {
+                drives.push(LocalDriveItem {
+                    name: format!("Drive ({}:)", letter as char),
+                    path: path_str,
+                });
+            }
+        }
+        if drives.is_empty() {
+            drives.push(LocalDriveItem {
+                name: "Drive (C:)".into(),
+                path: "C:\\".into(),
+            });
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // First item: Home as default
+        if let Ok(home) = std::env::var("HOME") {
+            drives.push(LocalDriveItem {
+                name: "Home (~/)".into(),
+                path: home,
+            });
+        }
+        drives.push(LocalDriveItem {
+            name: "Root (/)".into(),
+            path: "/".into(),
+        });
+    }
+
+    drives
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -587,7 +725,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         }
     }
 
-    /// Stream download remote file directly to local file with real-time progress events
+    /// Stream download remote file directly to local file with real-time progress events and resume support
     pub async fn download_file_stream(
         &self,
         app: AppHandle,
@@ -595,6 +733,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         transfer_id: String,
         remote_path: String,
         local_path: String,
+        resume_from: Option<u64>,
     ) -> Result<(), String> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         {
@@ -611,17 +750,42 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let mut remote_file = sftp.open(&remote_path).await.map_err(|e| format!("Failed to open remote file: {}", e))?;
         
-        let mut local_file = tokio::fs::File::create(&local_path)
-            .await
-            .map_err(|e| format!("Failed to create local destination file: {}", e))?;
+        let initial_offset = resume_from.unwrap_or(0);
+        let mut local_file = if initial_offset > 0 {
+            let mut f = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(&local_path)
+                .await
+                .map_err(|e| format!("Failed to open local destination file for resume: {}", e))?;
+            f.seek(std::io::SeekFrom::Start(initial_offset))
+                .await
+                .map_err(|e| format!("Failed to seek local file: {}", e))?;
+            f
+        } else {
+            tokio::fs::File::create(&local_path)
+                .await
+                .map_err(|e| format!("Failed to create local destination file: {}", e))?
+        };
+
+        if initial_offset > 0 {
+            remote_file
+                .seek(std::io::SeekFrom::Start(initial_offset))
+                .await
+                .map_err(|e| format!("Failed to seek remote file: {}", e))?;
+        }
 
         let mut buffer = vec![0u8; 64 * 1024]; // 64 KB chunk
-        let mut transferred: u64 = 0;
+        let mut transferred: u64 = initial_offset;
         let start_time = Instant::now();
         let mut last_emit = Instant::now();
 
         loop {
             if cancel_flag.load(Ordering::SeqCst) {
+                // Hapus file lokal yang belum selesai agar tidak menjadi file korup di komputer lokal
+                drop(local_file);
+                let _ = tokio::fs::remove_file(&local_path).await;
+
                 let _ = app.emit("sftp-progress", TransferProgress {
                     transfer_id: transfer_id.clone(),
                     session_id: session_id.clone(),
@@ -640,18 +804,60 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 return Err("Transfer cancelled by user".into());
             }
 
-            let n = remote_file.read(&mut buffer).await.map_err(|e| format!("Error reading remote stream: {}", e))?;
+            let n = match remote_file.read(&mut buffer).await {
+                Ok(bytes_read) => bytes_read,
+                Err(e) => {
+                    let err_msg = format!("Error reading remote stream: {}", e);
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: remote_path.clone(),
+                        local_path: Some(local_path.clone()),
+                        direction: "download".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "error".into(),
+                        error_message: Some(err_msg.clone()),
+                    });
+                    self.active_transfers.lock().remove(&transfer_id);
+                    return Err(err_msg);
+                }
+            };
+
             if n == 0 {
                 break;
             }
 
-            local_file.write_all(&buffer[..n]).await.map_err(|e| format!("Error writing to local file: {}", e))?;
+            if let Err(e) = local_file.write_all(&buffer[..n]).await {
+                let err_msg = format!("Error writing to local file: {}", e);
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: session_id.clone(),
+                    file_name: file_name.clone(),
+                    remote_path: remote_path.clone(),
+                    local_path: Some(local_path.clone()),
+                    direction: "download".into(),
+                    bytes_transferred: transferred,
+                    total_bytes,
+                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                    speed_bps: 0.0,
+                    status: "error".into(),
+                    error_message: Some(err_msg.clone()),
+                });
+                self.active_transfers.lock().remove(&transfer_id);
+                return Err(err_msg);
+            }
+
             transferred += n as u64;
 
             // Emit progress event every 200ms or on completion
             if last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes {
                 let elapsed_secs = start_time.elapsed().as_secs_f64();
-                let speed_bps = if elapsed_secs > 0.0 { transferred as f64 / elapsed_secs } else { 0.0 };
+                let newly_transferred = transferred.saturating_sub(initial_offset);
+                let speed_bps = if elapsed_secs > 0.0 { newly_transferred as f64 / elapsed_secs } else { 0.0 };
                 let percentage = if total_bytes > 0 { ((transferred as f32 / total_bytes as f32) * 100.0).min(100.0) } else { 100.0 };
 
                 let _ = app.emit("sftp-progress", TransferProgress {
@@ -693,7 +899,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         Ok(())
     }
 
-    /// Stream upload local file directly to remote file with real-time progress events
+    /// Stream upload local file directly to remote file with real-time progress events and resume support
     pub async fn upload_file_stream(
         &self,
         app: AppHandle,
@@ -701,6 +907,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         transfer_id: String,
         local_path: String,
         remote_path: String,
+        resume_from: Option<u64>,
     ) -> Result<(), String> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         {
@@ -719,15 +926,39 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             .unwrap_or_else(|| local_path.clone());
 
         let sftp = self.get_or_init_sftp(&session_id).await?;
-        let mut remote_file = sftp.create(&remote_path).await.map_err(|e| format!("Failed to create remote file: {}", e))?;
+        let initial_offset = resume_from.unwrap_or(0);
+
+        let mut remote_file = if initial_offset > 0 {
+            let mut rf = sftp
+                .open_with_flags(
+                    &remote_path,
+                    russh_sftp::protocol::OpenFlags::WRITE | russh_sftp::protocol::OpenFlags::CREATE,
+                )
+                .await
+                .map_err(|e| format!("Failed to open remote file for resume: {}", e))?;
+            rf.seek(std::io::SeekFrom::Start(initial_offset))
+                .await
+                .map_err(|e| format!("Failed to seek remote file: {}", e))?;
+            local_file
+                .seek(std::io::SeekFrom::Start(initial_offset))
+                .await
+                .map_err(|e| format!("Failed to seek local file: {}", e))?;
+            rf
+        } else {
+            sftp.create(&remote_path).await.map_err(|e| format!("Failed to create remote file: {}", e))?
+        };
 
         let mut buffer = vec![0u8; 64 * 1024]; // 64 KB chunk
-        let mut transferred: u64 = 0;
+        let mut transferred: u64 = initial_offset;
         let start_time = Instant::now();
         let mut last_emit = Instant::now();
 
         loop {
             if cancel_flag.load(Ordering::SeqCst) {
+                // Hapus file remote yang belum selesai ditransfer agar tidak menjadi file korup di server
+                drop(remote_file);
+                let _ = sftp.remove_file(&remote_path).await;
+
                 let _ = app.emit("sftp-progress", TransferProgress {
                     transfer_id: transfer_id.clone(),
                     session_id: session_id.clone(),
@@ -746,18 +977,60 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 return Err("Transfer cancelled by user".into());
             }
 
-            let n = local_file.read(&mut buffer).await.map_err(|e| format!("Error reading local stream: {}", e))?;
+            let n = match local_file.read(&mut buffer).await {
+                Ok(bytes_read) => bytes_read,
+                Err(e) => {
+                    let err_msg = format!("Error reading local stream: {}", e);
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: remote_path.clone(),
+                        local_path: Some(local_path.clone()),
+                        direction: "upload".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "error".into(),
+                        error_message: Some(err_msg.clone()),
+                    });
+                    self.active_transfers.lock().remove(&transfer_id);
+                    return Err(err_msg);
+                }
+            };
+
             if n == 0 {
                 break;
             }
 
-            remote_file.write_all(&buffer[..n]).await.map_err(|e| format!("Error writing to remote file: {}", e))?;
+            if let Err(e) = remote_file.write_all(&buffer[..n]).await {
+                let err_msg = format!("Error writing to remote file: {}", e);
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: session_id.clone(),
+                    file_name: file_name.clone(),
+                    remote_path: remote_path.clone(),
+                    local_path: Some(local_path.clone()),
+                    direction: "upload".into(),
+                    bytes_transferred: transferred,
+                    total_bytes,
+                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                    speed_bps: 0.0,
+                    status: "error".into(),
+                    error_message: Some(err_msg.clone()),
+                });
+                self.active_transfers.lock().remove(&transfer_id);
+                return Err(err_msg);
+            }
+
             transferred += n as u64;
 
             // Emit progress event every 200ms or on completion
             if last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes {
                 let elapsed_secs = start_time.elapsed().as_secs_f64();
-                let speed_bps = if elapsed_secs > 0.0 { transferred as f64 / elapsed_secs } else { 0.0 };
+                let newly_transferred = transferred.saturating_sub(initial_offset);
+                let speed_bps = if elapsed_secs > 0.0 { newly_transferred as f64 / elapsed_secs } else { 0.0 };
                 let percentage = if total_bytes > 0 { ((transferred as f32 / total_bytes as f32) * 100.0).min(100.0) } else { 100.0 };
 
                 let _ = app.emit("sftp-progress", TransferProgress {
@@ -795,6 +1068,286 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             status: "completed".into(),
             error_message: None,
         });
+
+        Ok(())
+    }
+
+    /// Direct Server-to-Server file transfer piped in RAM memory (no local disk touch)
+    pub async fn transfer_remote_to_remote(
+        &self,
+        app: AppHandle,
+        src_session_id: String,
+        dst_session_id: String,
+        transfer_id: String,
+        src_path: String,
+        dst_path: String,
+    ) -> Result<(), String> {
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        self.active_transfers
+            .lock()
+            .insert(transfer_id.clone(), cancel_flag.clone());
+
+        let src_sftp = self.get_or_init_sftp(&src_session_id).await?;
+        let dst_sftp = self.get_or_init_sftp(&dst_session_id).await?;
+
+        let src_meta = src_sftp
+            .metadata(&src_path)
+            .await
+            .map_err(|e| format!("Failed to get source remote metadata: {}", e))?;
+        let total_bytes = src_meta.size.unwrap_or(0);
+
+        let file_name = src_path
+            .split('/')
+            .last()
+            .unwrap_or(&src_path)
+            .to_string();
+
+        let mut src_file = src_sftp
+            .open(&src_path)
+            .await
+            .map_err(|e| format!("Failed to open source remote file: {}", e))?;
+        let mut dst_file = dst_sftp
+            .create(&dst_path)
+            .await
+            .map_err(|e| format!("Failed to create destination remote file: {}", e))?;
+
+        let mut buffer = vec![0u8; 64 * 1024]; // 64 KB in-memory buffer
+        let mut transferred: u64 = 0;
+        let start_time = Instant::now();
+        let mut last_emit = Instant::now();
+
+        loop {
+            if cancel_flag.load(Ordering::SeqCst) {
+                drop(dst_file);
+                let _ = dst_sftp.remove_file(&dst_path).await;
+
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name: file_name.clone(),
+                    remote_path: dst_path.clone(),
+                    local_path: Some(format!("Remote:{}", src_session_id)),
+                    direction: "upload".into(),
+                    bytes_transferred: transferred,
+                    total_bytes,
+                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                    speed_bps: 0.0,
+                    status: "cancelled".into(),
+                    error_message: Some("Transfer cancelled by user".into()),
+                });
+                self.active_transfers.lock().remove(&transfer_id);
+                return Err("Transfer cancelled by user".into());
+            }
+
+            let n = match src_file.read(&mut buffer).await {
+                Ok(bytes_read) => bytes_read,
+                Err(e) => {
+                    let err_msg = format!("Error reading source remote file: {}", e);
+                    self.active_transfers.lock().remove(&transfer_id);
+                    return Err(err_msg);
+                }
+            };
+
+            if n == 0 {
+                break;
+            }
+
+            if let Err(e) = dst_file.write_all(&buffer[..n]).await {
+                let err_msg = format!("Error writing destination remote file: {}", e);
+                self.active_transfers.lock().remove(&transfer_id);
+                return Err(err_msg);
+            }
+
+            transferred += n as u64;
+
+            if last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes {
+                let elapsed_secs = start_time.elapsed().as_secs_f64();
+                let speed_bps = if elapsed_secs > 0.0 { transferred as f64 / elapsed_secs } else { 0.0 };
+                let percentage = if total_bytes > 0 { ((transferred as f32 / total_bytes as f32) * 100.0).min(100.0) } else { 100.0 };
+
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name: file_name.clone(),
+                    remote_path: dst_path.clone(),
+                    local_path: Some(format!("Remote:{}", src_session_id)),
+                    direction: "upload".into(),
+                    bytes_transferred: transferred,
+                    total_bytes,
+                    percentage,
+                    speed_bps,
+                    status: if transferred >= total_bytes { "completed".into() } else { "transferring".into() },
+                    error_message: None,
+                });
+                last_emit = Instant::now();
+            }
+        }
+
+        dst_file.flush().await.map_err(|e| format!("Failed to flush destination file: {}", e))?;
+        self.active_transfers.lock().remove(&transfer_id);
+
+        let _ = app.emit("sftp-progress", TransferProgress {
+            transfer_id: transfer_id.clone(),
+            session_id: src_session_id.clone(),
+            file_name,
+            remote_path: dst_path,
+            local_path: Some(format!("Remote:{}", src_session_id)),
+            direction: "upload".into(),
+            bytes_transferred: transferred,
+            total_bytes,
+            percentage: 100.0,
+            speed_bps: 0.0,
+            status: "completed".into(),
+            error_message: None,
+        });
+
+        Ok(())
+    }
+
+    /// Upload a whole local folder recursively to remote server
+    pub async fn upload_folder_recursive(
+        &self,
+        app: AppHandle,
+        session_id: String,
+        local_folder: String,
+        remote_folder: String,
+    ) -> Result<(), String> {
+        let sftp = self.get_or_init_sftp(&session_id).await?;
+        let base_local = std::path::PathBuf::from(&local_folder);
+
+        if !base_local.is_dir() {
+            return Err(format!("Local path '{}' is not a folder", local_folder));
+        }
+
+        let folder_name = base_local
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "folder".to_string());
+
+        let target_remote_root = if remote_folder == "." || remote_folder.is_empty() {
+            folder_name
+        } else {
+            format!("{}/{}", remote_folder.trim_end_matches('/'), folder_name)
+        };
+
+        // Create remote root folder
+        Self::mkdir_p_recursive(&sftp, &target_remote_root).await?;
+
+        // Recursively walk through local folder
+        let mut items = Vec::new();
+        fn walk(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<(std::path::PathBuf, String, bool)>) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let is_dir = path.is_dir();
+                    if let Ok(rel) = path.strip_prefix(base) {
+                        out.push((path.clone(), rel.to_string_lossy().replace('\\', "/"), is_dir));
+                    }
+                    if is_dir {
+                        walk(&path, base, out);
+                    }
+                }
+            }
+        }
+        walk(&base_local, &base_local, &mut items);
+
+        // First create all subdirectories
+        for (_, rel, _) in items.iter().filter(|(_, _, is_dir)| *is_dir) {
+            let remote_dir = format!("{}/{}", target_remote_root, rel);
+            let _ = Self::mkdir_p_recursive(&sftp, &remote_dir).await;
+        }
+
+        // Then upload all files
+        for (local_file_path, rel, _) in items.into_iter().filter(|(_, _, is_dir)| !*is_dir) {
+            let remote_file_path = format!("{}/{}", target_remote_root, rel);
+            let transfer_id = format!("tx_{}_{}", chrono::Utc::now().timestamp_millis(), &rel.replace('/', "_"));
+            let _ = self
+                .upload_file_stream(
+                    app.clone(),
+                    session_id.clone(),
+                    transfer_id,
+                    local_file_path.to_string_lossy().to_string(),
+                    remote_file_path,
+                    None,
+                )
+                .await;
+        }
+
+        Ok(())
+    }
+
+    /// Download a whole remote folder recursively to local machine
+    pub async fn download_folder_recursive(
+        &self,
+        app: AppHandle,
+        session_id: String,
+        remote_folder: String,
+        local_parent_dir: String,
+    ) -> Result<(), String> {
+        let sftp = self.get_or_init_sftp(&session_id).await?;
+
+        let folder_name = remote_folder
+            .trim_end_matches('/')
+            .split('/')
+            .last()
+            .unwrap_or("folder");
+
+        let local_root = std::path::PathBuf::from(&local_parent_dir).join(folder_name);
+        tokio::fs::create_dir_all(&local_root)
+            .await
+            .map_err(|e| format!("Failed to create local directory: {}", e))?;
+
+        // Recursively list remote directory
+        let mut files_to_download: Vec<(String, String)> = Vec::new();
+        let mut dirs_to_traverse: Vec<String> = vec![remote_folder.clone()];
+
+        while let Some(current_remote_dir) = dirs_to_traverse.pop() {
+            let list = sftp
+                .read_dir(&current_remote_dir)
+                .await
+                .map_err(|e| format!("Failed to list remote folder '{}': {}", current_remote_dir, e))?;
+
+            for entry in list {
+                let name = entry.file_name();
+                if name == "." || name == ".." {
+                    continue;
+                }
+                let full_remote = format!("{}/{}", current_remote_dir.trim_end_matches('/'), name);
+                if entry.file_type().is_dir() {
+                    // Create local matching folder
+                    let rel = full_remote
+                        .strip_prefix(&remote_folder)
+                        .unwrap_or(&full_remote)
+                        .trim_start_matches('/');
+                    let local_sub = local_root.join(rel.replace('/', "\\"));
+                    let _ = tokio::fs::create_dir_all(&local_sub).await;
+                    dirs_to_traverse.push(full_remote);
+                } else {
+                    files_to_download.push((full_remote, name));
+                }
+            }
+        }
+
+        // Stream download all files
+        for (remote_path, _) in files_to_download {
+            let rel = remote_path
+                .strip_prefix(&remote_folder)
+                .unwrap_or(&remote_path)
+                .trim_start_matches('/');
+            let local_dest = local_root.join(rel.replace('/', "\\"));
+            let transfer_id = format!("tx_{}_{}", chrono::Utc::now().timestamp_millis(), rel.replace('/', "_"));
+
+            let _ = self
+                .download_file_stream(
+                    app.clone(),
+                    session_id.clone(),
+                    transfer_id,
+                    remote_path,
+                    local_dest.to_string_lossy().to_string(),
+                    None,
+                )
+                .await;
+        }
 
         Ok(())
     }

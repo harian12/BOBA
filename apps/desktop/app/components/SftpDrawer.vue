@@ -569,34 +569,55 @@ async function saveFile() {
 }
 
 async function downloadFile(file: RemoteFileItem) {
-  const transferId = queueStore.addDownload(props.sessionId, file.path, file.name, file.size);
+  // Try native save dialog if available in Tauri environment
+  let selectedLocalPath = '';
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const pathResult = await save({
+      defaultPath: file.name,
+    });
+    if (pathResult) {
+      selectedLocalPath = pathResult;
+    } else {
+      return; // User cancelled save dialog
+    }
+  } catch (dialogErr) {
+    // Fallback if plugin-dialog is not active
+    selectedLocalPath = '';
+  }
+
+  const transferId = queueStore.addDownload(props.sessionId, file.path, file.name, file.size, selectedLocalPath);
   queueStore.isTrayExpanded = true;
 
   try {
-    const base64Content = await tauriBridge.sftpDownloadBinary(props.sessionId, file.path);
-    
-    // Trigger browser file download from base64
-    const byteCharacters = atob(base64Content);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'application/octet-stream' });
+    if (selectedLocalPath) {
+      // Use streaming chunked download directly to local disk (resumable)
+      await tauriBridge.sftpDownloadStream(props.sessionId, transferId, file.path, selectedLocalPath, 0);
+    } else {
+      // Browser in-memory fallback
+      const base64Content = await tauriBridge.sftpDownloadBinary(props.sessionId, file.path);
+      const byteCharacters = atob(base64Content);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/octet-stream' });
 
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
 
-    const item = queueStore.transfers.find(t => t.id === transferId);
-    if (item) {
-      item.bytesTransferred = file.size;
-      item.percentage = 100;
-      item.status = 'completed';
+      const item = queueStore.transfers.find(t => t.id === transferId);
+      if (item) {
+        item.bytesTransferred = file.size;
+        item.percentage = 100;
+        item.status = 'completed';
+      }
     }
   } catch (err: any) {
     const item = queueStore.transfers.find(t => t.id === transferId);
@@ -604,11 +625,6 @@ async function downloadFile(file: RemoteFileItem) {
       item.status = 'error';
       item.errorMessage = String(err);
     }
-    await dialogStore.alert({
-      title: 'Download failed',
-      description: String(err),
-      variant: 'error',
-    });
   }
 }
 

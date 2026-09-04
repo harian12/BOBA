@@ -69,6 +69,24 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
+  async function changeMasterPassword(oldPassword: string, newPassword: string): Promise<boolean> {
+    if (!isUnlocked.value) {
+      throw new Error('Vault belum terbuka.');
+    }
+    await tauriBridge.changeMasterPassword(oldPassword, newPassword);
+    masterPassword.value = newPassword;
+
+    // Re-enkripsi snapshot lokal dengan password baru
+    await persist(true);
+
+    // Jika cloud sync aktif, push versi baru yang terenkripsi password baru ke cloud
+    const syncStore = useSyncStore();
+    if (syncStore.token) {
+      await syncStore.forcePushLocal();
+    }
+    return true;
+  }
+
   async function lock() {
     await tauriBridge.lockVault();
     isUnlocked.value = false;
@@ -212,6 +230,7 @@ export const useVaultStore = defineStore('vault', () => {
     isDirty,
     unlock,
     lock,
+    changeMasterPassword,
     persist,
     addFolder,
     removeFolder,

@@ -132,6 +132,72 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     transfers.value = transfers.value.filter(t => t.id !== transferId);
   }
 
+  async function resumeTransfer(transferId: string) {
+    const item = transfers.value.find(t => t.id === transferId);
+    if (!item) return;
+
+    if (item.status !== 'error' && item.status !== 'cancelled') return;
+
+    item.status = 'pending';
+    item.errorMessage = undefined;
+
+    try {
+      if (item.direction === 'download' && item.localPath) {
+        await tauriBridge.sftpDownloadStream(
+          item.sessionId,
+          item.id,
+          item.remotePath,
+          item.localPath,
+          item.bytesTransferred
+        );
+      } else if (item.direction === 'upload' && item.localPath) {
+        await tauriBridge.sftpUploadStream(
+          item.sessionId,
+          item.id,
+          item.localPath,
+          item.remotePath,
+          item.bytesTransferred
+        );
+      }
+    } catch (err: any) {
+      item.status = 'error';
+      item.errorMessage = String(err);
+    }
+  }
+
+  async function restartTransfer(transferId: string) {
+    const item = transfers.value.find(t => t.id === transferId);
+    if (!item) return;
+
+    item.bytesTransferred = 0;
+    item.percentage = 0;
+    item.status = 'pending';
+    item.errorMessage = undefined;
+
+    try {
+      if (item.direction === 'download' && item.localPath) {
+        await tauriBridge.sftpDownloadStream(
+          item.sessionId,
+          item.id,
+          item.remotePath,
+          item.localPath,
+          0
+        );
+      } else if (item.direction === 'upload' && item.localPath) {
+        await tauriBridge.sftpUploadStream(
+          item.sessionId,
+          item.id,
+          item.localPath,
+          item.remotePath,
+          0
+        );
+      }
+    } catch (err: any) {
+      item.status = 'error';
+      item.errorMessage = String(err);
+    }
+  }
+
   return {
     transfers,
     isTrayExpanded,
@@ -143,6 +209,8 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     initListener,
     addDownload,
     addUpload,
+    resumeTransfer,
+    restartTransfer,
     cancelTransfer,
     clearCompleted,
     removeTransfer,

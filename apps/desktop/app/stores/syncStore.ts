@@ -45,10 +45,9 @@ export const useSyncStore = defineStore('sync', () => {
       localStorage.setItem('boba_user_salt', userSalt.value);
 
       const vaultStore = useVaultStore();
-      const activePassword = passwordHash || vaultStore.masterPassword;
-      if (activePassword) {
-        await tauriBridge.initOrUnlockVault(activePassword, userSalt.value);
-        vaultStore.masterPassword = activePassword;
+      // Master password murni dari input user lokal, BUKAN password akun cloud
+      if (vaultStore.masterPassword) {
+        await tauriBridge.initOrUnlockVault(vaultStore.masterPassword, userSalt.value);
         vaultStore.salt = userSalt.value;
       }
 
@@ -74,15 +73,13 @@ export const useSyncStore = defineStore('sync', () => {
       if (res.salt) localStorage.setItem('boba_user_salt', userSalt.value);
 
       const vaultStore = useVaultStore();
-      // Re-init / update master key in Rust backend with cloud account salt and password
-      const activePassword = passwordHash || vaultStore.masterPassword;
-      if (activePassword) {
-        await tauriBridge.initOrUnlockVault(activePassword, userSalt.value || 'boba_default_offline_salt_123');
-        vaultStore.masterPassword = activePassword;
+      // Re-init master key di Rust hanya jika master password lokal sudah dimasukkan
+      if (vaultStore.masterPassword) {
+        await tauriBridge.initOrUnlockVault(vaultStore.masterPassword, userSalt.value || 'boba_default_offline_salt_123');
         vaultStore.salt = userSalt.value;
       }
 
-      // Auto-pull remote vault after login
+      // Auto-pull remote vault after login (jika master password cocok, akan otomatis terdekripsi; jika beda/belum ada, tangani di UI)
       await forcePullRemote();
       startPeriodicSync();
 

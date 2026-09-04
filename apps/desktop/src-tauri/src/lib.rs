@@ -26,6 +26,7 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::init_or_unlock_vault,
+            commands::change_master_password,
             commands::lock_vault,
             commands::is_vault_unlocked,
             commands::save_local_vault,
@@ -48,7 +49,12 @@ pub fn run() {
             commands::sftp_rename_path,
             commands::sftp_download_stream,
             commands::sftp_upload_stream,
+            commands::sftp_download_folder,
+            commands::sftp_upload_folder,
+            commands::sftp_transfer_remote_to_remote,
             commands::sftp_cancel_transfer,
+            commands::fs_list_local_dir,
+            commands::fs_get_local_drives,
             commands::read_local_private_key_file,
             commands::ssh_get_server_metrics,
         ])

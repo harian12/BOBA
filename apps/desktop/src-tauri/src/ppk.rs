@@ -113,8 +113,19 @@ pub fn parse_ppk_to_keypair(ppk_text: &str, _passphrase: Option<&str>) -> Result
         write_ssh_mpint(&mut priv_blob, &n_bytes);
         write_ssh_mpint(&mut priv_blob, &e_bytes);
 
-        // In PPK RSA private blob: d, p, q, iqmp as sequential mpints
-        priv_blob.extend_from_slice(&priv_bytes);
+        // PuTTY RSA private key stores: [d, p, q, iqmp]
+        // OpenSSH RSA private key expects: [d, iqmp, p, q]
+        let mut off = 0;
+        let d = read_ssh_mpint(&priv_bytes, &mut off)?;
+        let p = read_ssh_mpint(&priv_bytes, &mut off)?;
+        let q = read_ssh_mpint(&priv_bytes, &mut off)?;
+        let iqmp = read_ssh_mpint(&priv_bytes, &mut off)?;
+
+        write_ssh_mpint(&mut priv_blob, d);
+        write_ssh_mpint(&mut priv_blob, iqmp);
+        write_ssh_mpint(&mut priv_blob, p);
+        write_ssh_mpint(&mut priv_blob, q);
+
         // comment
         write_ssh_string(&mut priv_blob, b"imported-from-ppk");
     } else {
@@ -147,14 +158,37 @@ fn write_ssh_string(buf: &mut Vec<u8>, data: &[u8]) {
 }
 
 fn write_ssh_mpint(buf: &mut Vec<u8>, data: &[u8]) {
-    if !data.is_empty() && (data[0] & 0x80) != 0 {
-        buf.extend_from_slice(&((data.len() + 1) as u32).to_be_bytes());
-        buf.push(0x00);
-        buf.extend_from_slice(data);
-    } else {
-        buf.extend_from_slice(&(data.len() as u32).to_be_bytes());
-        buf.extend_from_slice(data);
+    let mut start = 0;
+    while start < data.len() && data[start] == 0 {
+        start += 1;
     }
+    if start == data.len() {
+        buf.extend_from_slice(&0u32.to_be_bytes());
+        return;
+    }
+    let trimmed = &data[start..];
+    if (trimmed[0] & 0x80) != 0 {
+        buf.extend_from_slice(&((trimmed.len() + 1) as u32).to_be_bytes());
+        buf.push(0x00);
+        buf.extend_from_slice(trimmed);
+    } else {
+        buf.extend_from_slice(&(trimmed.len() as u32).to_be_bytes());
+        buf.extend_from_slice(trimmed);
+    }
+}
+
+fn read_ssh_mpint<'a>(buf: &'a [u8], offset: &mut usize) -> Result<&'a [u8], String> {
+    if *offset + 4 > buf.len() {
+        return Err("Unexpected EOF reading mpint length".into());
+    }
+    let len = u32::from_be_bytes(buf[*offset..*offset + 4].try_into().unwrap()) as usize;
+    *offset += 4;
+    if *offset + len > buf.len() {
+        return Err(format!("Unexpected EOF reading mpint data: len={}, available={}", len, buf.len() - *offset));
+    }
+    let slice = &buf[*offset..*offset + len];
+    *offset += len;
+    Ok(slice)
 }
 
 fn extract_rsa_pub(pub_bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {

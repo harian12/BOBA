@@ -57,11 +57,11 @@
           <span>Reconnect</span>
         </button>
 
-        <!-- SFTP Toggle -->
+        <!-- SFTP Tab Open Button -->
         <button
-          @click.stop="sessionStore.toggleSftp(tab.id)"
-          :class="['px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1', tab.sftpOpen ? 'bg-sky-600 text-white shadow-sm' : 'bg-[#1a1e29] text-slate-400 hover:text-slate-200']"
-          title="Toggle SFTP Explorer"
+          @click.stop="sessionStore.openSftpTab(tab)"
+          class="px-2 py-0.5 bg-[#1a1e29] hover:bg-sky-950/60 hover:text-sky-300 text-slate-400 border border-[#2e3748] rounded text-[10px] font-medium transition flex items-center space-x-1"
+          title="Open SFTP FileZilla Tab"
         >
           <span>📁</span>
           <span>SFTP</span>
