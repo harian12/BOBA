@@ -422,12 +422,12 @@ const contextMenu = ref<{
 });
 
 function toggleFolder(folderId: string) {
-  collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
+  collapsedFolders.value[folderId] = !isFolderCollapsed(folderId);
 }
 
 function isFolderCollapsed(folderId: string): boolean {
   if (searchQuery.value) return false;
-  return !!collapsedFolders.value[folderId];
+  return collapsedFolders.value[folderId] !== false;
 }
 
 const filteredFolders = computed(() => {

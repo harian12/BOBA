@@ -55,8 +55,15 @@ pub fn run() {
             commands::sftp_cancel_transfer,
             commands::fs_list_local_dir,
             commands::fs_get_local_drives,
+            commands::fs_read_text_file,
+            commands::fs_write_text_file,
+            commands::fs_create_dir,
+            commands::fs_create_file,
+            commands::fs_delete_path,
+            commands::fs_rename_path,
             commands::read_local_private_key_file,
             commands::ssh_get_server_metrics,
+            commands::ssh_exec_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BOBA desktop application");

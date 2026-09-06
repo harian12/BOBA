@@ -393,6 +393,43 @@ pub fn sftp_cancel_transfer(
 }
 
 #[tauri::command]
+pub fn fs_read_text_file(file_path: String) -> Result<String, String> {
+    std::fs::read_to_string(&file_path).map_err(|e| format!("Failed to read local file: {}", e))
+}
+
+#[tauri::command]
+pub fn fs_write_text_file(file_path: String, content: String) -> Result<(), String> {
+    std::fs::write(&file_path, content).map_err(|e| format!("Failed to write local file: {}", e))
+}
+
+#[tauri::command]
+pub fn fs_create_dir(dir_path: String) -> Result<(), String> {
+    std::fs::create_dir_all(&dir_path).map_err(|e| format!("Failed to create local directory: {}", e))
+}
+
+#[tauri::command]
+pub fn fs_create_file(file_path: String) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&file_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::File::create(&file_path).map(|_| ()).map_err(|e| format!("Failed to create local file: {}", e))
+}
+
+#[tauri::command]
+pub fn fs_delete_path(path: String, is_dir: bool) -> Result<(), String> {
+    if is_dir {
+        std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to remove local directory: {}", e))
+    } else {
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to remove local file: {}", e))
+    }
+}
+
+#[tauri::command]
+pub fn fs_rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    std::fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename local path: {}", e))
+}
+
+#[tauri::command]
 pub fn fs_list_local_dir(dir_path: String) -> Result<Vec<crate::ssh_session::LocalFileItem>, String> {
     crate::ssh_session::list_local_dir(&dir_path)
 }
@@ -458,4 +495,13 @@ pub async fn ssh_get_server_metrics(
     session_id: String,
 ) -> Result<crate::ssh_session::ServerMetrics, String> {
     state.ssh_manager.get_metrics(&session_id).await
+}
+
+#[tauri::command]
+pub async fn ssh_exec_command(
+    state: State<'_, AppState>,
+    session_id: String,
+    command: String,
+) -> Result<String, String> {
+    state.ssh_manager.exec_command(&session_id, &command).await
 }

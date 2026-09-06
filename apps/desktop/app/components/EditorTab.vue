@@ -249,7 +249,11 @@ async function saveFile() {
   const remotePath = props.tab.editorFile.path;
 
   try {
-    await tauriBridge.sftpWriteFile(parentSessionId, remotePath, content.value);
+    if (parentSessionId === 'local') {
+      await tauriBridge.fsWriteTextFile(remotePath, content.value);
+    } else {
+      await tauriBridge.sftpWriteFile(parentSessionId, remotePath, content.value);
+    }
     originalContent.value = content.value;
     if (props.tab.editorFile) {
       props.tab.editorFile.originalContent = content.value;
@@ -283,7 +287,11 @@ async function reloadFromRemote() {
   saveError.value = null;
 
   try {
-    const fresh = await tauriBridge.sftpReadFile(props.tab.editorFile.parentSessionId, props.tab.editorFile.path);
+    const parentSessionId = props.tab.editorFile.parentSessionId;
+    const path = props.tab.editorFile.path;
+    const fresh = parentSessionId === 'local'
+      ? await tauriBridge.fsReadTextFile(path)
+      : await tauriBridge.sftpReadFile(parentSessionId, path);
     content.value = fresh;
     originalContent.value = fresh;
     if (props.tab.editorFile) {

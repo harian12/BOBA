@@ -162,12 +162,40 @@ export const tauriBridge = {
     return await invoke('fs_get_local_drives');
   },
 
+  async fsCreateDir(dirPath: string): Promise<void> {
+    return await invoke('fs_create_dir', { dirPath });
+  },
+
+  async fsCreateFile(filePath: string): Promise<void> {
+    return await invoke('fs_create_file', { filePath });
+  },
+
+  async fsDeletePath(path: string, isDir: boolean): Promise<void> {
+    return await invoke('fs_delete_path', { path, isDir });
+  },
+
+  async fsRenamePath(oldPath: string, newPath: string): Promise<void> {
+    return await invoke('fs_rename_path', { oldPath, newPath });
+  },
+
+  async fsReadTextFile(filePath: string): Promise<string> {
+    return await invoke('fs_read_text_file', { filePath });
+  },
+
+  async fsWriteTextFile(filePath: string, content: string): Promise<void> {
+    return await invoke('fs_write_text_file', { filePath, content });
+  },
+
   async readLocalPrivateKeyFile(filePath: string): Promise<string> {
     return await invoke('read_local_private_key_file', { filePath });
   },
 
   async sshGetServerMetrics(sessionId: string): Promise<any> {
     return await invoke('ssh_get_server_metrics', { sessionId });
+  },
+
+  async sshExecCommand(sessionId: string, command: string): Promise<string> {
+    return await invoke('ssh_exec_command', { sessionId, command });
   },
 
   // Event listeners

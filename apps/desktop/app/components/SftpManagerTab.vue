@@ -39,8 +39,12 @@
                 class="bg-[#0e121c] text-sky-300 font-semibold border border-[#2b354b] rounded px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-sky-500 cursor-pointer"
               >
                 <option value="local">💻 Local Machine</option>
-                <optgroup label="Remote Sessions">
-                  <option v-for="s in availableSessions" :key="'l_' + s.id" :value="s.id">
+                <optgroup
+                  v-for="group in groupedSessions"
+                  :key="'left_group_' + group.folderName"
+                  :label="'📁 ' + group.folderName"
+                >
+                  <option v-for="s in group.sessions" :key="'l_' + s.id" :value="s.id">
                     🌐 {{ s.name || s.username + '@' + s.host }}
                   </option>
                 </optgroup>
@@ -57,8 +61,8 @@
             </label>
           </div>
 
-          <!-- Quick Drive & Quick Folder Badges (Windows C:, D:, E:, User Home / Linux /) -->
-          <div class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
+          <!-- Quick Drive Badges (when local) OR Server Locations (when remote) -->
+          <div v-if="leftPaneTarget === 'local'" class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
             <span class="text-slate-500 font-sans text-[10px] shrink-0">Drive:</span>
             <button
               v-for="d in localDrives"
@@ -75,12 +79,50 @@
               {{ d.name }}
             </button>
           </div>
+          <div v-else class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
+            <span class="text-slate-500 font-sans text-[10px] shrink-0">Quick:</span>
+            <button
+              v-for="loc in serverLocations"
+              :key="'left_loc_' + loc.path"
+              @click="navigateToLeftRemotePath(loc.path)"
+              :class="[
+                'px-1.5 py-0.5 rounded border transition shrink-0 font-mono',
+                leftRemotePathInput === loc.path || (loc.path !== '.' && leftRemotePathInput.startsWith(loc.path))
+                  ? 'bg-sky-950 border-sky-600 text-sky-300 font-bold'
+                  : 'bg-[#10141f] border-[#252e42] text-slate-400 hover:text-slate-200 hover:border-slate-500'
+              ]"
+              :title="loc.description || loc.path"
+            >
+              {{ loc.name }}
+            </button>
+
+            <!-- Left Remote Bookmarks -->
+            <button
+              v-for="bm in getActiveBookmarks(leftPaneTarget)"
+              :key="'left_bm_' + bm"
+              @click="navigateToLeftRemotePath(bm)"
+              class="px-1.5 py-0.5 rounded border border-amber-800/60 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 font-mono shrink-0 flex items-center space-x-1"
+              :title="bm"
+            >
+              <span>★</span>
+              <span class="max-w-[70px] truncate">{{ bm }}</span>
+              <span @click.stop="removeBookmark(leftPaneTarget, bm)" class="text-slate-500 hover:text-white ml-0.5">✕</span>
+            </button>
+
+            <button
+              @click="addBookmark(leftPaneTarget, leftRemotePathInput)"
+              class="px-1.5 py-0.5 rounded border border-amber-900/40 bg-[#161a26] text-amber-400 hover:text-amber-200 text-[10px] shrink-0 flex items-center space-x-1"
+              title="Bookmark direktori remote ini"
+            >
+              <span>+ ⭐</span>
+            </button>
+          </div>
 
           <div class="flex items-center space-x-1">
             <!-- Back & Up Buttons directly beside input -->
             <button
-              @click="navigateLocalBack"
-              :disabled="localHistoryIndex <= 0"
+              @click="leftPaneTarget === 'local' ? navigateLocalBack() : navigateLeftRemoteBack()"
+              :disabled="leftPaneTarget === 'local' ? localHistoryIndex <= 0 : leftRemoteHistoryIndex <= 0"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center space-x-1"
               title="Kembali ke folder sebelumnya (Back)"
             >
@@ -88,7 +130,7 @@
               <span>Back</span>
             </button>
             <button
-              @click="navigateLocalUp"
+              @click="leftPaneTarget === 'local' ? navigateLocalUp() : navigateLeftRemoteUp()"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition shrink-0 flex items-center space-x-1"
               title="Ke folder di atasnya (Up)"
             >
@@ -96,30 +138,88 @@
               <span>Up</span>
             </button>
 
+            <!-- New Folder & New File Buttons -->
+            <button
+              @click="promptNewFolder('left')"
+              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-emerald-300 hover:text-emerald-200 rounded text-[11px] transition shrink-0 flex items-center space-x-1 font-semibold"
+              title="Buat folder baru di direktori ini"
+            >
+              <span>📁+</span>
+            </button>
+            <button
+              @click="promptNewFile('left')"
+              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-sky-300 hover:text-sky-200 rounded text-[11px] transition shrink-0 flex items-center space-x-1 font-semibold"
+              title="Buat file baru di direktori ini"
+            >
+              <span>📄+</span>
+            </button>
+
             <input
+              v-if="leftPaneTarget === 'local'"
               v-model="localPathInput"
               @keydown.enter="handleLocalEnter"
               type="text"
               class="flex-1 bg-[#090b10] border border-[#262f42] focus:border-sky-500 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none font-mono"
               placeholder="C:\..."
             />
+            <input
+              v-else
+              v-model="leftRemotePathInput"
+              @keydown.enter="fetchLeftRemoteFiles(true)"
+              type="text"
+              class="flex-1 bg-[#090b10] border border-[#262f42] focus:border-sky-500 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none font-mono"
+              placeholder="/var/www/..."
+            />
+
             <button
-              @click="handleLocalEnter"
+              @click="leftPaneTarget === 'local' ? handleLocalEnter() : fetchLeftRemoteFiles(true)"
               class="px-2.5 py-1 bg-[#202738] hover:bg-[#2c364d] rounded text-[10px] transition font-sans"
             >
               Buka
             </button>
             <button
-              @click="refreshLocal"
+              @click="leftPaneTarget === 'local' ? refreshLocal() : fetchLeftRemoteFiles(false)"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 hover:text-white rounded text-[11px] transition shrink-0 flex items-center space-x-1"
-              title="Refresh folder lokal saat ini"
+              title="Refresh folder saat ini"
             >
               <span>🔄</span>
             </button>
           </div>
+
+          <!-- Secondary Filter & Selection Bar -->
+          <div class="flex items-center justify-between pt-0.5 text-[10px] text-slate-400">
+            <div class="flex items-center space-x-1 flex-1 mr-2">
+              <span class="text-slate-500">🔍</span>
+              <input
+                v-model="leftSearchQuery"
+                type="text"
+                placeholder="Cari file/folder..."
+                class="bg-[#090b10] border border-[#21293a] focus:border-sky-500 rounded px-2 py-0.5 text-[10px] text-slate-200 focus:outline-none w-40"
+              />
+              <span v-if="leftSearchQuery" @click="leftSearchQuery = ''" class="cursor-pointer text-slate-500 hover:text-white">✕</span>
+            </div>
+            <div v-if="selectedLeftPaths.size > 0" class="flex items-center space-x-1.5 shrink-0 bg-sky-950/60 border border-sky-800/60 rounded px-2 py-0.5">
+              <span class="text-sky-300 font-semibold">{{ selectedLeftPaths.size }} terpilih</span>
+              <button
+                @click="transferSelectedLeft"
+                class="text-sky-200 hover:text-white underline"
+                title="Transfer semua terpilih ke kanan"
+              >
+                Transfer
+              </button>
+              <span class="text-slate-600">|</span>
+              <button
+                @click="deleteSelectedItems('left')"
+                class="text-rose-400 hover:text-rose-300 underline"
+                title="Hapus semua terpilih"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Local File Table List -->
+        <!-- Left Pane File Table List (Local or Remote) -->
         <div
           ref="localPaneRef"
           class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar relative transition-colors duration-150"
@@ -130,9 +230,24 @@
           @drop.prevent="onLocalDrop"
         >
           <!-- Table Header -->
-          <div class="grid grid-cols-12 gap-2 px-3 py-1.5 bg-[#121520] border-b border-[#232a3b] text-[10px] text-slate-400 uppercase font-semibold sticky top-0 z-10">
-            <div class="col-span-7">Filename</div>
-            <div class="col-span-2 text-right">Size</div>
+          <div class="grid grid-cols-12 gap-2 px-3 py-1.5 bg-[#121520] border-b border-[#232a3b] text-[10px] text-slate-400 uppercase font-semibold sticky top-0 z-10 items-center select-none">
+            <div class="col-span-7 flex items-center space-x-2">
+              <input
+                type="checkbox"
+                :checked="(leftPaneTarget === 'local' ? displayLocalFiles.length > 0 && selectedLeftPaths.size === displayLocalFiles.length : displayLeftRemoteFiles.length > 0 && selectedLeftPaths.size === displayLeftRemoteFiles.length)"
+                @change="toggleSelectAllLeft"
+                class="rounded bg-[#090b10] border-[#2b364e] text-sky-500 focus:ring-0 h-3 w-3 cursor-pointer"
+                title="Pilih Semua"
+              />
+              <span @click="toggleLeftSort('name')" class="cursor-pointer hover:text-white flex items-center space-x-1">
+                <span>Filename</span>
+                <span v-if="leftSortField === 'name'" class="text-sky-400 font-bold">{{ leftSortOrder === 'asc' ? '▲' : '▼' }}</span>
+              </span>
+            </div>
+            <div @click="toggleLeftSort('size')" class="col-span-2 text-right cursor-pointer hover:text-white flex items-center justify-end space-x-1">
+              <span>Size</span>
+              <span v-if="leftSortField === 'size'" class="text-sky-400 font-bold">{{ leftSortOrder === 'asc' ? '▲' : '▼' }}</span>
+            </div>
             <div class="col-span-3 text-right">Action</div>
           </div>
 
@@ -142,28 +257,48 @@
             class="absolute inset-0 bg-emerald-900/30 backdrop-blur-[1px] border-2 border-dashed border-emerald-400 rounded flex flex-col items-center justify-center z-20 pointer-events-none"
           >
             <span class="text-2xl">📥</span>
-            <span class="text-xs font-bold text-emerald-200 mt-1">Drop file/folder di sini untuk Download</span>
-            <span class="text-[10px] text-emerald-400">Target: {{ localPathInput }}</span>
+            <span class="text-xs font-bold text-emerald-200 mt-1">Drop file/folder di sini untuk Download/Transfer</span>
+            <span class="text-[10px] text-emerald-400">Target: {{ leftPaneTarget === 'local' ? localPathInput : leftRemotePathInput }}</span>
           </div>
 
-          <div v-if="loadingLocal" class="p-4 text-center text-slate-500 text-[11px]">
-            Loading local directory...
+          <!-- Loading States with Spinner Animation -->
+          <div v-if="leftPaneTarget === 'local' && loadingLocal" class="h-48 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs">
+            <svg class="animate-spin h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Memuat direktori lokal...</span>
+          </div>
+          <div v-else-if="leftPaneTarget !== 'local' && loadingLeftRemote" class="h-48 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs">
+            <svg class="animate-spin h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Menghubungkan & memuat direktori remote...</span>
           </div>
 
+          <!-- Local Items -->
           <div
-            v-else
+            v-else-if="leftPaneTarget === 'local'"
             v-for="item in displayLocalFiles"
             :key="item.path"
             draggable="true"
             @dragstart="onLocalDragStart($event, item)"
             @dblclick="handleLocalDblClick(item)"
             @click="selectedLocalPath = item.path"
+            @contextmenu.prevent="openContextMenu($event, 'left', item)"
             :class="[
               'grid grid-cols-12 gap-2 px-3 py-1.5 items-center border-b border-[#1b202e] hover:bg-[#1a2030] cursor-pointer transition text-[11px] select-none',
-              selectedLocalPath === item.path ? 'bg-sky-950/40 text-sky-200' : 'text-slate-300'
+              selectedLeftPaths.has(item.path) ? 'bg-sky-950/60 text-sky-100' : selectedLocalPath === item.path ? 'bg-sky-950/30 text-sky-200' : 'text-slate-300'
             ]"
           >
             <div class="col-span-7 flex items-center space-x-2 truncate">
+              <input
+                type="checkbox"
+                :checked="selectedLeftPaths.has(item.path)"
+                @click.stop="toggleSelectLeft(item.path)"
+                class="rounded bg-[#090b10] border-[#2b364e] text-sky-500 focus:ring-0 h-3 w-3 cursor-pointer shrink-0"
+              />
               <span class="shrink-0">{{ item.is_dir ? '📁' : '📄' }}</span>
               <span class="truncate" :title="item.name">{{ item.name }}</span>
             </div>
@@ -172,12 +307,94 @@
             </div>
             <div class="col-span-3 text-right flex items-center justify-end space-x-1">
               <button
+                v-if="!item.is_dir"
+                @click.stop="openInEditor('left', item)"
+                class="p-1 hover:bg-sky-950/60 text-slate-400 hover:text-sky-300 rounded text-[10px] transition"
+                title="Buka / Edit di Tab"
+              >
+                👁️
+              </button>
+              <button
+                @click.stop="renameItem('left', item)"
+                class="p-1 hover:bg-[#252f44] text-slate-400 hover:text-white rounded text-[10px] transition"
+                title="Ganti nama"
+              >
+                ✏️
+              </button>
+              <button
+                @click.stop="deleteItem('left', item)"
+                class="p-1 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded text-[10px] transition"
+                title="Hapus"
+              >
+                🗑️
+              </button>
+              <button
                 @click.stop="transferItemLeftToRight(item)"
                 class="px-2 py-0.5 bg-sky-900/60 hover:bg-sky-700 text-sky-100 rounded text-[10px] transition shadow flex items-center space-x-1"
                 :title="item.is_dir ? 'Transfer Folder ke Pane Kanan' : 'Transfer File ke Pane Kanan'"
               >
-                <span>{{ item.is_dir ? '📁 ➡️' : '📄 ➡️' }}</span>
-                <span>Transfer</span>
+                <span>➡️</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Left Remote Items -->
+          <div
+            v-else
+            v-for="item in displayLeftRemoteFiles"
+            :key="item.path"
+            draggable="true"
+            @dragstart="onLeftRemoteDragStart($event, item)"
+            @dblclick="handleLeftRemoteDblClick(item)"
+            @click="selectedLeftRemotePath = item.path"
+            @contextmenu.prevent="openContextMenu($event, 'left', item)"
+            :class="[
+              'grid grid-cols-12 gap-2 px-3 py-1.5 items-center border-b border-[#1b202e] hover:bg-[#1a2030] cursor-pointer transition text-[11px] select-none',
+              selectedLeftPaths.has(item.path) ? 'bg-sky-950/60 text-sky-100' : selectedLeftRemotePath === item.path ? 'bg-sky-950/30 text-sky-200' : 'text-slate-300'
+            ]"
+          >
+            <div class="col-span-7 flex items-center space-x-2 truncate">
+              <input
+                type="checkbox"
+                :checked="selectedLeftPaths.has(item.path)"
+                @click.stop="toggleSelectLeft(item.path)"
+                class="rounded bg-[#090b10] border-[#2b364e] text-sky-500 focus:ring-0 h-3 w-3 cursor-pointer shrink-0"
+              />
+              <span class="shrink-0">{{ item.is_dir ? '📁' : '📄' }}</span>
+              <span class="truncate" :title="item.name">{{ item.name }}</span>
+            </div>
+            <div class="col-span-2 text-right text-[10px] text-slate-400 font-mono">
+              {{ item.is_dir ? '<DIR>' : formatSize(item.size) }}
+            </div>
+            <div class="col-span-3 text-right flex items-center justify-end space-x-1">
+              <button
+                v-if="!item.is_dir"
+                @click.stop="openInEditor('left', item)"
+                class="p-1 hover:bg-sky-950/60 text-slate-400 hover:text-sky-300 rounded text-[10px] transition"
+                title="Buka / Edit di Tab"
+              >
+                👁️
+              </button>
+              <button
+                @click.stop="renameItem('left', item)"
+                class="p-1 hover:bg-[#252f44] text-slate-400 hover:text-white rounded text-[10px] transition"
+                title="Ganti nama"
+              >
+                ✏️
+              </button>
+              <button
+                @click.stop="deleteItem('left', item)"
+                class="p-1 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded text-[10px] transition"
+                title="Hapus"
+              >
+                🗑️
+              </button>
+              <button
+                @click.stop="transferItemLeftToRight(item)"
+                class="px-2 py-0.5 bg-sky-900/60 hover:bg-sky-700 text-sky-100 rounded text-[10px] transition shadow flex items-center space-x-1"
+                :title="item.is_dir ? 'Transfer Folder ke Pane Kanan' : 'Transfer File ke Pane Kanan'"
+              >
+                <span>➡️</span>
               </button>
             </div>
           </div>
@@ -197,13 +414,15 @@
                 @change="onRightTargetChange(rightPaneTarget)"
                 class="bg-[#0e121c] text-emerald-300 font-semibold border border-[#2b354b] rounded px-1.5 py-0.5 text-[11px] focus:outline-none focus:border-emerald-500 cursor-pointer"
               >
-                <option v-if="props.tab.sessionConfig?.id" :value="props.tab.sessionConfig.id">
-                  🌐 {{ props.tab.sessionConfig.name || props.tab.sessionConfig.username + '@' + props.tab.sessionConfig.host }} (Active)
-                </option>
+                <option value="">-- Pilih Sesi / Target --</option>
                 <option value="local">💻 Local Machine</option>
-                <optgroup label="Other Sessions">
+                <optgroup
+                  v-for="group in groupedSessions"
+                  :key="'right_group_' + group.folderName"
+                  :label="'📁 ' + group.folderName"
+                >
                   <option
-                    v-for="s in availableSessions.filter(s => s.id !== props.tab.sessionConfig?.id)"
+                    v-for="s in group.sessions"
                     :key="'r_' + s.id"
                     :value="s.id"
                   >
@@ -213,13 +432,7 @@
               </select>
             </div>
             <div class="flex items-center space-x-1.5 shrink-0">
-              <button
-                @click="promptNewRemoteFolder"
-                class="px-2 py-0.5 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[10px] transition"
-                title="Buat Folder Baru di Server"
-              >
-                + Folder
-              </button>
+              <!-- Empty spacer -->
             </div>
           </div>
 
@@ -240,13 +453,35 @@
             >
               {{ loc.name }}
             </button>
+
+            <!-- Right Remote Bookmarks -->
+            <button
+              v-for="bm in getActiveBookmarks(rightPaneTarget)"
+              :key="'right_bm_' + bm"
+              @click="setRemoteLocation(bm)"
+              class="px-1.5 py-0.5 rounded border border-amber-800/60 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 font-mono shrink-0 flex items-center space-x-1"
+              :title="bm"
+            >
+              <span>★</span>
+              <span class="max-w-[70px] truncate">{{ bm }}</span>
+              <span @click.stop="removeBookmark(rightPaneTarget, bm)" class="text-slate-500 hover:text-white ml-0.5">✕</span>
+            </button>
+
+            <button
+              v-if="rightPaneTarget && rightPaneTarget !== 'local'"
+              @click="addBookmark(rightPaneTarget, remotePathInput)"
+              class="px-1.5 py-0.5 rounded border border-amber-900/40 bg-[#161a26] text-amber-400 hover:text-amber-200 text-[10px] shrink-0 flex items-center space-x-1"
+              title="Bookmark direktori remote ini"
+            >
+              <span>+ ⭐</span>
+            </button>
           </div>
 
           <div class="flex items-center space-x-1">
             <!-- Back & Up Buttons directly beside remote input -->
             <button
               @click="navigateRemoteBack"
-              :disabled="remoteHistoryIndex <= 0"
+              :disabled="!rightPaneTarget || remoteHistoryIndex <= 0"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center space-x-1"
               title="Kembali ke folder sebelumnya (Back)"
             >
@@ -255,33 +490,88 @@
             </button>
             <button
               @click="navigateRemoteUp"
-              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition shrink-0 flex items-center space-x-1"
+              :disabled="!rightPaneTarget"
+              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center space-x-1"
               title="Ke folder di atasnya (Up)"
             >
               <span>⬆</span>
               <span>Up</span>
             </button>
 
+            <!-- New Folder & New File Buttons on Remote -->
+            <button
+              @click="promptNewFolder('right')"
+              :disabled="!rightPaneTarget"
+              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-emerald-300 hover:text-emerald-200 rounded text-[11px] transition shrink-0 flex items-center space-x-1 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Buat folder baru di remote server"
+            >
+              <span>📁+</span>
+            </button>
+            <button
+              @click="promptNewFile('right')"
+              :disabled="!rightPaneTarget"
+              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-sky-300 hover:text-sky-200 rounded text-[11px] transition shrink-0 flex items-center space-x-1 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Buat file baru di remote server"
+            >
+              <span>📄+</span>
+            </button>
+
             <input
               v-model="remotePathInput"
               @keydown.enter="handleRemoteEnter"
+              :disabled="!rightPaneTarget"
               type="text"
-              class="flex-1 bg-[#090b10] border border-[#262f42] focus:border-sky-500 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none font-mono"
+              class="flex-1 bg-[#090b10] border border-[#262f42] focus:border-sky-500 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="/var/www/..."
             />
             <button
               @click="handleRemoteEnter"
-              class="px-2.5 py-1 bg-[#202738] hover:bg-[#2c364d] rounded text-[10px] transition font-sans"
+              :disabled="!rightPaneTarget"
+              class="px-2.5 py-1 bg-[#202738] hover:bg-[#2c364d] rounded text-[10px] transition font-sans disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Buka
             </button>
             <button
               @click="refreshRemote"
-              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 hover:text-white rounded text-[11px] transition shrink-0 flex items-center space-x-1"
+              :disabled="!rightPaneTarget"
+              class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 hover:text-white rounded text-[11px] transition shrink-0 flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
               title="Refresh folder remote saat ini"
             >
               <span>🔄</span>
             </button>
+          </div>
+
+          <!-- Secondary Filter & Selection Bar (Right Pane) -->
+          <div class="flex items-center justify-between pt-0.5 text-[10px] text-slate-400">
+            <div class="flex items-center space-x-1 flex-1 mr-2">
+              <span class="text-slate-500">🔍</span>
+              <input
+                v-model="rightSearchQuery"
+                :disabled="!rightPaneTarget"
+                type="text"
+                placeholder="Cari file/folder remote..."
+                class="bg-[#090b10] border border-[#21293a] focus:border-emerald-500 rounded px-2 py-0.5 text-[10px] text-slate-200 focus:outline-none w-40 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <span v-if="rightSearchQuery" @click="rightSearchQuery = ''" class="cursor-pointer text-slate-500 hover:text-white">✕</span>
+            </div>
+            <div v-if="selectedRightPaths.size > 0" class="flex items-center space-x-1.5 shrink-0 bg-emerald-950/60 border border-emerald-800/60 rounded px-2 py-0.5">
+              <span class="text-emerald-300 font-semibold">{{ selectedRightPaths.size }} terpilih</span>
+              <button
+                @click="transferSelectedRight"
+                class="text-emerald-200 hover:text-white underline"
+                title="Download semua terpilih ke lokal"
+              >
+                Download
+              </button>
+              <span class="text-slate-600">|</span>
+              <button
+                @click="deleteSelectedItems('right')"
+                class="text-rose-400 hover:text-rose-300 underline"
+                title="Hapus semua terpilih"
+              >
+                Hapus
+              </button>
+            </div>
           </div>
         </div>
 
@@ -296,9 +586,25 @@
           @drop.prevent="onRemoteDrop"
         >
           <!-- Table Header -->
-          <div class="grid grid-cols-12 gap-2 px-3 py-1.5 bg-[#121520] border-b border-[#232a3b] text-[10px] text-slate-400 uppercase font-semibold sticky top-0 z-10">
-            <div class="col-span-7">Filename</div>
-            <div class="col-span-2 text-right">Size</div>
+          <div class="grid grid-cols-12 gap-2 px-3 py-1.5 bg-[#121520] border-b border-[#232a3b] text-[10px] text-slate-400 uppercase font-semibold sticky top-0 z-10 items-center select-none">
+            <div class="col-span-7 flex items-center space-x-2">
+              <input
+                v-if="rightPaneTarget"
+                type="checkbox"
+                :checked="displayRemoteFiles.length > 0 && selectedRightPaths.size === displayRemoteFiles.length"
+                @change="toggleSelectAllRight"
+                class="rounded bg-[#090b10] border-[#2b364e] text-emerald-500 focus:ring-0 h-3 w-3 cursor-pointer"
+                title="Pilih Semua"
+              />
+              <span @click="toggleRightSort('name')" class="cursor-pointer hover:text-white flex items-center space-x-1">
+                <span>Filename</span>
+                <span v-if="rightSortField === 'name'" class="text-emerald-400 font-bold">{{ rightSortOrder === 'asc' ? '▲' : '▼' }}</span>
+              </span>
+            </div>
+            <div @click="toggleRightSort('size')" class="col-span-2 text-right cursor-pointer hover:text-white flex items-center justify-end space-x-1">
+              <span>Size</span>
+              <span v-if="rightSortField === 'size'" class="text-emerald-400 font-bold">{{ rightSortOrder === 'asc' ? '▲' : '▼' }}</span>
+            </div>
             <div class="col-span-3 text-right">Action</div>
           </div>
 
@@ -312,24 +618,79 @@
             <span class="text-[10px] text-sky-400">Target: {{ remotePathInput }}</span>
           </div>
 
-          <div v-if="loadingRemote" class="p-4 text-center text-slate-500 text-[11px]">
-            Loading remote directory...
+          <!-- State Jika Belum Ada Sesi yang Dipilih di Pane Kanan -->
+          <div
+            v-if="!rightPaneTarget"
+            class="h-full flex flex-col items-center justify-center p-6 text-center space-y-4 bg-[#0d1017] overflow-y-auto"
+          >
+            <div class="text-4xl">🌐</div>
+            <div class="max-w-xs space-y-1">
+              <h3 class="text-xs font-semibold text-slate-200">Pilih Target Remote / Lokal</h3>
+              <p class="text-[11px] text-slate-400">
+                Pilih sesi server tujuan untuk mulai melihat direktori remote atau mentransfer file antar-sesi.
+              </p>
+            </div>
+
+            <!-- Folders & Sessions Grid View -->
+            <div class="w-full max-w-md space-y-3 text-left">
+              <div
+                v-for="group in groupedSessions"
+                :key="'center_group_' + group.folderName"
+                class="bg-[#121722] border border-[#232d42] rounded-lg p-2.5 space-y-2"
+              >
+                <div class="text-[11px] font-bold text-sky-400 flex items-center space-x-1.5 border-b border-[#1f283d] pb-1">
+                  <span>📁</span>
+                  <span>{{ group.folderName }}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5">
+                  <button
+                    v-for="s in group.sessions"
+                    :key="'quick_' + s.id"
+                    @click="onRightTargetChange(s.id)"
+                    class="px-2.5 py-1.5 bg-[#171e2c] hover:bg-sky-900/40 hover:border-sky-500 border border-[#263147] text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1.5 truncate"
+                  >
+                    <span>🌐</span>
+                    <span class="truncate">{{ s.name || s.username + '@' + s.host }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="groupedSessions.length === 0" class="text-center text-[11px] text-slate-500 italic">
+                Belum ada sesi server tersimpan di vault.
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading State with Spinner Animation -->
+          <div v-else-if="loadingRemote" class="h-48 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs">
+            <svg class="animate-spin h-6 w-6 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Menghubungkan & memuat direktori remote...</span>
           </div>
 
           <div
             v-else
-            v-for="file in remoteFiles"
+            v-for="file in displayRemoteFiles"
             :key="file.path"
             draggable="true"
             @dragstart="onRemoteDragStart($event, file)"
             @dblclick="handleRemoteDblClick(file)"
             @click="selectedRemotePath = file.path"
+            @contextmenu.prevent="openContextMenu($event, 'right', file)"
             :class="[
               'grid grid-cols-12 gap-2 px-3 py-1.5 items-center border-b border-[#1b202e] hover:bg-[#1a2030] cursor-pointer transition text-[11px] select-none',
-              selectedRemotePath === file.path ? 'bg-sky-950/40 text-sky-200' : 'text-slate-300'
+              selectedRightPaths.has(file.path) ? 'bg-emerald-950/60 text-emerald-100' : selectedRemotePath === file.path ? 'bg-sky-950/40 text-sky-200' : 'text-slate-300'
             ]"
           >
             <div class="col-span-7 flex items-center space-x-2 truncate">
+              <input
+                type="checkbox"
+                :checked="selectedRightPaths.has(file.path)"
+                @click.stop="toggleSelectRight(file.path)"
+                class="rounded bg-[#090b10] border-[#2b364e] text-emerald-500 focus:ring-0 h-3 w-3 cursor-pointer shrink-0"
+              />
               <span class="shrink-0">{{ file.is_dir ? '📁' : '📄' }}</span>
               <span class="truncate" :title="file.name">{{ file.name }}</span>
             </div>
@@ -338,19 +699,33 @@
             </div>
             <div class="col-span-3 text-right flex items-center justify-end space-x-1">
               <button
+                v-if="!file.is_dir"
+                @click.stop="openInEditor('right', file)"
+                class="p-1 hover:bg-emerald-950/60 text-slate-400 hover:text-emerald-300 rounded text-[10px] transition"
+                title="Buka / Edit di Tab"
+              >
+                👁️
+              </button>
+              <button
+                @click.stop="renameItem('right', file)"
+                class="p-1 hover:bg-[#252f44] text-slate-400 hover:text-white rounded text-[10px] transition"
+                title="Ganti nama"
+              >
+                ✏️
+              </button>
+              <button
+                @click.stop="deleteItem('right', file)"
+                class="p-1 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded text-[10px] transition"
+                title="Hapus"
+              >
+                🗑️
+              </button>
+              <button
                 @click.stop="downloadRemoteItem(file)"
                 class="px-2 py-0.5 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-100 rounded text-[10px] transition shadow flex items-center space-x-1"
                 :title="file.is_dir ? 'Download Folder ke Komputer Ini' : 'Download File ke Komputer Ini'"
               >
-                <span>{{ file.is_dir ? '📁 ⬅️' : '📄 ⬅️' }}</span>
-                <span>Download</span>
-              </button>
-              <button
-                @click.stop="deleteRemoteItem(file)"
-                class="p-0.5 text-slate-500 hover:text-rose-400 rounded text-[10px] transition"
-                title="Hapus"
-              >
-                🗑️
+                <span>⬅️</span>
               </button>
             </div>
           </div>
@@ -562,6 +937,205 @@
         </div>
       </div>
     </div>
+
+    <!-- Context Menu Floating Overlay -->
+    <div
+      v-if="contextMenu.visible && contextMenu.item"
+      :style="{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }"
+      class="fixed z-50 bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-48 text-[11px] text-slate-200 select-none"
+      @click.stop
+    >
+      <div class="px-2.5 py-1 text-[10px] text-slate-400 font-semibold truncate border-b border-[#232b3d] mb-0.5">
+        {{ contextMenu.item.name }}
+      </div>
+
+      <button
+        v-if="!contextMenu.item.is_dir"
+        @click="openInEditor(contextMenu.side, contextMenu.item!); closeContextMenu()"
+        class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+      >
+        <span>👁️</span>
+        <span>Edit di Tab</span>
+      </button>
+
+      <button
+        v-if="contextMenu.item.is_dir"
+        @click="contextMenu.side === 'left' ? (leftPaneTarget === 'local' ? navigateToLocalPath(contextMenu.item.path) : navigateToLeftRemotePath(contextMenu.item.path)) : navigateToRemotePath(contextMenu.item.path); closeContextMenu()"
+        class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+      >
+        <span>📁</span>
+        <span>Buka Folder</span>
+      </button>
+
+      <button
+        @click="contextMenu.side === 'left' ? transferItemLeftToRight(contextMenu.item!) : downloadRemoteItem(contextMenu.item! as RemoteFileItem); closeContextMenu()"
+        class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+      >
+        <span>{{ contextMenu.side === 'left' ? '➡️' : '⬅️' }}</span>
+        <span>{{ contextMenu.side === 'left' ? 'Transfer ke Kanan' : 'Download ke Lokal' }}</span>
+      </button>
+
+      <button
+        @click="copyPath(contextMenu.item.path); closeContextMenu()"
+        class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+      >
+        <span>📋</span>
+        <span>Salin Path Lengkap</span>
+      </button>
+
+      <!-- Remote specific actions: Chmod, Compress, Extract -->
+      <template v-if="isContextMenuRemote">
+        <div class="h-px bg-[#232b3d] my-1"></div>
+
+        <button
+          @click="openChmodModal(contextMenu.side, contextMenu.item as RemoteFileItem); closeContextMenu()"
+          class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+        >
+          <span>🔒</span>
+          <span>Hak Akses (Chmod)</span>
+        </button>
+
+        <button
+          v-if="isArchiveFile(contextMenu.item.name)"
+          @click="extractRemoteArchive(contextMenu.side, contextMenu.item as RemoteFileItem); closeContextMenu()"
+          class="w-full text-left px-2.5 py-1.5 hover:bg-emerald-600/30 text-emerald-300 hover:text-emerald-200 flex items-center space-x-2 transition"
+        >
+          <span>📦</span>
+          <span>Ekstrak Arsip di Sini</span>
+        </button>
+
+        <button
+          @click="compressRemoteItem(contextMenu.side, contextMenu.item as RemoteFileItem); closeContextMenu()"
+          class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+        >
+          <span>🗜️</span>
+          <span>Kompres (.tar.gz)</span>
+        </button>
+      </template>
+
+      <div class="h-px bg-[#232b3d] my-1"></div>
+
+      <button
+        @click="renameItem(contextMenu.side, contextMenu.item!); closeContextMenu()"
+        class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
+      >
+        <span>✏️</span>
+        <span>Ganti Nama</span>
+      </button>
+
+      <button
+        @click="deleteItem(contextMenu.side, contextMenu.item!); closeContextMenu()"
+        class="w-full text-left px-2.5 py-1.5 hover:bg-rose-600/30 text-rose-300 hover:text-rose-200 flex items-center space-x-2 transition"
+      >
+        <span>🗑️</span>
+        <span>Hapus</span>
+      </button>
+    </div>
+
+    <!-- Chmod Modal Dialog -->
+    <div
+      v-if="chmodModal.visible"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-100"
+      @click.self="chmodModal.visible = false"
+    >
+      <div class="bg-[#161a26] border border-[#2b354b] shadow-2xl rounded-lg w-80 text-[11px] text-slate-200 overflow-hidden font-sans">
+        <div class="px-4 py-2.5 bg-[#121520] border-b border-[#232b3d] flex items-center justify-between font-semibold text-slate-200">
+          <div class="flex items-center space-x-1.5">
+            <span>🔒</span>
+            <span>Ubah Hak Akses (Permissions)</span>
+          </div>
+          <button @click="chmodModal.visible = false" class="text-slate-500 hover:text-white">✕</button>
+        </div>
+
+        <div class="p-4 space-y-3 font-mono text-xs">
+          <div class="text-[11px] text-slate-400 truncate">
+            Target: <span class="text-sky-300 font-semibold">{{ chmodModal.item?.name }}</span>
+          </div>
+
+          <!-- Permission Matrix (Owner, Group, Others) -->
+          <div class="grid grid-cols-3 gap-2 bg-[#0e121c] p-2.5 rounded border border-[#212a3d] text-center text-[10px]">
+            <div class="space-y-1.5">
+              <span class="font-bold text-slate-300">Owner</span>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.uR" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Read</span>
+              </label>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.uW" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Write</span>
+              </label>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.uX" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Exec</span>
+              </label>
+            </div>
+
+            <div class="space-y-1.5">
+              <span class="font-bold text-slate-300">Group</span>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.gR" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Read</span>
+              </label>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.gW" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Write</span>
+              </label>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.gX" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Exec</span>
+              </label>
+            </div>
+
+            <div class="space-y-1.5">
+              <span class="font-bold text-slate-300">Others</span>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.oR" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Read</span>
+              </label>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.oW" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Write</span>
+              </label>
+              <label class="flex items-center justify-center space-x-1 cursor-pointer">
+                <input type="checkbox" v-model="chmodModal.oX" @change="updateOctalFromBits" class="rounded bg-[#161a26] text-sky-500" />
+                <span>Exec</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-xs pt-1">
+            <span class="text-slate-400">Octal:</span>
+            <input
+              v-model="chmodModal.octal"
+              @input="setChmodFromOctal(chmodModal.octal)"
+              type="text"
+              maxlength="4"
+              class="w-20 bg-[#090b10] border border-[#2b354b] rounded px-2 py-1 text-center font-mono text-sky-300 font-bold focus:outline-none focus:border-sky-500"
+            />
+          </div>
+
+          <label v-if="chmodModal.item?.is_dir" class="flex items-center space-x-2 text-[11px] text-slate-400 cursor-pointer select-none">
+            <input type="checkbox" v-model="chmodModal.recursive" class="rounded bg-[#090b10] border-[#2b354b] text-sky-500" />
+            <span>Terapkan rekursif ke subfolder & file (-R)</span>
+          </label>
+        </div>
+
+        <div class="px-4 py-2 bg-[#121520] border-t border-[#232b3d] flex items-center justify-end space-x-2">
+          <button
+            @click="chmodModal.visible = false"
+            class="px-3 py-1 bg-[#1e2536] hover:bg-[#283248] text-slate-300 rounded text-xs transition"
+          >
+            Batal
+          </button>
+          <button
+            @click="applyChmod"
+            class="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded text-xs transition shadow"
+          >
+            Terapkan
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -581,26 +1155,6 @@ const sessionStore = useSessionStore();
 const vaultStore = useVaultStore();
 const dialogStore = useDialogStore();
 
-// Resolusi session ID aktif untuk SFTP backend
-const sftpSessionId = computed(() => {
-  // Jika ada parentSessionId dan tab parent masih ada
-  if (props.tab.parentSessionId) {
-    const parent = sessionStore.tabs.find(t => t.id === props.tab.parentSessionId);
-    if (parent && parent.connected) {
-      return parent.id;
-    }
-  }
-  // Atau cari terminal tab lain yang menggunakan sessionConfig yang sama
-  const sameSessionTab = sessionStore.tabs.find(
-    t => t.type === 'terminal' && t.sessionConfig.id === props.tab.sessionConfig.id && t.connected
-  );
-  if (sameSessionTab) {
-    return sameSessionTab.id;
-  }
-  // Fallback ke ID tab ini sendiri
-  return props.tab.id;
-});
-
 // Local Files State & History
 const localPathInput = ref('');
 const localFiles = ref<LocalFileItem[]>([]);
@@ -611,15 +1165,67 @@ const localHistory = ref<string[]>([]);
 const localHistoryIndex = ref(-1);
 const hideLocalSystemFiles = ref(true);
 
+// Search / Filter inputs
+const leftSearchQuery = ref('');
+const rightSearchQuery = ref('');
+
+// Multi-selection states (Set of paths)
+const selectedLeftPaths = ref<Set<string>>(new Set());
+const selectedRightPaths = ref<Set<string>>(new Set());
+
+// Sort states
+const leftSortField = ref<'name' | 'size'>('name');
+const leftSortOrder = ref<'asc' | 'desc'>('asc');
+const rightSortField = ref<'name' | 'size'>('name');
+const rightSortOrder = ref<'asc' | 'desc'>('asc');
+
+function toggleLeftSort(field: 'name' | 'size') {
+  if (leftSortField.value === field) {
+    leftSortOrder.value = leftSortOrder.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    leftSortField.value = field;
+    leftSortOrder.value = 'asc';
+  }
+}
+
+function toggleRightSort(field: 'name' | 'size') {
+  if (rightSortField.value === field) {
+    rightSortOrder.value = rightSortOrder.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    rightSortField.value = field;
+    rightSortOrder.value = 'asc';
+  }
+}
+
+function sortItems<T extends { name: string; size: number; is_dir: boolean }>(items: T[], field: 'name' | 'size', order: 'asc' | 'desc'): T[] {
+  return [...items].sort((a, b) => {
+    if (a.is_dir && !b.is_dir) return -1;
+    if (!a.is_dir && b.is_dir) return 1;
+
+    let res = 0;
+    if (field === 'size') {
+      res = a.size - b.size;
+    } else {
+      res = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    }
+    return order === 'asc' ? res : -res;
+  });
+}
+
 // Filtered local files
 const displayLocalFiles = computed(() => {
-  if (!hideLocalSystemFiles.value) {
-    return localFiles.value;
+  let list = localFiles.value;
+  if (hideLocalSystemFiles.value) {
+    list = list.filter(item => !item.is_hidden && !item.is_system);
   }
-  return localFiles.value.filter(item => !item.is_hidden && !item.is_system);
+  if (leftSearchQuery.value.trim()) {
+    const q = leftSearchQuery.value.trim().toLowerCase();
+    list = list.filter(item => item.name.toLowerCase().includes(q));
+  }
+  return sortItems(list, leftSortField.value, leftSortOrder.value);
 });
 
-// Remote Files State & History
+// Remote Files State & History (Right Pane)
 const remotePathInput = ref('.');
 const remoteFiles = ref<RemoteFileItem[]>([]);
 const selectedRemotePath = ref<string | null>(null);
@@ -627,21 +1233,337 @@ const loadingRemote = ref(false);
 const remoteHistory = ref<string[]>([]);
 const remoteHistoryIndex = ref(-1);
 
-// Drag and Drop States
-const localPaneRef = useTemplateRef<HTMLElement>('localPaneRef');
-const remotePaneRef = useTemplateRef<HTMLElement>('remotePaneRef');
-const isDraggingOverRemote = ref(false);
-const isDraggingOverLocal = ref(false);
-let draggedLocalItem: LocalFileItem | null = null;
-let draggedRemoteItem: RemoteFileItem | null = null;
+// Left Remote Files State & History (When Left Pane is in Remote Session Mode)
+const leftRemotePathInput = ref('.');
+const leftRemoteFiles = ref<RemoteFileItem[]>([]);
+const selectedLeftRemotePath = ref<string | null>(null);
+const loadingLeftRemote = ref(false);
+const leftRemoteHistory = ref<string[]>([]);
+const leftRemoteHistoryIndex = ref(-1);
+
+// Filtered left remote files
+const displayLeftRemoteFiles = computed(() => {
+  let list = leftRemoteFiles.value;
+  if (leftSearchQuery.value.trim()) {
+    const q = leftSearchQuery.value.trim().toLowerCase();
+    list = list.filter(item => item.name.toLowerCase().includes(q));
+  }
+  return sortItems(list, leftSortField.value, leftSortOrder.value);
+});
+
+// Filtered right remote files
+const displayRemoteFiles = computed(() => {
+  let list = remoteFiles.value;
+  if (rightSearchQuery.value.trim()) {
+    const q = rightSearchQuery.value.trim().toLowerCase();
+    list = list.filter(item => item.name.toLowerCase().includes(q));
+  }
+  return sortItems(list, rightSortField.value, rightSortOrder.value);
+});
+
+// Context Menu State
+const contextMenu = ref<{
+  visible: boolean;
+  x: number;
+  y: number;
+  side: 'left' | 'right';
+  item: LocalFileItem | RemoteFileItem | null;
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  side: 'left',
+  item: null,
+});
+
+function openContextMenu(e: MouseEvent, side: 'left' | 'right', item: LocalFileItem | RemoteFileItem) {
+  e.preventDefault();
+  contextMenu.value = {
+    visible: true,
+    x: Math.min(e.clientX, window.innerWidth - 190),
+    y: Math.min(e.clientY, window.innerHeight - 240),
+    side,
+    item,
+  };
+}
+
+function closeContextMenu() {
+  if (contextMenu.value.visible) {
+    contextMenu.value.visible = false;
+  }
+}
+
+const isContextMenuRemote = computed(() => {
+  if (!contextMenu.value.item) return false;
+  return contextMenu.value.side === 'left'
+    ? leftPaneTarget.value !== 'local'
+    : rightPaneTarget.value !== 'local';
+});
+
+async function copyPath(path: string) {
+  try {
+    await navigator.clipboard.writeText(path);
+  } catch (_) {}
+}
+
+// Bookmarks State per session
+const sessionBookmarks = ref<Record<string, string[]>>({});
+
+function loadBookmarks() {
+  try {
+    const saved = localStorage.getItem('boba_sftp_bookmarks');
+    if (saved) {
+      sessionBookmarks.value = JSON.parse(saved);
+    }
+  } catch (_) {}
+}
+
+function saveBookmarks() {
+  try {
+    localStorage.setItem('boba_sftp_bookmarks', JSON.stringify(sessionBookmarks.value));
+  } catch (_) {}
+}
+
+function getActiveBookmarks(sessionId: string): string[] {
+  return sessionBookmarks.value[sessionId] || [];
+}
+
+function addBookmark(sessionId: string, path: string) {
+  if (!sessionId || sessionId === 'local' || !path) return;
+  if (!sessionBookmarks.value[sessionId]) {
+    sessionBookmarks.value[sessionId] = [];
+  }
+  if (!sessionBookmarks.value[sessionId].includes(path)) {
+    sessionBookmarks.value[sessionId].push(path);
+    saveBookmarks();
+  }
+}
+
+function removeBookmark(sessionId: string, path: string) {
+  if (!sessionBookmarks.value[sessionId]) return;
+  sessionBookmarks.value[sessionId] = sessionBookmarks.value[sessionId].filter(p => p !== path);
+  saveBookmarks();
+}
+
+// Chmod / Permissions Modal State
+const chmodModal = ref<{
+  visible: boolean;
+  side: 'left' | 'right';
+  item: RemoteFileItem | null;
+  octal: string;
+  recursive: boolean;
+  uR: boolean; uW: boolean; uX: boolean;
+  gR: boolean; gW: boolean; gX: boolean;
+  oR: boolean; oW: boolean; oX: boolean;
+}>({
+  visible: false,
+  side: 'right',
+  item: null,
+  octal: '0755',
+  recursive: false,
+  uR: true, uW: true, uX: true,
+  gR: true, gW: false, gX: true,
+  oR: true, oW: false, oX: true,
+});
+
+function openChmodModal(side: 'left' | 'right', item: RemoteFileItem) {
+  chmodModal.value.visible = true;
+  chmodModal.value.side = side;
+  chmodModal.value.item = item;
+  chmodModal.value.recursive = false;
+  const defaultOctal = item.is_dir ? '0755' : '0644';
+  setChmodFromOctal(defaultOctal);
+}
+
+function updateOctalFromBits() {
+  const m = chmodModal.value;
+  const u = (m.uR ? 4 : 0) + (m.uW ? 2 : 0) + (m.uX ? 1 : 0);
+  const g = (m.gR ? 4 : 0) + (m.gW ? 2 : 0) + (m.gX ? 1 : 0);
+  const o = (m.oR ? 4 : 0) + (m.oW ? 2 : 0) + (m.oX ? 1 : 0);
+  chmodModal.value.octal = `0${u}${g}${o}`;
+}
+
+function setChmodFromOctal(val: string) {
+  const clean = val.replace(/^0+/, '').padStart(3, '0');
+  const u = parseInt(clean[0] || '0', 10);
+  const g = parseInt(clean[1] || '0', 10);
+  const o = parseInt(clean[2] || '0', 10);
+  const m = chmodModal.value;
+  m.octal = '0' + clean.slice(-3);
+  m.uR = (u & 4) !== 0; m.uW = (u & 2) !== 0; m.uX = (u & 1) !== 0;
+  m.gR = (g & 4) !== 0; m.gW = (g & 2) !== 0; m.gX = (g & 1) !== 0;
+  m.oR = (o & 4) !== 0; m.oW = (o & 2) !== 0; m.oX = (o & 1) !== 0;
+}
+
+async function applyChmod() {
+  const m = chmodModal.value;
+  if (!m.item) return;
+  const isLeft = m.side === 'left';
+  const activeId = isLeft ? await ensureLeftConnected() : await ensureConnected();
+  const flag = m.recursive ? '-R ' : '';
+  const cmd = `chmod ${flag}${m.octal.replace(/^0+/, '')} "${m.item.path}"`;
+  try {
+    await tauriBridge.sshExecCommand(activeId, cmd);
+    chmodModal.value.visible = false;
+    if (isLeft) {
+      await fetchLeftRemoteFiles(false);
+    } else {
+      await fetchRemoteFiles(false);
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Failed to Change Permissions',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+// Remote Archive Compress & Extract
+function isArchiveFile(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.endsWith('.tar.gz') || n.endsWith('.tgz') || n.endsWith('.zip') || n.endsWith('.tar.bz2') || n.endsWith('.tar.xz') || n.endsWith('.tar');
+}
+
+async function extractRemoteArchive(side: 'left' | 'right', item: RemoteFileItem) {
+  const isLeft = side === 'left';
+  const activeId = isLeft ? await ensureLeftConnected() : await ensureConnected();
+  const currentDir = isLeft ? leftRemotePathInput.value : remotePathInput.value;
+
+  const confirm = await dialogStore.confirm({
+    title: 'Extract Archive on Server?',
+    description: `Ekstrak "${item.name}" ke direktori saat ini: ${currentDir}?`,
+    confirmText: 'Extract',
+  });
+  if (!confirm) return;
+
+  let cmd = '';
+  const n = item.name.toLowerCase();
+  if (n.endsWith('.tar.gz') || n.endsWith('.tgz')) {
+    cmd = `cd "${currentDir}" && tar -xzf "${item.path}"`;
+  } else if (n.endsWith('.tar.bz2')) {
+    cmd = `cd "${currentDir}" && tar -xjf "${item.path}"`;
+  } else if (n.endsWith('.tar.xz')) {
+    cmd = `cd "${currentDir}" && tar -xJf "${item.path}"`;
+  } else if (n.endsWith('.zip')) {
+    cmd = `cd "${currentDir}" && (unzip -q -o "${item.path}" 2>/dev/null || tar -xf "${item.path}")`;
+  } else {
+    cmd = `cd "${currentDir}" && tar -xf "${item.path}"`;
+  }
+
+  try {
+    await tauriBridge.sshExecCommand(activeId, cmd);
+    if (isLeft) {
+      await fetchLeftRemoteFiles(false);
+    } else {
+      await fetchRemoteFiles(false);
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Extraction Failed',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+async function compressRemoteItem(side: 'left' | 'right', item: RemoteFileItem) {
+  const isLeft = side === 'left';
+  const activeId = isLeft ? await ensureLeftConnected() : await ensureConnected();
+  const currentDir = isLeft ? leftRemotePathInput.value : remotePathInput.value;
+
+  const defaultArchive = `${item.name}.tar.gz`;
+  const archiveName = await dialogStore.prompt({
+    title: 'Compress on Server',
+    description: `Buat arsip tar.gz untuk "${item.name}":`,
+    placeholder: defaultArchive,
+    confirmText: 'Compress',
+  });
+  if (!archiveName?.trim()) return;
+
+  const cmd = `cd "${currentDir}" && tar -czf "${archiveName.trim()}" "${item.name}"`;
+  try {
+    await tauriBridge.sshExecCommand(activeId, cmd);
+    if (isLeft) {
+      await fetchLeftRemoteFiles(false);
+    } else {
+      await fetchRemoteFiles(false);
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Compression Failed',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
 
 // Pane Mode States ('local' | session_id)
 const leftPaneTarget = ref<string>('local');
 const rightPaneTarget = ref<string>('');
 
-// Available remote sessions from vault
+// Common Server Locations for Linux/BSD/Unix and Windows
+const serverLocations = [
+  { name: 'Home (~)', path: '.', description: 'User Home Directory' },
+  { name: 'Root (/)', path: '/', description: 'Filesystem Root' },
+  { name: '/var/www', path: '/var/www', description: 'Web Server Directory' },
+  { name: '/etc', path: '/etc', description: 'Configuration Files' },
+  { name: '/var/log', path: '/var/log', description: 'System Logs' },
+  { name: '/tmp', path: '/tmp', description: 'Temporary Files' },
+];
+
+// Resolusi session config aktif untuk pane kanan
+const rightSessionConfig = computed(() => {
+  if (!rightPaneTarget.value || rightPaneTarget.value === 'local') return null;
+  return vaultStore.vault.sessions.find(s => s.id === rightPaneTarget.value) || props.tab.sessionConfig;
+});
+
+// Resolusi session ID aktif untuk SFTP backend (right pane)
+const sftpSessionId = computed(() => {
+  if (!rightPaneTarget.value || rightPaneTarget.value === 'local') {
+    return props.tab.id;
+  }
+  const targetId = rightPaneTarget.value;
+  // Cari tab terminal aktif yang memiliki session config ini
+  const activeTab = sessionStore.tabs.find(
+    t => t.type === 'terminal' && t.sessionConfig.id === targetId && t.connected
+  );
+  if (activeTab) {
+    return activeTab.id;
+  }
+  return `sftp_conn_${targetId}`;
+});
+
+// Available remote sessions & folders from vault
+const availableFolders = computed(() => {
+  return vaultStore.vault.folders || [];
+});
+
 const availableSessions = computed(() => {
   return vaultStore.vault.sessions;
+});
+
+// Group sessions by folder
+const groupedSessions = computed(() => {
+  const folders = availableFolders.value;
+  const sessions = availableSessions.value;
+  const result: { folderName: string; sessions: typeof sessions }[] = [];
+
+  // Folder-based sessions
+  for (const f of folders) {
+    const sInFolder = sessions.filter(s => s.folder_id === f.id);
+    if (sInFolder.length > 0) {
+      result.push({ folderName: f.name, sessions: sInFolder });
+    }
+  }
+
+  // Unorganized sessions
+  const unorganized = sessions.filter(s => !s.folder_id || !folders.some(f => f.id === s.folder_id));
+  if (unorganized.length > 0) {
+    result.push({ folderName: 'Uncategorized', sessions: unorganized });
+  }
+
+  return result;
 });
 
 // Watch changes to pane target
@@ -729,22 +1651,19 @@ const currentQueueItems = computed(() => {
 });
 
 onMounted(async () => {
+  window.addEventListener('click', closeContextMenu);
+  loadBookmarks();
   queueStore.initListener();
 
-  if (props.tab.sessionConfig?.id) {
-    rightPaneTarget.value = props.tab.sessionConfig.id;
-  } else if (availableSessions.value.length > 0) {
-    rightPaneTarget.value = availableSessions.value[0].id;
-  }
+  // Biarkan pane kanan kosong terlebih dahulu sesuai permintaan (jangan auto select session)
+  rightPaneTarget.value = '';
 
   // Load available local drives dynamically (User Home, C:, D:, etc.)
   try {
     const drives = await tauriBridge.fsGetLocalDrives();
     if (drives && drives.length > 0) {
       localDrives.value = drives;
-      if (!localPathInput.value) {
-        localPathInput.value = drives[0].path;
-      }
+      localPathInput.value = drives[0].path;
     }
   } catch (e) {
     console.warn('Failed to load local drives:', e);
@@ -754,10 +1673,12 @@ onMounted(async () => {
     localPathInput.value = 'C:\\';
   }
 
+  // Muat file lokal untuk pane kiri
   await fetchLocalFiles();
-  if (rightPaneTarget.value) {
-    await fetchRemoteFiles();
-  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeContextMenu);
 });
 
 function setLocalDrive(path: string) {
@@ -805,12 +1726,18 @@ async function refreshRemote() {
 async function fetchLocalFiles(recordHistory = true) {
   loadingLocal.value = true;
   try {
-    const items = await tauriBridge.fsListLocalDir(localPathInput.value);
+    // Pastikan path lokal valid, default ke Home atau C:\
+    let target = localPathInput.value?.trim();
+    if (!target) {
+      target = localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\';
+      localPathInput.value = target;
+    }
+    const items = await tauriBridge.fsListLocalDir(target);
     localFiles.value = items;
     if (recordHistory) {
-      if (localHistoryIndex.value === -1 || localHistory.value[localHistoryIndex.value] !== localPathInput.value) {
+      if (localHistoryIndex.value === -1 || localHistory.value[localHistoryIndex.value] !== target) {
         localHistory.value = localHistory.value.slice(0, localHistoryIndex.value + 1);
-        localHistory.value.push(localPathInput.value);
+        localHistory.value.push(target);
         localHistoryIndex.value = localHistory.value.length - 1;
       }
     }
@@ -858,9 +1785,166 @@ function navigateLocalUp() {
   }
 }
 
+// Left Remote Session Helpers
+const leftSessionConfig = computed(() => {
+  if (!leftPaneTarget.value || leftPaneTarget.value === 'local') return null;
+  return vaultStore.vault.sessions.find(s => s.id === leftPaneTarget.value);
+});
+
+async function ensureLeftConnected(): Promise<string> {
+  const targetId = leftPaneTarget.value;
+  const activeTab = sessionStore.tabs.find(
+    t => t.type === 'terminal' && t.sessionConfig.id === targetId && t.connected
+  );
+  if (activeTab) {
+    return activeTab.id;
+  }
+  const sftpLeftId = `sftp_conn_left_${targetId}`;
+  const config = leftSessionConfig.value;
+  if (!config || !config.host) {
+    throw new Error('Konfigurasi sesi kiri tidak ditemukan.');
+  }
+  let keyItem = undefined;
+  if (config.auth_type === 'key' && config.key_id) {
+    keyItem = vaultStore.vault.keys.find(k => k.id === config.key_id);
+  }
+  await tauriBridge.sshConnect(
+    sftpLeftId,
+    config,
+    keyItem,
+    80,
+    24
+  );
+  return sftpLeftId;
+}
+
+async function fetchLeftRemoteFiles(recordHistory = true) {
+  loadingLeftRemote.value = true;
+  try {
+    const activeId = await ensureLeftConnected();
+    const items = await tauriBridge.sftpList(activeId, leftRemotePathInput.value);
+    leftRemoteFiles.value = items;
+    if (recordHistory) {
+      if (leftRemoteHistoryIndex.value === -1 || leftRemoteHistory.value[leftRemoteHistoryIndex.value] !== leftRemotePathInput.value) {
+        leftRemoteHistory.value = leftRemoteHistory.value.slice(0, leftRemoteHistoryIndex.value + 1);
+        leftRemoteHistory.value.push(leftRemotePathInput.value);
+        leftRemoteHistoryIndex.value = leftRemoteHistory.value.length - 1;
+      }
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Left Remote SFTP Error',
+      description: String(err),
+      variant: 'error',
+    });
+  } finally {
+    loadingLeftRemote.value = false;
+  }
+}
+
+function navigateToLeftRemotePath(path: string) {
+  leftRemotePathInput.value = path;
+  fetchLeftRemoteFiles(true);
+}
+
+function navigateLeftRemoteBack() {
+  if (leftRemoteHistoryIndex.value > 0) {
+    leftRemoteHistoryIndex.value--;
+    leftRemotePathInput.value = leftRemoteHistory.value[leftRemoteHistoryIndex.value];
+    fetchLeftRemoteFiles(false);
+  }
+}
+
+function navigateLeftRemoteUp() {
+  const current = leftRemotePathInput.value.replace(/\/+$/, '');
+  if (!current || current === '.' || current === '/') return;
+  const lastSlash = current.lastIndexOf('/');
+  let target = '';
+  if (lastSlash <= 0) {
+    target = '/';
+  } else {
+    target = current.substring(0, lastSlash);
+  }
+  navigateToLeftRemotePath(target);
+}
+
+async function openInEditor(side: 'left' | 'right', item: LocalFileItem | RemoteFileItem) {
+  if (item.is_dir) return;
+  const isLeft = side === 'left';
+  const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
+
+  try {
+    let content = '';
+    let parentSessionTab: ActiveTab;
+
+    if (isLocal) {
+      content = await tauriBridge.fsReadTextFile(item.path);
+      parentSessionTab = {
+        id: 'local',
+        type: 'terminal',
+        title: 'Local Machine',
+        sessionConfig: {
+          id: 'local',
+          name: 'Local Machine',
+          host: 'localhost',
+          port: 0,
+          username: '',
+          auth_type: 'password',
+          created_at: '',
+          updated_at: '',
+        },
+        connected: true,
+        sftpOpen: false,
+      };
+    } else if (isLeft) {
+      const activeId = await ensureLeftConnected();
+      content = await tauriBridge.sftpReadFile(activeId, item.path);
+      const conf = leftSessionConfig.value || props.tab.sessionConfig;
+      parentSessionTab = {
+        id: activeId,
+        type: 'terminal',
+        title: conf.name || `${conf.username}@${conf.host}`,
+        sessionConfig: { ...conf },
+        connected: true,
+        sftpOpen: false,
+      };
+    } else {
+      const activeId = await ensureConnected();
+      content = await tauriBridge.sftpReadFile(activeId, item.path);
+      const conf = rightSessionConfig.value || props.tab.sessionConfig;
+      parentSessionTab = {
+        id: activeId,
+        type: 'terminal',
+        title: conf.name || `${conf.username}@${conf.host}`,
+        sessionConfig: { ...conf },
+        connected: true,
+        sftpOpen: false,
+      };
+    }
+
+    sessionStore.openEditorTab(parentSessionTab, item.path, item.name, content);
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Cannot Open File in Editor',
+      description: `Gagal membaca file sebagai teks: ${String(err)}`,
+      variant: 'error',
+    });
+  }
+}
+
+function handleLeftRemoteDblClick(file: RemoteFileItem) {
+  if (file.is_dir) {
+    navigateToLeftRemotePath(file.path);
+  } else {
+    openInEditor('left', file);
+  }
+}
+
 function handleLocalDblClick(item: LocalFileItem) {
   if (item.is_dir) {
     navigateToLocalPath(item.path);
+  } else {
+    openInEditor('left', item);
   }
 }
 
@@ -873,15 +1957,20 @@ async function ensureConnected(): Promise<string> {
     return activeId;
   }
 
+  const config = rightSessionConfig.value || props.tab.sessionConfig;
+  if (!config || !config.host) {
+    throw new Error('Konfigurasi sesi server tidak ditemukan.');
+  }
+
   // Auto connect if tab is not connected yet
   let keyItem = undefined;
-  if (props.tab.sessionConfig.auth_type === 'key' && props.tab.sessionConfig.key_id) {
-    keyItem = vaultStore.vault.keys.find(k => k.id === props.tab.sessionConfig.key_id);
+  if (config.auth_type === 'key' && config.key_id) {
+    keyItem = vaultStore.vault.keys.find(k => k.id === config.key_id);
   }
 
   await tauriBridge.sshConnect(
     activeId,
-    props.tab.sessionConfig,
+    config,
     keyItem,
     80,
     24
@@ -946,25 +2035,43 @@ function navigateRemoteUp() {
 function handleRemoteDblClick(file: RemoteFileItem) {
   if (file.is_dir) {
     navigateToRemotePath(file.path);
+  } else {
+    openInEditor('right', file);
   }
 }
 
-async function promptNewRemoteFolder() {
+// Quick file operations (Local & Remote)
+async function promptNewFolder(side: 'left' | 'right') {
+  const isLeft = side === 'left';
+  const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
+  const currentPath = isLeft
+    ? (isLocal ? localPathInput.value : leftRemotePathInput.value)
+    : (isLocal ? localPathInput.value : remotePathInput.value);
+
   const folderName = await dialogStore.prompt({
-    title: 'New Remote Folder',
-    description: `Create directory in: ${remotePathInput.value}`,
+    title: `New Folder (${isLocal ? 'Local' : 'Remote'})`,
+    description: `Create directory in: ${currentPath}`,
     placeholder: 'Folder name...',
     confirmText: 'Create',
   });
-  if (!folderName) return;
-
-  const sep = remotePathInput.value.endsWith('/') ? '' : '/';
-  const targetPath = `${remotePathInput.value}${sep}${folderName}`;
+  if (!folderName?.trim()) return;
 
   try {
-    const activeId = await ensureConnected();
-    await tauriBridge.sftpCreateDir(activeId, targetPath);
-    await fetchRemoteFiles();
+    if (isLocal) {
+      const sep = currentPath.endsWith('\\') || currentPath.endsWith('/') ? '' : '\\';
+      await tauriBridge.fsCreateDir(`${currentPath}${sep}${folderName.trim()}`);
+      await fetchLocalFiles();
+    } else if (isLeft) {
+      const activeId = await ensureLeftConnected();
+      const sep = currentPath.endsWith('/') ? '' : '/';
+      await tauriBridge.sftpCreateDir(activeId, `${currentPath}${sep}${folderName.trim()}`);
+      await fetchLeftRemoteFiles();
+    } else {
+      const activeId = await ensureConnected();
+      const sep = currentPath.endsWith('/') ? '' : '/';
+      await tauriBridge.sftpCreateDir(activeId, `${currentPath}${sep}${folderName.trim()}`);
+      await fetchRemoteFiles();
+    }
   } catch (err: any) {
     await dialogStore.alert({
       title: 'Failed to create folder',
@@ -974,19 +2081,115 @@ async function promptNewRemoteFolder() {
   }
 }
 
-async function deleteRemoteItem(file: RemoteFileItem) {
+async function promptNewFile(side: 'left' | 'right') {
+  const isLeft = side === 'left';
+  const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
+  const currentPath = isLeft
+    ? (isLocal ? localPathInput.value : leftRemotePathInput.value)
+    : (isLocal ? localPathInput.value : remotePathInput.value);
+
+  const fileName = await dialogStore.prompt({
+    title: `New File (${isLocal ? 'Local' : 'Remote'})`,
+    description: `Create empty file in: ${currentPath}`,
+    placeholder: 'e.g. index.html, .env',
+    confirmText: 'Create',
+  });
+  if (!fileName?.trim()) return;
+
+  try {
+    if (isLocal) {
+      const sep = currentPath.endsWith('\\') || currentPath.endsWith('/') ? '' : '\\';
+      await tauriBridge.fsCreateFile(`${currentPath}${sep}${fileName.trim()}`);
+      await fetchLocalFiles();
+    } else if (isLeft) {
+      const activeId = await ensureLeftConnected();
+      const sep = currentPath.endsWith('/') ? '' : '/';
+      await tauriBridge.sftpWriteText(activeId, `${currentPath}${sep}${fileName.trim()}`, '');
+      await fetchLeftRemoteFiles();
+    } else {
+      const activeId = await ensureConnected();
+      const sep = currentPath.endsWith('/') ? '' : '/';
+      await tauriBridge.sftpWriteText(activeId, `${currentPath}${sep}${fileName.trim()}`, '');
+      await fetchRemoteFiles();
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Failed to create file',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+async function renameItem(side: 'left' | 'right', item: LocalFileItem | RemoteFileItem) {
+  const isLeft = side === 'left';
+  const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
+
+  const newName = await dialogStore.prompt({
+    title: `Rename ${item.is_dir ? 'Folder' : 'File'}`,
+    description: `Enter new name for "${item.name}":`,
+    placeholder: item.name,
+    confirmText: 'Rename',
+  });
+  if (!newName?.trim() || newName.trim() === item.name) return;
+
+  try {
+    if (isLocal) {
+      const parent = item.path.substring(0, Math.max(item.path.lastIndexOf('\\'), item.path.lastIndexOf('/')));
+      const sep = item.path.includes('/') ? '/' : '\\';
+      const newPath = `${parent}${sep}${newName.trim()}`;
+      await tauriBridge.fsRenamePath(item.path, newPath);
+      await fetchLocalFiles();
+    } else if (isLeft) {
+      const activeId = await ensureLeftConnected();
+      const parent = item.path.substring(0, item.path.lastIndexOf('/'));
+      const newPath = `${parent ? parent : ''}/${newName.trim()}`;
+      await tauriBridge.sftpRename(activeId, item.path, newPath);
+      await fetchLeftRemoteFiles();
+    } else {
+      const activeId = await ensureConnected();
+      const parent = item.path.substring(0, item.path.lastIndexOf('/'));
+      const newPath = `${parent ? parent : ''}/${newName.trim()}`;
+      await tauriBridge.sftpRename(activeId, item.path, newPath);
+      await fetchRemoteFiles();
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Rename Failed',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+async function deleteItem(side: 'left' | 'right', item: LocalFileItem | RemoteFileItem) {
+  const isLeft = side === 'left';
+  const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
+
   const confirm = await dialogStore.confirm({
-    title: `Delete ${file.is_dir ? 'Folder' : 'File'}?`,
-    description: `Are you sure you want to delete "${file.name}" on remote server?`,
+    title: `Delete ${item.is_dir ? 'Folder' : 'File'}?`,
+    description: `Are you sure you want to permanently delete "${item.name}"?`,
     confirmText: 'Delete',
     isDestructive: true,
   });
   if (!confirm) return;
 
   try {
-    const activeId = await ensureConnected();
-    await tauriBridge.sftpDelete(activeId, file.path, file.is_dir);
-    await fetchRemoteFiles();
+    if (isLocal) {
+      await tauriBridge.fsDeletePath(item.path, item.is_dir);
+      selectedLeftPaths.value.delete(item.path);
+      await fetchLocalFiles();
+    } else if (isLeft) {
+      const activeId = await ensureLeftConnected();
+      await tauriBridge.sftpDelete(activeId, item.path, item.is_dir);
+      selectedLeftPaths.value.delete(item.path);
+      await fetchLeftRemoteFiles();
+    } else {
+      const activeId = await ensureConnected();
+      await tauriBridge.sftpDelete(activeId, item.path, item.is_dir);
+      selectedRightPaths.value.delete(item.path);
+      await fetchRemoteFiles();
+    }
   } catch (err: any) {
     await dialogStore.alert({
       title: 'Delete Failed',
@@ -994,6 +2197,110 @@ async function deleteRemoteItem(file: RemoteFileItem) {
       variant: 'error',
     });
   }
+}
+
+// Multi-select bulk actions
+function toggleSelectLeft(path: string) {
+  if (selectedLeftPaths.value.has(path)) {
+    selectedLeftPaths.value.delete(path);
+  } else {
+    selectedLeftPaths.value.add(path);
+  }
+}
+
+function toggleSelectAllLeft() {
+  const items = leftPaneTarget.value === 'local' ? displayLocalFiles.value : displayLeftRemoteFiles.value;
+  if (selectedLeftPaths.value.size === items.length && items.length > 0) {
+    selectedLeftPaths.value.clear();
+  } else {
+    selectedLeftPaths.value = new Set(items.map(i => i.path));
+  }
+}
+
+function toggleSelectRight(path: string) {
+  if (selectedRightPaths.value.has(path)) {
+    selectedRightPaths.value.delete(path);
+  } else {
+    selectedRightPaths.value.add(path);
+  }
+}
+
+function toggleSelectAllRight() {
+  const items = displayRemoteFiles.value;
+  if (selectedRightPaths.value.size === items.length && items.length > 0) {
+    selectedRightPaths.value.clear();
+  } else {
+    selectedRightPaths.value = new Set(items.map(i => i.path));
+  }
+}
+
+async function deleteSelectedItems(side: 'left' | 'right') {
+  const isLeft = side === 'left';
+  const selected = isLeft ? selectedLeftPaths.value : selectedRightPaths.value;
+  if (selected.size === 0) return;
+
+  const count = selected.size;
+  const confirm = await dialogStore.confirm({
+    title: `Delete ${count} item(s)?`,
+    description: `Are you sure you want to permanently delete the ${count} selected item(s)?`,
+    confirmText: 'Delete All',
+    isDestructive: true,
+  });
+  if (!confirm) return;
+
+  const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
+  try {
+    if (isLocal) {
+      const items = localFiles.value.filter(i => selected.has(i.path));
+      for (const it of items) {
+        await tauriBridge.fsDeletePath(it.path, it.is_dir);
+      }
+      selectedLeftPaths.value.clear();
+      await fetchLocalFiles();
+    } else if (isLeft) {
+      const activeId = await ensureLeftConnected();
+      const items = leftRemoteFiles.value.filter(i => selected.has(i.path));
+      for (const it of items) {
+        await tauriBridge.sftpDelete(activeId, it.path, it.is_dir);
+      }
+      selectedLeftPaths.value.clear();
+      await fetchLeftRemoteFiles();
+    } else {
+      const activeId = await ensureConnected();
+      const items = remoteFiles.value.filter(i => selected.has(i.path));
+      for (const it of items) {
+        await tauriBridge.sftpDelete(activeId, it.path, it.is_dir);
+      }
+      selectedRightPaths.value.clear();
+      await fetchRemoteFiles();
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Bulk Delete Failed',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+async function transferSelectedLeft() {
+  const selected = selectedLeftPaths.value;
+  if (selected.size === 0) return;
+  const items = (leftPaneTarget.value === 'local' ? localFiles.value : leftRemoteFiles.value).filter(i => selected.has(i.path));
+  for (const it of items) {
+    await transferItemLeftToRight(it);
+  }
+  selectedLeftPaths.value.clear();
+}
+
+async function transferSelectedRight() {
+  const selected = selectedRightPaths.value;
+  if (selected.size === 0) return;
+  const items = remoteFiles.value.filter(i => selected.has(i.path));
+  for (const it of items) {
+    await downloadRemoteItem(it);
+  }
+  selectedRightPaths.value.clear();
 }
 
 // Transfer Operations (Upload & Download Stream for File & Folder, plus Server-to-Server)
@@ -1017,8 +2324,8 @@ async function transferRemoteToRemote(item: RemoteFileItem) {
   const targetRemotePath = `${remotePathInput.value === '.' ? '' : remotePathInput.value}${sep}${item.name}`;
 
   try {
-    const srcId = leftPaneTarget.value;
-    const dstId = rightPaneTarget.value;
+    const srcId = await ensureLeftConnected();
+    const dstId = await ensureConnected();
     const transferId = queueStore.addUpload(
       srcId,
       targetRemotePath,
@@ -1130,6 +2437,16 @@ async function downloadRemoteItem(file: RemoteFileItem) {
       description: String(err),
       variant: 'error',
     });
+  }
+}
+
+function onLeftRemoteDragStart(event: DragEvent, item: RemoteFileItem) {
+  draggedRemoteItem = item;
+  draggedLocalItem = null;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'copyMove';
+    event.dataTransfer.setData('text/plain', JSON.stringify({ type: 'left_remote', file: item }));
+    event.dataTransfer.setData('application/json', JSON.stringify({ type: 'left_remote', file: item }));
   }
 }
 
