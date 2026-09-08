@@ -762,6 +762,7 @@ Guidelines:
     deleteProvider,
     setActiveProvider,
     setExecutionMode,
+    saveState,
     createNewThread,
     switchThread,
     deleteThread,
