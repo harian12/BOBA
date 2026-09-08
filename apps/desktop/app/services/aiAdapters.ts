@@ -285,6 +285,138 @@ async function streamViaNativeHttp(
 }
 
 // -------------------------------------------------------------
+// Message Sanitizer for LLMs (OpenAI, Gemini, Anthropic)
+// Mencegah error 'function call turn comes immediately after a user turn...'
+// -------------------------------------------------------------
+export function sanitizeMessagesForOpenAi(
+  messages: AiChatMessage[],
+  systemPrompt: string
+): any[] {
+  const toolNameMap = new Map<string, string>();
+  for (const m of messages) {
+    if (m.toolCalls) {
+      for (const tc of m.toolCalls) {
+        if (tc.id) toolNameMap.set(tc.id, tc.name);
+      }
+    }
+  }
+
+  const answeredToolIds = new Set<string>();
+  for (const m of messages) {
+    if (m.role === 'tool' && m.toolCallId) {
+      answeredToolIds.add(m.toolCallId);
+    }
+  }
+
+  const rawFormatted: any[] = [];
+
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      const toolName = (m.toolCallId && toolNameMap.get(m.toolCallId)) || 'exec_command';
+      const cleanContent = m.content && m.content.trim().length > 0
+        ? m.content
+        : '(Perintah selesai dieksekusi tanpa output)';
+
+      rawFormatted.push({
+        role: 'tool',
+        tool_call_id: m.toolCallId,
+        name: toolName,
+        content: cleanContent,
+      });
+    } else if (m.role === 'assistant') {
+      const cleanText = (m.content || '')
+        .replace(/\n*⚠️ (Connection Error|Error):[\s\S]*$/, '')
+        .trim();
+
+      const validToolCalls = (m.toolCalls || []).filter(tc => tc.id && tc.name);
+
+      if (validToolCalls.length > 0) {
+        rawFormatted.push({
+          role: 'assistant',
+          content: cleanText || null,
+          tool_calls: validToolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
+            },
+          })),
+        });
+
+        for (const tc of validToolCalls) {
+          if (!answeredToolIds.has(tc.id)) {
+            answeredToolIds.add(tc.id);
+            rawFormatted.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              name: tc.name,
+              content: '(Perintah dibatalkan atau belum dijalankan)',
+            });
+          }
+        }
+      } else if (cleanText.length > 0) {
+        rawFormatted.push({
+          role: 'assistant',
+          content: cleanText,
+        });
+      }
+    } else if (m.role === 'user') {
+      const text = (m.content || '').trim();
+      if (text.length > 0) {
+        rawFormatted.push({
+          role: 'user',
+          content: text,
+        });
+      }
+    }
+  }
+
+  const normalized: any[] = [{ role: 'system', content: systemPrompt }];
+
+  for (let i = 0; i < rawFormatted.length; i++) {
+    const item = rawFormatted[i];
+    const prev = normalized[normalized.length - 1];
+
+    if (item.role === 'tool') {
+      if (prev && (prev.role === 'tool' || (prev.role === 'assistant' && prev.tool_calls))) {
+        normalized.push(item);
+      } else {
+        normalized.push({
+          role: 'user',
+          content: `[Hasil Eksekusi ${item.name}]: ${item.content}`,
+        });
+      }
+    } else if (item.role === 'assistant') {
+      if (prev && prev.role === 'assistant') {
+        if (item.tool_calls && !prev.tool_calls) {
+          if (prev.content && !item.content) item.content = prev.content;
+          normalized[normalized.length - 1] = item;
+        } else if (!item.tool_calls && prev.tool_calls) {
+          // Pertahankan prev
+        } else {
+          prev.content = `${prev.content || ''}\n${item.content || ''}`.trim();
+        }
+      } else {
+        normalized.push(item);
+      }
+    } else if (item.role === 'user') {
+      if (prev && prev.role === 'user') {
+        prev.content = `${prev.content}\n${item.content}`;
+      } else {
+        normalized.push(item);
+      }
+    }
+  }
+
+  while (normalized.length > 1 && normalized[normalized.length - 1].role === 'assistant') {
+    normalized.pop();
+  }
+
+  return normalized;
+}
+
+// -------------------------------------------------------------
 // Adapter: OpenAI-Compatible (/chat/completions)
 // -------------------------------------------------------------
 async function streamOpenAiCompatible(
@@ -303,44 +435,7 @@ async function streamOpenAiCompatible(
     endpoint = `${endpoint}${sep}key=${encodeURIComponent(apiKey)}`;
   }
 
-  // Filter pesan kosong agar API tidak menolak dengan 400 Bad Request
-  const validMessages = messages.filter(m => {
-    if (m.role === 'tool') return true;
-    if (m.role === 'assistant') {
-      return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
-    }
-    return m.content && m.content.trim().length > 0;
-  });
-
-  const formattedMessages: any[] = [{ role: 'system', content: systemPrompt }];
-
-  for (const m of validMessages) {
-    if (m.role === 'tool') {
-      formattedMessages.push({
-        role: 'tool',
-        tool_call_id: m.toolCallId,
-        content: m.content,
-      });
-    } else if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
-      formattedMessages.push({
-        role: 'assistant',
-        content: m.content || null,
-        tool_calls: m.toolCalls.map(tc => ({
-          id: tc.id,
-          type: 'function',
-          function: {
-            name: tc.name,
-            arguments: JSON.stringify(tc.args),
-          },
-        })),
-      });
-    } else {
-      formattedMessages.push({
-        role: m.role,
-        content: m.content,
-      });
-    }
-  }
+  const formattedMessages = sanitizeMessagesForOpenAi(messages, systemPrompt);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -627,59 +722,59 @@ async function streamGemini(
     },
   ];
 
-  // Filter pesan kosong agar API tidak menolak dengan 400 Bad Request
-  const validMessages = messages.filter(m => {
-    if (m.role === 'tool') return true;
-    if (m.role === 'assistant') {
-      return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
-    }
-    return m.content && m.content.trim().length > 0;
-  });
+  const sanitized = sanitizeMessagesForOpenAi(messages, '');
+  const rawContents: any[] = [];
+  for (const m of sanitized) {
+    if (m.role === 'system') continue;
 
-  const contents: any[] = [];
-  for (const m of validMessages) {
     if (m.role === 'tool') {
-      let toolName = 'exec_command';
-      for (const prev of messages) {
-        if (prev.toolCalls) {
-          const match = prev.toolCalls.find(tc => tc.id === m.toolCallId);
-          if (match) {
-            toolName = match.name;
-            break;
-          }
-        }
-      }
-      contents.push({
+      rawContents.push({
         role: 'user',
         parts: [
           {
             functionResponse: {
-              name: toolName,
+              name: m.name || 'exec_command',
               response: {
-                name: toolName,
+                name: m.name || 'exec_command',
                 content: m.content,
               },
             },
           },
         ],
       });
-    } else if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+    } else if (m.role === 'assistant') {
       const parts: any[] = [];
       if (m.content) parts.push({ text: m.content });
-      for (const tc of m.toolCalls) {
-        parts.push({
-          functionCall: {
-            name: tc.name,
-            args: tc.args,
-          },
-        });
+      if (m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          let argsObj = {};
+          try {
+            argsObj = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+          } catch (_) {}
+          parts.push({
+            functionCall: {
+              name: tc.function.name,
+              args: argsObj,
+            },
+          });
+        }
       }
-      contents.push({ role: 'model', parts });
-    } else {
-      contents.push({
-        role: m.role === 'assistant' ? 'model' : 'user',
+      rawContents.push({ role: 'model', parts });
+    } else if (m.role === 'user') {
+      rawContents.push({
+        role: 'user',
         parts: [{ text: m.content }],
       });
+    }
+  }
+
+  const contents: any[] = [];
+  for (const turn of rawContents) {
+    const prev = contents[contents.length - 1];
+    if (prev && prev.role === turn.role) {
+      prev.parts.push(...turn.parts);
+    } else {
+      contents.push(turn);
     }
   }
 

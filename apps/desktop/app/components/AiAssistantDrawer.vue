@@ -652,7 +652,12 @@ async function retryConnection() {
   while (thread.messages.length > 0) {
     const last = thread.messages[thread.messages.length - 1];
     if (last.role === 'assistant' && (!last.content || last.content.includes('⚠️ Connection Error') || last.content.includes('⚠️ Error'))) {
-      thread.messages.pop();
+      if (last.toolCalls && last.toolCalls.length > 0) {
+        last.content = last.content.replace(/\n*⚠️ (Connection Error|Error):[\s\S]*$/, '').trim();
+        break;
+      } else {
+        thread.messages.pop();
+      }
     } else {
       break;
     }
