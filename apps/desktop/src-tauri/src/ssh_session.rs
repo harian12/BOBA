@@ -259,7 +259,7 @@ impl SshManager {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             active_transfers: Arc::new(Mutex::new(HashMap::new())),
-            concurrency: Arc::new(AtomicUsize::new(3)),
+            concurrency: Arc::new(AtomicUsize::new(10)),
             active_semaphores: Arc::new(Mutex::new(HashMap::new())),
             next_semaphore_id: Arc::new(AtomicU64::new(1)),
             cancel_epoch: Arc::new(AtomicU64::new(0)),
@@ -2440,7 +2440,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let dst_root = if dst_parent_folder == "." || dst_parent_folder.is_empty() {
             folder_name.to_string()
         } else if dst_parent_folder.trim_end_matches('/').ends_with(folder_name) {
-            dst_parent_folder
+            dst_parent_folder.clone()
         } else {
             format!("{}/{}", dst_parent_folder.trim_end_matches('/'), folder_name)
         };
@@ -2452,6 +2452,21 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         {
             known_dirs.lock().unwrap().insert(dst_root.clone());
         }
+
+        let _ = app.emit("sftp-progress", TransferProgress {
+            transfer_id: transfer_id.clone(),
+            session_id: src_session_id.clone(),
+            file_name: format!("📁 {}", folder_name),
+            remote_path: src_folder.clone(),
+            local_path: Some(dst_parent_folder.clone()),
+            direction: "remote-to-remote".into(),
+            bytes_transferred: 0,
+            total_bytes: 0,
+            percentage: 0.0,
+            speed_bps: 0.0,
+            status: "transferring".into(),
+            error_message: None,
+        });
 
         let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
         let (sem_id, semaphore) = self.register_semaphore(conc);
@@ -2537,9 +2552,9 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                         }
                                         return;
                                     }
-                                    let list = match sftp_c.read_dir(&current_dir).await {
-                                        Ok(l) => l,
-                                        Err(_) => {
+                                    let list = match tokio::time::timeout(std::time::Duration::from_secs(30), sftp_c.read_dir(&current_dir)).await {
+                                        Ok(Ok(l)) => l,
+                                        _ => {
                                             if active_dirs_c.fetch_sub(1, Ordering::SeqCst) == 1 {
                                                 done_notify_c.notify_one();
                                             }
@@ -2568,7 +2583,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                                 kd.insert(full_dst.clone())
                                             };
                                             if is_new {
-                                                let _ = this_c.ensure_dir_exists(&dst_id_c, &dst_sftp_c, &full_dst).await;
+                                                let _ = tokio::time::timeout(std::time::Duration::from_secs(15), this_c.ensure_dir_exists(&dst_id_c, &dst_sftp_c, &full_dst)).await;
                                             }
                                             active_dirs_c.fetch_add(1, Ordering::SeqCst);
                                             let _ = dir_tx_c.send(full_src).await;
@@ -2593,6 +2608,9 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                             });
 
                                             if tx_c.send((full_src, full_dst, transfer_id, size)).await.is_err() {
+                                                if active_dirs_c.fetch_sub(1, Ordering::SeqCst) == 1 {
+                                                    done_notify_c.notify_one();
+                                                }
                                                 return;
                                             }
                                         }
@@ -2781,6 +2799,21 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         {
             known_dirs.lock().unwrap().insert(target_remote_root.clone());
         }
+
+        let _ = app.emit("sftp-progress", TransferProgress {
+            transfer_id: transfer_id.clone(),
+            session_id: session_id.clone(),
+            file_name: format!("📁 {}", folder_name),
+            remote_path: target_remote_root.clone(),
+            local_path: Some(local_folder.clone()),
+            direction: "upload".into(),
+            bytes_transferred: 0,
+            total_bytes: 0,
+            percentage: 0.0,
+            speed_bps: 0.0,
+            status: "transferring".into(),
+            error_message: None,
+        });
 
         let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
         let (sem_id, semaphore) = self.register_semaphore(conc);
@@ -3111,6 +3144,21 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             local_dirs.lock().unwrap().insert(local_root.clone());
         }
 
+        let _ = app.emit("sftp-progress", TransferProgress {
+            transfer_id: transfer_id.clone(),
+            session_id: session_id.clone(),
+            file_name: format!("📁 {}", folder_name),
+            remote_path: remote_folder.clone(),
+            local_path: Some(local_parent_dir.clone()),
+            direction: "download".into(),
+            bytes_transferred: 0,
+            total_bytes: 0,
+            percentage: 0.0,
+            speed_bps: 0.0,
+            status: "transferring".into(),
+            error_message: None,
+        });
+
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String)>(500);
 
         let scanner_app = app.clone();
@@ -3190,9 +3238,9 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                         return;
                                     }
 
-                                    let list = match sftp_c.read_dir(&current_remote_dir).await {
-                                        Ok(l) => l,
-                                        Err(_) => {
+                                    let list = match tokio::time::timeout(std::time::Duration::from_secs(30), sftp_c.read_dir(&current_remote_dir)).await {
+                                        Ok(Ok(l)) => l,
+                                        _ => {
                                             if active_dirs_c.fetch_sub(1, Ordering::SeqCst) == 1 {
                                                 done_notify_c.notify_one();
                                             }

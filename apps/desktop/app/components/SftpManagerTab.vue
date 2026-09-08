@@ -4016,6 +4016,7 @@ async function transferRemoteRightToLeft(item: RemoteFileItem) {
     );
 
     try {
+      queueStore.updateStatus(transferId, 'transferring');
       await tauriBridge.sftpTransferRemoteToRemote(
         srcId,
         dstId,
@@ -4073,6 +4074,7 @@ async function transferRemoteToRemote(item: RemoteFileItem) {
     );
 
     try {
+      queueStore.updateStatus(transferId, 'transferring');
       await tauriBridge.sftpTransferRemoteToRemote(
         srcId,
         dstId,
@@ -4143,18 +4145,11 @@ async function uploadLocalItem(item: LocalFileItem) {
         rightServerName.value
       );
       try {
+        queueStore.updateStatus(folderTransferId, 'transferring');
         await tauriBridge.sftpUploadFolder(activeId, item.path, remotePathInput.value, queueStore.maxConcurrent, folderTransferId);
-        const folderItem = queueStore.transfers.find(t => t.id === folderTransferId);
-        if (folderItem) {
-          folderItem.status = 'completed';
-          folderItem.percentage = 100;
-        }
+        queueStore.updateStatus(folderTransferId, 'completed');
       } catch (e) {
-        const folderItem = queueStore.transfers.find(t => t.id === folderTransferId);
-        if (folderItem) {
-          folderItem.status = 'error';
-          folderItem.errorMessage = String(e);
-        }
+        queueStore.updateStatus(folderTransferId, 'error', String(e));
         throw e;
       }
     } else {
@@ -4224,18 +4219,11 @@ async function downloadRemoteItem(file: RemoteFileItem) {
         'Local Machine'
       );
       try {
+        queueStore.updateStatus(folderTransferId, 'transferring');
         await tauriBridge.sftpDownloadFolder(activeId, file.path, localPathInput.value, queueStore.maxConcurrent, folderTransferId);
-        const folderItem = queueStore.transfers.find(t => t.id === folderTransferId);
-        if (folderItem) {
-          folderItem.status = 'completed';
-          folderItem.percentage = 100;
-        }
+        queueStore.updateStatus(folderTransferId, 'completed');
       } catch (e) {
-        const folderItem = queueStore.transfers.find(t => t.id === folderTransferId);
-        if (folderItem) {
-          folderItem.status = 'error';
-          folderItem.errorMessage = String(e);
-        }
+        queueStore.updateStatus(folderTransferId, 'error', String(e));
         throw e;
       }
     } else {

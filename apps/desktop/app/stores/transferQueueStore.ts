@@ -29,6 +29,9 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   const maxConcurrent = ref<number>(
     typeof window !== 'undefined' ? Math.max(1, Math.min(20, Number(localStorage.getItem('boba_sftp_concurrency') || 5))) : 5
   );
+  if (typeof window !== 'undefined') {
+    tauriBridge.sftpSetConcurrency(maxConcurrent.value).catch(() => {});
+  }
   const lastCompletedAt = ref<number>(0);
   let isListenerRegistered = false;
   let pendingBatch: TransferItem[] = [];
