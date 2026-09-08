@@ -1324,7 +1324,7 @@
           <!-- Tombol Batalkan Semua saat di tab Proses/Antrean dan ada transfer berjalan -->
           <button
             v-if="!isQueueCollapsed && (queueTab === 'active' || queueTab === 'pending') && (sessionActiveTransfers.length > 0 || sessionPendingTransfers.length > 0)"
-            @click="queueStore.cancelAll()"
+            @click="handleCancelAll"
             class="text-[10px] text-rose-300 hover:text-rose-100 bg-rose-950/70 border border-rose-800 px-2 py-0.5 rounded transition flex items-center space-x-1 font-semibold"
             title="Hentikan dan batalkan semua transfer aktif dan antrean seketika"
           >
@@ -1397,7 +1397,7 @@
                 Menunggu giliran
               </span>
               <button
-                @click="queueStore.cancelTransfer(item.id)"
+                @click="handleCancelTransfer(item)"
                 class="text-rose-400 hover:text-rose-300 text-[10px] px-2 py-0.5 rounded bg-rose-950/40 border border-rose-900/50 transition"
               >
                 Cancel
@@ -1514,7 +1514,7 @@
             <!-- If transferring, show speed or Cancel -->
             <button
               v-if="item.status === 'transferring' || item.status === 'pending'"
-              @click="queueStore.cancelTransfer(item.id)"
+              @click="handleCancelTransfer(item)"
               class="text-rose-400 hover:text-rose-300 text-[10px] px-2 py-0.5 rounded bg-rose-950/40 border border-rose-900/50 transition"
             >
               Cancel
@@ -3068,6 +3068,42 @@ const currentQueueItems = computed(() => {
   if (queueTab.value === 'completed') return sessionCompletedTransfers.value;
   return sessionFailedTransfers.value;
 });
+
+async function handleCancelTransfer(item: any) {
+  const fileName = typeof item === 'object' ? item.fileName : (queueStore.transfers.find(t => t.id === item)?.fileName || 'file');
+  const transferId = typeof item === 'object' ? item.id : item;
+
+  const isConfirmed = await dialogStore.confirm({
+    title: 'Batalkan Transfer?',
+    description: `Apakah Anda yakin ingin membatalkan proses transfer "${fileName}"?`,
+    confirmText: 'Ya, Batalkan',
+    cancelText: 'Lanjutkan Transfer',
+    isDestructive: true,
+  });
+
+  if (isConfirmed) {
+    queueStore.cancelTransfer(transferId);
+    dialogStore.showToast(`Transfer "${fileName}" dibatalkan.`, 'info', 2000);
+  }
+}
+
+async function handleCancelAll() {
+  const count = sessionActiveTransfers.value.length + sessionPendingTransfers.value.length;
+  if (count === 0) return;
+
+  const isConfirmed = await dialogStore.confirm({
+    title: 'Batalkan Semua Transfer?',
+    description: `Apakah Anda yakin ingin menghentikan dan membatalkan seluruh ${count} transfer yang sedang berjalan dan dalam antrean?`,
+    confirmText: 'Ya, Batalkan Semua',
+    cancelText: 'Tetap Lanjutkan',
+    isDestructive: true,
+  });
+
+  if (isConfirmed) {
+    queueStore.cancelAll();
+    dialogStore.showToast(`${count} transfer dibatalkan.`, 'info', 2000);
+  }
+}
 
 onMounted(async () => {
   window.addEventListener('click', closeContextMenu);
