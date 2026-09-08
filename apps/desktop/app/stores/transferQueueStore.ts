@@ -521,10 +521,16 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
 
   async function resumeAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
     if (isRetryingAll.value) return;
-    const targetList = transfers.value.filter(
+    let targetList = transfers.value.filter(
       t => t.status === 'error' || t.status === 'cancelled'
     );
     if (targetList.length === 0) return;
+
+    // Jika ada file individual yang gagal, filter keluar folder induk agar tidak memicu re-scan ganda
+    const hasFiles = targetList.some(t => !t.fileName.startsWith('📁'));
+    if (hasFiles) {
+      targetList = targetList.filter(t => !t.fileName.startsWith('📁'));
+    }
 
     isRetryingAll.value = true;
     try {
@@ -572,10 +578,16 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
 
   async function restartAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
     if (isRetryingAll.value) return;
-    const targetList = transfers.value.filter(
+    let targetList = transfers.value.filter(
       t => t.status === 'error' || t.status === 'cancelled'
     );
     if (targetList.length === 0) return;
+
+    // Jika ada file individual yang gagal, filter keluar folder induk agar tidak memicu re-scan ganda
+    const hasFiles = targetList.some(t => !t.fileName.startsWith('📁'));
+    if (hasFiles) {
+      targetList = targetList.filter(t => !t.fileName.startsWith('📁'));
+    }
 
     isRetryingAll.value = true;
     try {
@@ -623,6 +635,55 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     }
   }
 
+  async function processPendingQueue(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
+    if (isRetryingAll.value) return;
+    let targetList = transfers.value.filter(t => t.status === 'pending');
+    if (targetList.length === 0) return;
+
+    // Filter folder induk jika ada file individual di antrean
+    const hasFiles = targetList.some(t => !t.fileName.startsWith('📁'));
+    if (hasFiles) {
+      targetList = targetList.filter(t => !t.fileName.startsWith('📁'));
+    }
+
+    isRetryingAll.value = true;
+    try {
+      const executing = new Set<Promise<void>>();
+      const limit = Math.min(5, maxConcurrent.value);
+      for (const item of targetList) {
+        if (isCancellingAll) break;
+
+        while (executing.size >= limit) {
+          await Promise.race([...executing, onConcurrencyChange()]);
+          if (isCancellingAll) break;
+        }
+        if (isCancellingAll) break;
+
+        let dstId: string | undefined;
+        try {
+          dstId = resolveDstId ? await resolveDstId(item) : item.targetSessionId;
+        } catch {
+          dstId = item.targetSessionId;
+        }
+
+        const p = Promise.race([
+          resumeTransfer(item.id, dstId),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Transfer timeout setelah 45 detik')), 45000))
+        ]).catch((err) => {
+          item.status = 'error';
+          item.errorMessage = String(err);
+          triggerRef(transfers);
+        }).finally(() => {
+          executing.delete(p);
+        });
+        executing.add(p);
+      }
+      await Promise.all(executing);
+    } finally {
+      isRetryingAll.value = false;
+    }
+  }
+
   return {
     transfers,
     isTrayExpanded,
@@ -648,6 +709,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     restartTransfer,
     resumeAllFailed,
     restartAllFailed,
+    processPendingQueue,
     isRetryingAll,
     cancelTransfer,
     cancelAll,

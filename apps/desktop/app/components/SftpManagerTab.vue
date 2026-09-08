@@ -3231,7 +3231,7 @@ const sessionFailedTransfers = computed(() => {
 });
 
 const isFolderTransferring = computed(() => {
-  return queueStore.transfers.some(t => t.status === 'transferring' && (t.fileName.startsWith('📁') || (t.direction === 'remote-to-remote' && t.totalBytes === 0)));
+  return queueStore.transfers.some(t => t.status === 'transferring' && t.fileName.startsWith('📁'));
 });
 
 const currentQueueItems = computed(() => {
@@ -3339,7 +3339,7 @@ async function handleProcessPending() {
 
   queueTab.value = 'active';
   dialogStore.showToast(`Memulai proses ${count} antrean transfer...`, 'info', 3000);
-  await queueStore.resumeAllFailed(resolveDestinationSession);
+  await queueStore.processPendingQueue(resolveDestinationSession);
 }
 
 onMounted(async () => {

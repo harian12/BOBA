@@ -1916,6 +1916,14 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| src_path.clone());
 
+            let status = if res.is_ok() {
+                "completed".into()
+            } else if res.as_ref().err().map_or(false, |e| e.contains("cancelled")) {
+                "cancelled".into()
+            } else {
+                "error".into()
+            };
+
             let _ = app.emit("sftp-progress", TransferProgress {
                 transfer_id: transfer_id.clone(),
                 session_id: src_session_id.clone(),
@@ -1927,7 +1935,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 total_bytes: 0,
                 percentage: 100.0,
                 speed_bps: 0.0,
-                status: if res.is_ok() { "completed".into() } else { "error".into() },
+                status,
                 error_message: res.as_ref().err().cloned(),
             });
 
@@ -2034,8 +2042,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                         transfer_id: transfer_id.clone(),
                         session_id: src_session_id.clone(),
                         file_name: file_name.clone(),
-                        remote_path: dst_path.clone(),
-                        local_path: Some(format!("Remote:{}", src_session_id)),
+                        remote_path: src_path.clone(),
+                        local_path: Some(dst_path.clone()),
                         direction: "remote-to-remote".into(),
                         bytes_transferred: 0,
                         total_bytes,
@@ -3203,6 +3211,20 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         self.folder_notifiers.lock().remove(&transfer_id);
 
         if cancel_flag.load(Ordering::SeqCst) || self.cancel_epoch.load(Ordering::SeqCst) != start_epoch {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: session_id.clone(),
+                file_name: folder_name,
+                remote_path: target_remote_root,
+                local_path: Some(local_folder),
+                direction: "upload".into(),
+                bytes_transferred: 0,
+                total_bytes: 0,
+                percentage: 0.0,
+                speed_bps: 0.0,
+                status: "cancelled".into(),
+                error_message: Some("Transfer cancelled by user".into()),
+            });
             return Err("Transfer cancelled by user".into());
         }
 
@@ -3543,6 +3565,20 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         self.folder_notifiers.lock().remove(&transfer_id);
 
         if cancel_flag.load(Ordering::SeqCst) || self.cancel_epoch.load(Ordering::SeqCst) != start_epoch {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: session_id.clone(),
+                file_name: folder_name,
+                remote_path: remote_folder,
+                local_path: Some(local_root.to_string_lossy().to_string()),
+                direction: "download".into(),
+                bytes_transferred: 0,
+                total_bytes: 0,
+                percentage: 0.0,
+                speed_bps: 0.0,
+                status: "cancelled".into(),
+                error_message: Some("Transfer cancelled by user".into()),
+            });
             return Err("Transfer cancelled by user".into());
         }
 
