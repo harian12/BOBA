@@ -1,8 +1,22 @@
 <template>
   <aside
     v-show="aiStore.isDrawerOpen"
-    class="w-[430px] border-l border-boba-800 bg-[#0d101a] flex flex-col h-full shrink-0 select-none z-30 font-sans shadow-2xl transition-all duration-150"
+    :style="{ width: `${drawerWidth}px` }"
+    :class="[
+      'relative border-l border-boba-800 bg-[#0d101a] flex flex-col h-full shrink-0 select-none z-30 font-sans shadow-2xl',
+      isResizing ? 'select-none pointer-events-auto' : 'transition-[width] duration-150'
+    ]"
   >
+    <!-- Resize Handle (Left Edge) -->
+    <div
+      @mousedown="startResize"
+      @dblclick="toggleExpandWidth"
+      class="absolute -left-1 top-0 bottom-0 w-2 cursor-col-resize hover:bg-purple-500/50 active:bg-purple-500 transition-colors z-40 group flex items-center justify-center"
+      title="Tarik untuk ubah ukuran chat (klik ganda untuk perlebar/kecilkan)"
+    >
+      <div class="h-8 w-0.5 rounded-full bg-slate-600/30 group-hover:bg-purple-300 transition-colors"></div>
+    </div>
+
     <!-- Drawer Header -->
     <div class="h-11 px-3 bg-[#090b12] border-b border-[#1b2234] flex items-center justify-between shrink-0">
       <div class="flex items-center space-x-2 truncate">
@@ -51,6 +65,15 @@
           title="Bersihkan riwayat chat sesi ini"
         >
           🗑️
+        </button>
+
+        <!-- Toggle Expand / Shrink Width -->
+        <button
+          @click="toggleExpandWidth"
+          class="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 text-xs transition"
+          :title="drawerWidth > 550 ? 'Kembalikan ukuran normal' : 'Perlebar room chat'"
+        >
+          {{ drawerWidth > 550 ? '⤡' : '⤢' }}
         </button>
 
         <!-- Close Drawer Button -->
@@ -252,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useVaultStore } from '../stores/vaultStore.js';
@@ -265,6 +288,60 @@ const dialogStore = useDialogStore();
 
 const promptInput = ref('');
 const chatFeedRef = ref<HTMLElement | null>(null);
+
+const DEFAULT_WIDTH = 430;
+const MIN_WIDTH = 340;
+const drawerWidth = ref<number>(DEFAULT_WIDTH);
+const isResizing = ref(false);
+
+function initWidth() {
+  if (typeof window === 'undefined') return;
+  const saved = localStorage.getItem('boba_ai_drawer_width');
+  if (saved) {
+    const parsed = parseInt(saved, 10);
+    if (!isNaN(parsed) && parsed >= MIN_WIDTH) {
+      drawerWidth.value = parsed;
+    }
+  }
+}
+
+function startResize(e: MouseEvent) {
+  e.preventDefault();
+  isResizing.value = true;
+  const startX = e.clientX;
+  const startWidth = drawerWidth.value;
+
+  function onMouseMove(moveEvent: MouseEvent) {
+    const deltaX = startX - moveEvent.clientX; // geser ke kiri memperlebar panel
+    const maxWidth = Math.min(window.innerWidth * 0.85, 1200);
+    const newWidth = Math.max(MIN_WIDTH, Math.min(maxWidth, startWidth + deltaX));
+    drawerWidth.value = Math.round(newWidth);
+  }
+
+  function onMouseUp() {
+    isResizing.value = false;
+    localStorage.setItem('boba_ai_drawer_width', String(drawerWidth.value));
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  }
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+}
+
+function toggleExpandWidth() {
+  const expandedWidth = Math.min(window.innerWidth * 0.7, 850);
+  if (drawerWidth.value > 550) {
+    drawerWidth.value = DEFAULT_WIDTH;
+  } else {
+    drawerWidth.value = Math.round(expandedWidth);
+  }
+  localStorage.setItem('boba_ai_drawer_width', String(drawerWidth.value));
+}
+
+onMounted(() => {
+  initWidth();
+});
 
 const starterChips = [
   'Cek status Nginx dan error log terakhir',
