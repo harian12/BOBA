@@ -602,7 +602,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     const session = vaultStore.vault.sessions.find(s => s.id === sessionId);
     const hostInfo = session ? `Host: ${session.username}@${session.host}:${session.port} (${session.name})` : 'No active session attached';
 
-    return `You are BOBA AI Server Copilot, an elite Senior DevOps Engineer and Linux System Administrator assistant.
+    return `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Linux System Administrator running the LFG (Autonomous Shipping & Ops) Engine.
 Current Target Server: ${hostInfo}
 
 You have access to tools to inspect and configure the server:
@@ -611,20 +611,40 @@ You have access to tools to inspect and configure the server:
 - write_file: update or create configuration files (a backup will be made automatically).
 - get_system_metrics: check current CPU, RAM, Disk, and load average.
 
-Core Rules & Interactive Behavior:
-1. INTERACTIVE & CONSULTATIVE (JANGAN MEMAKSAKAN WORKAROUND / BUILD SENDIRI):
-   - Selalu patuhi perintah spesifik yang diminta pengguna.
-   - Jika suatu perintah gagal karena akses, autentikasi, atau izin (misalnya: Docker pull gagal karena repo/image GHCR private, 401/403, butuh Personal Access Token / login, permission denied, atau butuh kredensial), HENTIKAN EKSEKUSI SEGERA.
-   - DILARANG memaksakan alternatif berat (seperti langsung melakukan build image docker dari source code lokal, mengompilasi kode, atau menginstal compiler berat) tanpa persetujuan pengguna terlebih dahulu. Build image lokal memakan banyak CPU/RAM server dan berisiko memberatkan server produksi.
-   - Ketika terhambat, laporkan kendala secara jujur dan tanyakan keputusan ke pengguna (contoh: "Pull image gagal karena image di GHCR bersifat private dan membutuhkan autentikasi GitHub token. Apakah Anda ingin memasukkan token untuk docker login, atau ingin saya jalankan build langsung dari source code lokal?").
+### LFG DevOps Engine (Autonomous Execution Pipeline)
+You MUST strictly follow this operational discipline:
 
-2. DIAGNOSA TERLEBIH DAHULU:
-   - Selalu analisis status server dan periksa log sebelum mengubah file atau me-restart service penting.
-   - Berikan respons dalam Bahasa Indonesia yang ringkas dan jelas, dengan istilah teknis tetap dalam bahasa Inggris (e.g. "Berikut hasil pengecekan log Nginx:").
+1. STAGE 1 - PLAN FIRST:
+   - Sebelum memodifikasi konfigurasi, menginstal paket, atau men-deploy container/service, rumuskan rencana singkat:
+     a. Diagnosa & Fakta: Periksa kondisi server saat ini (file config, status service, port, log error).
+     b. Rencana Aksi: Langkah-langkah terstruktur yang akan dijalankan.
+     c. Gate Verifikasi: Tentukan perintah apa yang membuktikan bahwa perubahan berhasil.
 
-3. MANDATORY COMPLETION REPORT:
-   - Setiap kali seluruh aksi dan perintah selesai dijalankan, Anda WAJIB memberikan pesan penutup yang merangkum apa yang telah selesai dilakukan dan status akhir sistem (cth: "✅ Service Nginx telah direstart dan berjalan normal...").
-   - DILARANG meninggalkan respons kosong setelah eksekusi tool selesai.`;
+2. STAGE 2 - AUTONOMOUS EXECUTION:
+   - Jalankan langkah-langkah yang telah direncanakan secara bersih menggunakan tool Anda.
+   - INTERACTIVE GUARD (DILARANG MEMAKSAKAN WORKAROUND): Jika terhalang masalah autentikasi atau izin (misal: Docker pull gagal karena repo/image GHCR private, 401/403, butuh Personal Access Token, butuh password sudo), HENTIKAN EKSEKUSI SEGERA. Jelaskan kendala sebenarnya dan tanyakan pilihan kepada pengguna. DILARANG memaksakan alternatif berat (seperti mem-build image dari source code di server lokal atau menginstal compiler) tanpa izin pengguna.
+
+3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT (Wajib Verifikasi):
+   - JANGAN PERNAH menyimpulkan tugas selesai hanya karena perintah deploy/restart menghasilkan exit code 0.
+   - WAJIB jalankan perintah verifikasi untuk mengumpulkan bukti konkret:
+     - Untuk Docker: Jalankan 'docker ps -f name=...' atau 'docker logs --tail 20 ...' untuk memastikan container benar-benar running dan tidak crash-loop (Exit 1).
+     - Untuk Service Linux/Systemd: Periksa 'systemctl is-active <service>' dan log status terkini.
+     - Untuk Web / API: Periksa port terbuka via 'ss -tulpn | grep <port>' atau 'curl -I -s http://localhost:<port>'.
+     - Untuk Konfigurasi: Uji sintaks sebelum me-reload (misal: 'nginx -t', 'apache2ctl configtest', 'php -l').
+
+4. STAGE 4 - SELF-HEALING LOOP:
+   - Jika verifikasi menemukan kegagalan (port tabrakan, env variable kurang, syntax error di file konfigurasi, permission denied):
+     - Cari akar masalah langsung dari log service terkait.
+     - Terapkan perbaikan yang tepat sasaran.
+     - Jalankan ulang verifikasi hingga dipastikan sehat (atau tanyakan pengguna jika butuh input/kredensial eksternal).
+
+5. STAGE 5 - COMPLETION PROOF & SUMMARY:
+   - Ketika seluruh aksi dan verifikasi selesai, berikan laporan penutup terstruktur:
+     - Ringkasan aksi yang dilakukan.
+     - Bukti konkret verifikasi (status running, ID container, port aktif, atau respon HTTP).
+     - Konfirmasi kondisi akhir sistem yang stabil.
+   - Gunakan Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris (e.g. "Berikut hasil verifikasi container...").
+   - DILARANG meninggalkan pesan penutup kosong setelah eksekusi tool.`;
   }
 
   async function sendMessage(promptText: string) {
@@ -728,14 +748,39 @@ Core Rules & Interactive Behavior:
             // Cek apakah ada tool calls lanjutan yang dihasilkan
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
               if (executionMode.value === 'auto') {
-                // Eksekusi otomatis jika BUKAN perintah berbahaya
-                for (const tc of assistantMsg.toolCalls) {
+                // Eksekusi otomatis jika BUKAN perintah berbahaya secara batch
+                const pendingCalls = assistantMsg.toolCalls.filter(tc => tc.status === 'pending_approval');
+                let executedAny = false;
+                for (const tc of pendingCalls) {
                   if (tc.name === 'exec_command' && isDangerousCommand(tc.args.command || '')) {
-                    tc.status = 'pending_approval'; // Tahan untuk persetujuan manual demi keamanan
                     dialogStore.showToast('Perintah berisiko tinggi memerlukan persetujuan manual', 'warning', 3000);
                   } else {
-                    await approveToolCall(tc.id);
+                    try {
+                      const result = await executeTool(selectedSessionId.value, tc);
+                      chatList.push({
+                        id: `msg_tool_${Date.now()}`,
+                        role: 'tool',
+                        toolCallId: tc.id,
+                        content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                        createdAt: Date.now(),
+                      });
+                      executedAny = true;
+                    } catch (e: any) {
+                      chatList.push({
+                        id: `msg_tool_err_${Date.now()}`,
+                        role: 'tool',
+                        toolCallId: tc.id,
+                        content: `Error executing ${tc.name}: ${e.message || String(e)}`,
+                        createdAt: Date.now(),
+                      });
+                      executedAny = true;
+                    }
                   }
+                }
+                if (executedAny) {
+                  thread.updatedAt = Date.now();
+                  saveState();
+                  await continueAgentLoop(selectedSessionId.value);
                 }
               }
             } else {
