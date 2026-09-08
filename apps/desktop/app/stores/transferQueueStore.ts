@@ -522,25 +522,24 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   async function resumeAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
     if (isRetryingAll.value) return;
     const targetList = transfers.value.filter(
-      t => t.status === 'error' || t.status === 'cancelled' || t.status === 'pending'
+      t => t.status === 'error' || t.status === 'cancelled'
     );
     if (targetList.length === 0) return;
 
     isRetryingAll.value = true;
     try {
       for (const item of targetList) {
-        if (item.status !== 'pending') {
-          item.status = 'pending';
-          item.errorMessage = undefined;
-        }
+        item.status = 'pending';
+        item.errorMessage = undefined;
       }
       triggerRef(transfers);
 
       const executing = new Set<Promise<void>>();
+      const limit = Math.min(5, maxConcurrent.value);
       for (const item of targetList) {
         if (isCancellingAll) break;
 
-        while (executing.size >= maxConcurrent.value) {
+        while (executing.size >= limit) {
           await Promise.race([...executing, onConcurrencyChange()]);
           if (isCancellingAll) break;
         }
@@ -553,7 +552,14 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           dstId = item.targetSessionId;
         }
 
-        const p = resumeTransfer(item.id, dstId).finally(() => {
+        const p = Promise.race([
+          resumeTransfer(item.id, dstId),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Transfer timeout setelah 45 detik')), 45000))
+        ]).catch((err) => {
+          item.status = 'error';
+          item.errorMessage = String(err);
+          triggerRef(transfers);
+        }).finally(() => {
           executing.delete(p);
         });
         executing.add(p);
@@ -567,7 +573,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   async function restartAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
     if (isRetryingAll.value) return;
     const targetList = transfers.value.filter(
-      t => t.status === 'error' || t.status === 'cancelled' || t.status === 'pending'
+      t => t.status === 'error' || t.status === 'cancelled'
     );
     if (targetList.length === 0) return;
 
@@ -582,10 +588,11 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       triggerRef(transfers);
 
       const executing = new Set<Promise<void>>();
+      const limit = Math.min(5, maxConcurrent.value);
       for (const item of targetList) {
         if (isCancellingAll) break;
 
-        while (executing.size >= maxConcurrent.value) {
+        while (executing.size >= limit) {
           await Promise.race([...executing, onConcurrencyChange()]);
           if (isCancellingAll) break;
         }
@@ -598,7 +605,14 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           dstId = item.targetSessionId;
         }
 
-        const p = restartTransfer(item.id, dstId).finally(() => {
+        const p = Promise.race([
+          restartTransfer(item.id, dstId),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Transfer timeout setelah 45 detik')), 45000))
+        ]).catch((err) => {
+          item.status = 'error';
+          item.errorMessage = String(err);
+          triggerRef(transfers);
+        }).finally(() => {
           executing.delete(p);
         });
         executing.add(p);

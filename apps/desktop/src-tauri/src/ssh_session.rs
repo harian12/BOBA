@@ -994,35 +994,34 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         }
 
         // 1. Cek dulu apakah direktori sudah ada!
-        if sftp.metadata(clean).await.is_ok() {
+        if tokio::time::timeout(std::time::Duration::from_secs(5), sftp.metadata(clean)).await.map_or(false, |r| r.is_ok()) {
             return Ok(());
         }
 
         // 2. Coba lewat standar SFTP mkdir_p
-        let _ = Self::mkdir_p_recursive(sftp, clean).await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), Self::mkdir_p_recursive(sftp, clean)).await;
 
         // Cek apakah sudah ada setelah SFTP mkdir_p
-        if sftp.metadata(clean).await.is_ok() {
+        if tokio::time::timeout(std::time::Duration::from_secs(5), sftp.metadata(clean)).await.map_or(false, |r| r.is_ok()) {
             return Ok(());
         }
 
-        // 3. Fallback SSH shell commands
+        // 3. Fallback SSH shell commands (dengan timeout singkat 5s agar tidak deadlock)
         let password_opt = {
             let sessions = self.sessions.lock();
             sessions.get(session_id).and_then(|s| s.password.clone())
         };
 
         // A. Coba shell mkdir -p standar
-        let _ = self.exec_command(session_id, &format!("mkdir -p \"{}\"", clean)).await;
-        if sftp.metadata(clean).await.is_ok() {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), self.exec_command(session_id, &format!("mkdir -p \"{}\"", clean))).await;
+        if tokio::time::timeout(std::time::Duration::from_secs(3), sftp.metadata(clean)).await.map_or(false, |r| r.is_ok()) {
             return Ok(());
         }
 
         // B. Coba sudo -n (tanpa password) jika server mengizinkan NOPASSWD sudo + chmod 777 agar SFTP non-root bisa menulis
         let sudo_cmd = format!("sudo -n mkdir -p \"{}\" && sudo -n chmod 777 \"{}\"", clean, clean);
-        let out_sudo = self.exec_command(session_id, &sudo_cmd).await;
-        crate::commands::log_msg(&format!("ensure_dir_exists sudo -n fallback for '{}': {:?}", clean, out_sudo));
-        if sftp.metadata(clean).await.is_ok() {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), self.exec_command(session_id, &sudo_cmd)).await;
+        if tokio::time::timeout(std::time::Duration::from_secs(3), sftp.metadata(clean)).await.map_or(false, |r| r.is_ok()) {
             return Ok(());
         }
 
@@ -1033,9 +1032,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 "printf '%s\\n' '{}' | sudo -S -p '' mkdir -p \"{}\" && printf '%s\\n' '{}' | sudo -S -p '' chmod 777 \"{}\"",
                 escaped_pass, clean, escaped_pass, clean
             );
-            let out_pass = self.exec_command(session_id, &pass_cmd).await;
-            crate::commands::log_msg(&format!("ensure_dir_exists sudo -S fallback for '{}': {:?}", clean, out_pass));
-            if sftp.metadata(clean).await.is_ok() {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), self.exec_command(session_id, &pass_cmd)).await;
+            if tokio::time::timeout(std::time::Duration::from_secs(3), sftp.metadata(clean)).await.map_or(false, |r| r.is_ok()) {
                 return Ok(());
             }
         }
@@ -1855,10 +1853,52 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         concurrency: Option<usize>,
     ) -> Result<(), String> {
         let src_sftp = self.get_or_init_sftp(&src_session_id).await?;
-        let src_meta = src_sftp
-            .metadata(&src_path)
-            .await
-            .map_err(|e| format!("Failed to get source remote metadata: {}", e))?;
+        let src_meta_res = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            src_sftp.metadata(&src_path)
+        ).await;
+
+        let src_meta = match src_meta_res {
+            Ok(Ok(meta)) => meta,
+            Ok(Err(e)) => {
+                let err_msg = format!("File sumber tidak ditemukan atau sudah terhapus: {}", e);
+                crate::commands::log_msg(&err_msg);
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name: src_path.split('/').last().unwrap_or(&src_path).to_string(),
+                    remote_path: src_path.clone(),
+                    local_path: Some(dst_path.clone()),
+                    direction: "remote-to-remote".into(),
+                    bytes_transferred: 0,
+                    total_bytes: 0,
+                    percentage: 0.0,
+                    speed_bps: 0.0,
+                    status: "error".into(),
+                    error_message: Some(err_msg.clone()),
+                });
+                return Err(err_msg);
+            }
+            Err(_) => {
+                let err_msg = format!("Timeout membaca info file sumber '{}'", src_path);
+                crate::commands::log_msg(&err_msg);
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name: src_path.split('/').last().unwrap_or(&src_path).to_string(),
+                    remote_path: src_path.clone(),
+                    local_path: Some(dst_path.clone()),
+                    direction: "remote-to-remote".into(),
+                    bytes_transferred: 0,
+                    total_bytes: 0,
+                    percentage: 0.0,
+                    speed_bps: 0.0,
+                    status: "error".into(),
+                    error_message: Some(err_msg.clone()),
+                });
+                return Err(err_msg);
+            }
+        };
 
         if src_meta.is_dir() {
             let res = self.transfer_remote_to_remote_folder_recursive(
@@ -2037,9 +2077,14 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             },
         };
 
-        let mut src_file = match src_sftp.open(&src_path).await {
-            Ok(f) => f,
-            Err(e) => {
+        let src_open_res = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            src_sftp.open(&src_path)
+        ).await;
+
+        let mut src_file = match src_open_res {
+            Ok(Ok(f)) => f,
+            Ok(Err(e)) => {
                 let err_str = e.to_string();
                 if err_str.contains("handle limit reached")
                     || err_str.contains("Limit exceeded")
@@ -2050,10 +2095,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     crate::commands::log_msg(&format!("Transient SFTP error on src ({}). Reconnecting SFTP for session '{}'...", err_str, src_session_id));
                     self.invalidate_sftp(&src_session_id);
                     let new_src = self.get_or_init_sftp(&src_session_id).await.map_err(|e| format!("Failed to reinit SFTP on src: {}", e))?;
-                    match new_src.open(&src_path).await {
-                        Ok(f) => f,
-                        Err(e2) => {
-                            let err_msg = format!("Failed to open source remote file '{}': {}", src_path, e2);
+                    match tokio::time::timeout(std::time::Duration::from_secs(15), new_src.open(&src_path)).await {
+                        Ok(Ok(f)) => f,
+                        _ => {
+                            let err_msg = format!("Failed to open source remote file '{}': {}", src_path, err_str);
                             crate::commands::log_msg(&err_msg);
                             let _ = app.emit("sftp-progress", TransferProgress {
                                 transfer_id: transfer_id.clone(),
@@ -2074,7 +2119,12 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                         }
                     }
                 } else {
-                    let err_msg = format!("Failed to open source remote file '{}': {}", src_path, e);
+                    let is_not_found = err_str.contains("No such file") || err_str.contains("NotFound");
+                    let err_msg = if is_not_found {
+                        format!("File sumber sudah terhapus / tidak ada: {}", src_path)
+                    } else {
+                        format!("Failed to open source remote file '{}': {}", src_path, e)
+                    };
                     crate::commands::log_msg(&err_msg);
                     let _ = app.emit("sftp-progress", TransferProgress {
                         transfer_id: transfer_id.clone(),
@@ -2093,6 +2143,26 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     self.active_transfers.lock().remove(&transfer_id);
                     return Err(err_msg);
                 }
+            }
+            Err(_) => {
+                let err_msg = format!("Timeout membuka file sumber '{}' (15s)", src_path);
+                crate::commands::log_msg(&err_msg);
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name: file_name.clone(),
+                    remote_path: src_path.clone(),
+                    local_path: Some(dst_path.clone()),
+                    direction: "remote-to-remote".into(),
+                    bytes_transferred: 0,
+                    total_bytes,
+                    percentage: 0.0,
+                    speed_bps: 0.0,
+                    status: "error".into(),
+                    error_message: Some(err_msg.clone()),
+                });
+                self.active_transfers.lock().remove(&transfer_id);
+                return Err(err_msg);
             }
         };
 
@@ -2137,9 +2207,14 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
         }
 
-        let mut dst_file = match dst_sftp.create(&dst_path).await {
-            Ok(f) => f,
-            Err(e) => {
+        let dst_create_res = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            dst_sftp.create(&dst_path)
+        ).await;
+
+        let mut dst_file = match dst_create_res {
+            Ok(Ok(f)) => f,
+            Ok(Err(e)) => {
                 let err_str = e.to_string();
                 if err_str.contains("handle limit reached")
                     || err_str.contains("Limit exceeded")
@@ -2150,11 +2225,11 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     crate::commands::log_msg(&format!("Transient SFTP error on dst ({}). Reconnecting SFTP for session '{}'...", err_str, dst_session_id));
                     self.invalidate_sftp(&dst_session_id);
                     let new_dst = self.get_or_init_sftp(&dst_session_id).await.map_err(|e| format!("Failed to reinit SFTP on dst: {}", e))?;
-                    match new_dst.create(&dst_path).await {
-                        Ok(f) => f,
-                        Err(e2) => {
+                    match tokio::time::timeout(std::time::Duration::from_secs(15), new_dst.create(&dst_path)).await {
+                        Ok(Ok(f)) => f,
+                        _ => {
                             let _ = src_file.shutdown().await;
-                            let err_msg = format!("Failed to create destination remote file '{}': {}", dst_path, e2);
+                            let err_msg = format!("Failed to create destination remote file '{}': {}", dst_path, err_str);
                             crate::commands::log_msg(&err_msg);
                             let _ = app.emit("sftp-progress", TransferProgress {
                                 transfer_id: transfer_id.clone(),
@@ -2178,18 +2253,13 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     || err_str.contains("Status(3)")
                     || err_str.contains("Failure")
                 {
-                    if !parent_str.is_empty() && parent_str != "." && parent_str != "/" {
-                        let fix_cmd = format!(
-                            "sudo -n chmod 777 \"{}\" 2>/dev/null; sudo -n rm -f \"{}\" 2>/dev/null || rm -f \"{}\" 2>/dev/null",
-                            parent_str, dst_path, dst_path
-                        );
-                        let _ = self.exec_command(&dst_session_id, &fix_cmd).await;
-                    }
-                    match dst_sftp.create(&dst_path).await {
-                        Ok(f) => f,
-                        Err(e2) => {
+                    // Coba hapus file lama yang bentrok langsung via SFTP
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), dst_sftp.remove_file(&dst_path)).await;
+                    match tokio::time::timeout(std::time::Duration::from_secs(10), dst_sftp.create(&dst_path)).await {
+                        Ok(Ok(f)) => f,
+                        _ => {
                             let _ = src_file.shutdown().await;
-                            let err_msg = format!("Failed to create destination remote file '{}': {}", dst_path, e2);
+                            let err_msg = format!("Failed to create destination remote file '{}': {}", dst_path, err_str);
                             crate::commands::log_msg(&err_msg);
                             let _ = app.emit("sftp-progress", TransferProgress {
                                 transfer_id: transfer_id.clone(),
@@ -2230,6 +2300,27 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     self.active_transfers.lock().remove(&transfer_id);
                     return Err(err_msg);
                 }
+            }
+            Err(_) => {
+                let _ = src_file.shutdown().await;
+                let err_msg = format!("Timeout membuat file tujuan '{}' (15s)", dst_path);
+                crate::commands::log_msg(&err_msg);
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name: file_name.clone(),
+                    remote_path: src_path.clone(),
+                    local_path: Some(dst_path.clone()),
+                    direction: "remote-to-remote".into(),
+                    bytes_transferred: 0,
+                    total_bytes,
+                    percentage: 0.0,
+                    speed_bps: 0.0,
+                    status: "error".into(),
+                    error_message: Some(err_msg.clone()),
+                });
+                self.active_transfers.lock().remove(&transfer_id);
+                return Err(err_msg);
             }
         };
 
