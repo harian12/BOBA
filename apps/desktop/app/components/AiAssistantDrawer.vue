@@ -326,8 +326,15 @@ function handleSendChip(chip: string) {
   scrollToBottom();
 }
 
-function handleClearChat() {
-  if (confirm('Bersihkan seluruh percakapan pada sesi ini?')) {
+async function handleClearChat() {
+  const isConfirmed = await dialogStore.confirm({
+    title: 'Bersihkan Percakapan',
+    description: 'Apakah Anda yakin ingin membersihkan seluruh percakapan pada sesi ini?',
+    confirmText: 'Bersihkan',
+    cancelText: 'Batal',
+    isDestructive: true,
+  });
+  if (isConfirmed) {
     aiStore.clearMessages(aiStore.selectedSessionId);
   }
 }

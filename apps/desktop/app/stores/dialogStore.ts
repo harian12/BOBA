@@ -16,6 +16,7 @@ export interface DialogOptions {
 
 export interface ToastItem {
   id: string;
+  title?: string;
   message: string;
   variant: 'info' | 'success' | 'warning' | 'error';
   timeoutMs?: number;
@@ -31,9 +32,14 @@ export const useDialogStore = defineStore('dialog', () => {
   const toasts = ref<ToastItem[]>([]);
   let resolvePromise: ((value: any) => void) | null = null;
 
-  function showToast(message: string, variant: 'info' | 'success' | 'warning' | 'error' = 'info', timeoutMs = 4000) {
+  function showToast(
+    message: string,
+    variant: 'info' | 'success' | 'warning' | 'error' = 'info',
+    timeoutMs = 4000,
+    title?: string
+  ) {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    toasts.value.push({ id, message, variant, timeoutMs });
+    toasts.value.push({ id, title, message, variant, timeoutMs });
     setTimeout(() => {
       toasts.value = toasts.value.filter(t => t.id !== id);
     }, timeoutMs);
@@ -49,18 +55,13 @@ export const useDialogStore = defineStore('dialog', () => {
     confirmText?: string;
     variant?: 'info' | 'success' | 'warning' | 'error';
   }): Promise<void> {
-    return new Promise((resolve) => {
-      options.value = {
-        type: 'alert',
-        title: opts.title,
-        description: opts.description,
-        confirmText: opts.confirmText || 'OK',
-        variant: opts.variant || 'info',
-      };
-      inputValue.value = '';
-      resolvePromise = resolve;
-      isOpen.value = true;
-    });
+    showToast(
+      opts.description || opts.title,
+      opts.variant || 'info',
+      4000,
+      opts.description ? opts.title : undefined
+    );
+    return Promise.resolve();
   }
 
   function confirm(opts: {
@@ -153,3 +154,15 @@ export const useDialogStore = defineStore('dialog', () => {
     handleCancel,
   };
 });
+
+// Global guard: cegah native browser / Windows OS alert dialog muncul di WebView
+if (typeof window !== 'undefined') {
+  window.alert = (message?: any) => {
+    try {
+      const store = useDialogStore();
+      store.showToast(String(message ?? ''), 'warning', 4000);
+    } catch {
+      console.warn('Native alert intercepted:', message);
+    }
+  };
+}

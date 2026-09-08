@@ -313,8 +313,15 @@ function handleSetDefault() {
   dialogStore.showToast(`Provider aktif: ${form.value.name}`, 'success', 1500);
 }
 
-function handleDelete() {
-  if (confirm(`Hapus provider "${form.value.name}"?`)) {
+async function handleDelete() {
+  const isConfirmed = await dialogStore.confirm({
+    title: 'Hapus Provider AI',
+    description: `Apakah Anda yakin ingin menghapus provider "${form.value.name}"?`,
+    confirmText: 'Hapus',
+    cancelText: 'Batal',
+    isDestructive: true,
+  });
+  if (isConfirmed) {
     aiStore.deleteProvider(form.value.id);
     if (aiStore.providers.length > 0) {
       selectProvider(aiStore.providers[0]);

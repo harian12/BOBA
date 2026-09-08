@@ -64,25 +64,29 @@
   </div>
 
   <!-- Global Toast Notifications Container -->
-  <div class="fixed top-4 right-4 z-[99999] flex flex-col space-y-2 pointer-events-none select-none">
+  <div class="fixed top-4 right-4 z-[99999] flex flex-col space-y-2 pointer-events-none select-none max-w-sm w-full">
     <div
       v-for="t in dialogStore.toasts"
       :key="t.id"
       :class="[
-        'pointer-events-auto px-4 py-2.5 rounded-xl text-xs font-mono shadow-2xl flex items-center space-x-2.5 border backdrop-blur-md animate-in slide-in-from-top-4 fade-in duration-200',
+        'pointer-events-auto px-4 py-2.5 rounded-xl text-xs font-mono shadow-2xl flex items-start space-x-2.5 border backdrop-blur-md animate-in slide-in-from-top-4 fade-in duration-200',
         t.variant === 'success' ? 'bg-emerald-950/95 border-emerald-500/60 text-emerald-100 shadow-emerald-950/40' :
         t.variant === 'error' ? 'bg-rose-950/95 border-rose-500/60 text-rose-100 shadow-rose-950/40' :
         t.variant === 'warning' ? 'bg-amber-950/95 border-amber-500/60 text-amber-100 shadow-amber-950/40' :
         'bg-[#121624]/95 border-sky-500/60 text-sky-100 shadow-sky-950/40'
       ]"
     >
-      <span class="text-sm shrink-0">
+      <span class="text-sm shrink-0 mt-0.5">
         {{ t.variant === 'success' ? '✅' : t.variant === 'error' ? '❌' : t.variant === 'warning' ? '⚠️' : 'ℹ️' }}
       </span>
-      <span class="max-w-xs break-words leading-relaxed font-sans font-medium text-[12px]">{{ t.message }}</span>
+      <div class="flex-1 flex flex-col min-w-0 pr-1">
+        <span v-if="t.title" class="font-bold text-[12px] font-sans leading-tight text-white mb-0.5">{{ t.title }}</span>
+        <span class="break-words leading-relaxed font-sans font-medium text-[12px] opacity-90">{{ t.message }}</span>
+      </div>
       <button
         @click="dialogStore.removeToast(t.id)"
-        class="text-slate-400 hover:text-white ml-2 text-xs p-0.5 rounded transition"
+        class="text-slate-400 hover:text-white ml-2 text-xs p-0.5 rounded transition shrink-0"
+        title="Tutup"
       >
         ✕
       </button>
