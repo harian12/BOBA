@@ -14,6 +14,13 @@ export interface DialogOptions {
   variant?: 'info' | 'success' | 'warning' | 'error';
 }
 
+export interface ToastItem {
+  id: string;
+  message: string;
+  variant: 'info' | 'success' | 'warning' | 'error';
+  timeoutMs?: number;
+}
+
 export const useDialogStore = defineStore('dialog', () => {
   const isOpen = ref(false);
   const options = ref<DialogOptions>({
@@ -21,7 +28,20 @@ export const useDialogStore = defineStore('dialog', () => {
     title: '',
   });
   const inputValue = ref('');
+  const toasts = ref<ToastItem[]>([]);
   let resolvePromise: ((value: any) => void) | null = null;
+
+  function showToast(message: string, variant: 'info' | 'success' | 'warning' | 'error' = 'info', timeoutMs = 4000) {
+    const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    toasts.value.push({ id, message, variant, timeoutMs });
+    setTimeout(() => {
+      toasts.value = toasts.value.filter(t => t.id !== id);
+    }, timeoutMs);
+  }
+
+  function removeToast(id: string) {
+    toasts.value = toasts.value.filter(t => t.id !== id);
+  }
 
   function alert(opts: {
     title: string;
@@ -123,6 +143,9 @@ export const useDialogStore = defineStore('dialog', () => {
     isOpen,
     options,
     inputValue,
+    toasts,
+    showToast,
+    removeToast,
     alert,
     confirm,
     prompt,

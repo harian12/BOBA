@@ -63,6 +63,8 @@ export const tauriBridge = {
       passphrase: config.auth_type === 'key' && key ? key.passphrase || null : null,
       cols,
       rows,
+      sftpSudo: config.sftp_sudo ?? false,
+      sftpSudoCommand: config.sftp_sudo_command || null,
     });
   },
 
@@ -122,6 +124,10 @@ export const tauriBridge = {
     return await invoke('sftp_rename_path', { sessionId, oldPath, newPath });
   },
 
+  async sftpDuplicatePath(sessionId: string, path: string, newPath: string): Promise<void> {
+    return await invoke('sftp_duplicate_path', { sessionId, path, newPath });
+  },
+
   async sftpWriteText(sessionId: string, remotePath: string, content: string): Promise<void> {
     return await invoke('sftp_write_file', { sessionId, remotePath, content });
   },
@@ -138,20 +144,40 @@ export const tauriBridge = {
     return await invoke('sftp_upload_stream', { sessionId, transferId, localPath, remotePath, resumeFrom: resumeFrom ?? null });
   },
 
-  async sftpDownloadFolder(sessionId: string, remoteFolder: string, localFolder: string): Promise<void> {
-    return await invoke('sftp_download_folder', { sessionId, remoteFolder, localFolder });
+  async sftpDownloadFolder(sessionId: string, remoteFolder: string, localFolder: string, concurrency?: number, transferId?: string): Promise<void> {
+    return await invoke('sftp_download_folder', { sessionId, transferId: transferId || null, remoteFolder, localFolder, concurrency: concurrency || null });
   },
 
-  async sftpUploadFolder(sessionId: string, localFolder: string, remoteFolder: string): Promise<void> {
-    return await invoke('sftp_upload_folder', { sessionId, localFolder, remoteFolder });
+  async sftpUploadFolder(sessionId: string, localFolder: string, remoteFolder: string, concurrency?: number, transferId?: string): Promise<void> {
+    return await invoke('sftp_upload_folder', { sessionId, transferId: transferId || null, localFolder, remoteFolder, concurrency: concurrency || null });
   },
 
-  async sftpTransferRemoteToRemote(srcSessionId: string, dstSessionId: string, transferId: string, srcPath: string, dstPath: string): Promise<void> {
-    return await invoke('sftp_transfer_remote_to_remote', { srcSessionId, dstSessionId, transferId, srcPath, dstPath });
+  async sftpTransferRemoteToRemote(srcSessionId: string, dstSessionId: string, transferId: string, srcPath: string, dstPath: string, concurrency?: number): Promise<void> {
+    return await invoke('sftp_transfer_remote_to_remote', { srcSessionId, dstSessionId, transferId, srcPath, dstPath, concurrency: concurrency || null });
   },
 
   async sftpCancelTransfer(transferId: string): Promise<void> {
     return await invoke('sftp_cancel_transfer', { transferId });
+  },
+
+  async sftpCancelAll(): Promise<void> {
+    return await invoke('sftp_cancel_all');
+  },
+
+  async sftpSetConcurrency(concurrency: number): Promise<void> {
+    return await invoke('sftp_set_concurrency', { concurrency });
+  },
+
+  async sftpSetSudo(sessionId: string, enable: boolean, customCommand?: string): Promise<boolean> {
+    return await invoke('sftp_set_sudo', { sessionId, enable, customCommand: customCommand || null });
+  },
+
+  async sftpGetSudoStatus(sessionId: string): Promise<boolean> {
+    return await invoke('sftp_get_sudo_status', { sessionId });
+  },
+
+  async sftpFixPermissions(sessionId: string, remotePath: string): Promise<string> {
+    return await invoke('sftp_fix_permissions', { sessionId, remotePath });
   },
 
   async fsListLocalDir(dirPath: string): Promise<LocalFileItem[]> {
@@ -178,6 +204,14 @@ export const tauriBridge = {
     return await invoke('fs_rename_path', { oldPath, newPath });
   },
 
+  async fsDuplicatePath(path: string, newPath: string, isDir: boolean): Promise<void> {
+    return await invoke('fs_duplicate_path', { path, newPath, isDir });
+  },
+
+  async fsGetFolderSize(dirPath: string): Promise<number> {
+    return await invoke('fs_get_folder_size', { dirPath });
+  },
+
   async fsReadTextFile(filePath: string): Promise<string> {
     return await invoke('fs_read_text_file', { filePath });
   },
@@ -196,6 +230,14 @@ export const tauriBridge = {
 
   async sshExecCommand(sessionId: string, command: string): Promise<string> {
     return await invoke('ssh_exec_command', { sessionId, command });
+  },
+
+  async openLogFile(): Promise<void> {
+    return await invoke('open_log_file');
+  },
+
+  async readRecentLogs(): Promise<string> {
+    return await invoke('read_recent_logs');
   },
 
   // Event listeners

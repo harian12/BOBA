@@ -143,9 +143,32 @@
             </div>
           </div>
 
-          <div class="flex items-center space-x-2 pt-2">
-            <input type="checkbox" id="sftpAuto" v-model="form.sftp_auto_open" class="rounded bg-boba-950 border-boba-700 text-boba-accent focus:ring-0" />
-            <label for="sftpAuto" class="text-xs text-slate-300">Auto-open SFTP Explorer on connection</label>
+          <div class="space-y-2 pt-2 border-t border-boba-800/60">
+            <div class="flex items-center space-x-2">
+              <input type="checkbox" id="sftpAuto" v-model="form.sftp_auto_open" class="rounded bg-boba-950 border-boba-700 text-boba-accent focus:ring-0" />
+              <label for="sftpAuto" class="text-xs text-slate-300 cursor-pointer">Auto-open SFTP Explorer on connection</label>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <input type="checkbox" id="sftpSudo" v-model="form.sftp_sudo" class="rounded bg-boba-950 border-boba-700 text-boba-accent focus:ring-0" />
+              <label for="sftpSudo" class="text-xs text-slate-300 flex items-center space-x-1 cursor-pointer">
+                <span>🛡️ Sudo SFTP (Root Privileges)</span>
+              </label>
+            </div>
+            <div v-if="form.sftp_sudo" class="pl-5 space-y-1">
+              <p class="text-[10px] text-slate-400">
+                Menjalankan SFTP dengan sudo agar bisa membuka & mengedit direktori root/user lain. Server memerlukan user memiliki <code class="text-amber-300 font-mono">NOPASSWD</code> di sudoers.
+              </p>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-0.5">Custom Sudo Command (Opsional):</label>
+                <input
+                  v-model="form.sftp_sudo_command"
+                  type="text"
+                  placeholder="sudo -n /usr/libexec/openssh/sftp-server"
+                  class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded px-2.5 py-1 text-xs text-slate-100 font-mono focus:outline-none"
+                />
+              </div>
+            </div>
           </div>
         </form>
 
@@ -264,6 +287,8 @@ const form = ref<SshSessionConfig>({
   password: '',
   key_id: undefined,
   sftp_auto_open: false,
+  sftp_sudo: false,
+  sftp_sudo_command: '',
   snippets: [],
 });
 
@@ -275,6 +300,8 @@ watch(
       if (props.sessionToEdit) {
         form.value = JSON.parse(JSON.stringify(props.sessionToEdit));
         if (!form.value.snippets) form.value.snippets = [];
+        if (form.value.sftp_sudo === undefined) form.value.sftp_sudo = false;
+        if (!form.value.sftp_sudo_command) form.value.sftp_sudo_command = '';
       } else {
         form.value = {
           id: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -287,6 +314,8 @@ watch(
           password: '',
           key_id: vaultStore.vault.keys[0]?.id || undefined,
           sftp_auto_open: false,
+          sftp_sudo: false,
+          sftp_sudo_command: '',
           snippets: [
             {
               id: `snp_${Date.now()}_1`,

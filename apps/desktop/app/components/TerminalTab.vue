@@ -155,6 +155,19 @@
         <span class="text-[10px] font-mono opacity-60">Ctrl+C</span>
       </button>
 
+      <!-- Ask AI Copilot about selection -->
+      <button
+        @click="handleAskAiAboutSelection"
+        :disabled="!hasTextSelected"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-purple-600 hover:text-white transition disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400 text-purple-300 font-medium"
+        title="Kirim teks error/log yang dipilih ke AI Copilot untuk dianalisis"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">✨</span>
+          <span>Analisis Error dengan AI</span>
+        </div>
+      </button>
+
       <!-- Paste -->
       <button
         @click="handlePaste"
@@ -403,6 +416,7 @@ import '@xterm/xterm/css/xterm.css';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import type { ActiveTab, SnippetItem, ServerMetrics } from '../types/index.js';
 
@@ -413,6 +427,7 @@ const props = defineProps<{
 const vaultStore = useVaultStore();
 const sessionStore = useSessionStore();
 const dialogStore = useDialogStore();
+const aiStore = useAiAgentStore();
 const terminalRef = ref<HTMLDivElement | null>(null);
 
 const showCommandsBar = ref(true);
@@ -472,6 +487,17 @@ function handleCopy() {
       navigator.clipboard.writeText(sel);
     }
   }
+}
+
+function handleAskAiAboutSelection() {
+  closeContextMenu();
+  if (!term) return;
+  const selection = term.getSelection();
+  if (!selection || !selection.trim()) return;
+
+  const sessionId = props.tab.sessionConfig?.id || props.tab.id;
+  const prompt = `Tolong analisis potongan teks / pesan error dari terminal berikut dan berikan penjelasan serta solusi perbaikannya:\n\n\`\`\`\n${selection.trim()}\n\`\`\``;
+  aiStore.sendPromptWithContext(prompt, sessionId);
 }
 
 async function handlePaste() {

@@ -24,6 +24,10 @@ pub struct SshSessionConfig {
     pub terminal_theme: Option<String>,
     #[serde(default)]
     pub snippets: Option<Vec<SnippetItem>>,
+    #[serde(default)]
+    pub sftp_sudo: Option<bool>,
+    #[serde(default)]
+    pub sftp_sudo_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

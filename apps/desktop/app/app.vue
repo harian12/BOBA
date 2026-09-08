@@ -41,7 +41,14 @@
               v-for="tab in sessionStore.tabs"
               :key="tab.id"
               @click="sessionStore.activeTabId = tab.id"
-              :class="['group flex items-center space-x-2 px-3 py-1.5 border-r border-boba-800 text-xs cursor-pointer font-mono transition h-full', sessionStore.activeTabId === tab.id ? 'bg-boba-950 text-slate-100 border-t-2 border-t-boba-accent' : 'bg-boba-900 text-slate-400 hover:bg-boba-850 hover:text-slate-200']"
+              @mousedown.middle.prevent="handleCloseTab(tab)"
+              @contextmenu.prevent="openTabContextMenu($event, tab)"
+              :class="[
+                'group flex items-center space-x-2 px-3 py-1.5 border-r border-boba-800 text-xs cursor-pointer font-mono transition h-full select-none',
+                sessionStore.activeTabId === tab.id
+                  ? 'bg-boba-950 text-slate-100 border-t-2 border-t-boba-accent'
+                  : 'bg-boba-900 text-slate-400 hover:bg-boba-850 hover:text-slate-200'
+              ]"
             >
               <!-- Tab Type Icon / Indicator -->
               <span v-if="tab.type === 'editor'" class="text-xs shrink-0">
@@ -56,7 +63,7 @@
                 :title="tab.connected ? 'Connected' : 'Connecting/Disconnected'"
               ></span>
 
-              <span class="truncate max-w-[130px]">{{ tab.title }}</span>
+              <span class="truncate max-w-[130px]" :title="tab.title">{{ tab.title }}</span>
 
               <!-- Modified dirty indicator for editor tabs -->
               <span
@@ -69,7 +76,7 @@
               <div class="flex items-center space-x-1 shrink-0">
                 <!-- Duplicate Tab Button (Terminal only) -->
                 <button
-                  v-if="tab.type !== 'editor'"
+                  v-if="tab.type === 'terminal'"
                   @click.stop="sessionStore.duplicateTab(tab.id)"
                   title="Duplicate Tab (Open second SSH session)"
                   class="opacity-0 group-hover:opacity-100 hover:text-sky-400 text-[11px] p-0.5 rounded hover:bg-boba-800 transition"
@@ -80,8 +87,13 @@
                 <!-- Close Tab Button -->
                 <button
                   @click.stop="handleCloseTab(tab)"
-                  title="Close Tab (Ctrl+W)"
-                  class="opacity-0 group-hover:opacity-100 hover:text-rose-400 text-[10px] p-0.5 rounded hover:bg-boba-800 transition"
+                  title="Close Tab (Ctrl+W atau Klik Tengah)"
+                  :class="[
+                    'text-[10px] p-0.5 rounded transition',
+                    sessionStore.activeTabId === tab.id
+                      ? 'opacity-100 text-slate-400 hover:text-rose-400 hover:bg-boba-800'
+                      : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 hover:bg-boba-800'
+                  ]"
                 >
                   ✕
                 </button>
@@ -153,78 +165,99 @@
               4⊞
             </button>
           </div>
+
+          <!-- AI Copilot Button -->
+          <button
+            @click="aiAgentStore.toggleDrawer()"
+            :class="[
+              'px-2.5 py-1 rounded text-xs font-semibold flex items-center space-x-1.5 transition ml-2 border shrink-0',
+              aiAgentStore.isDrawerOpen
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-400/60 shadow-[0_0_10px_rgba(168,85,247,0.4)]'
+                : 'bg-boba-950 border-purple-900/50 text-purple-300 hover:text-white hover:border-purple-500'
+            ]"
+            title="Buka / Tutup AI Copilot (Ctrl+Shift+A)"
+          >
+            <span class="text-sm">✨</span>
+            <span>AI Copilot</span>
+          </button>
         </div>
 
-        <!-- Dynamic Grid Workspace Content -->
-        <div class="flex-1 flex overflow-hidden p-1 bg-black/40">
-          <div
-            v-if="sessionStore.tabs.length > 0"
-            :class="[
-              'w-full h-full gap-1',
-              sessionStore.layoutMode === '1' ? 'flex' : '',
-              sessionStore.layoutMode === '2-col' ? 'grid grid-cols-2' : '',
-              sessionStore.layoutMode === '2-row' ? 'grid grid-rows-2' : '',
-              sessionStore.layoutMode === '3' ? 'grid grid-cols-3' : '',
-              sessionStore.layoutMode === '4' ? 'grid grid-cols-2 grid-rows-2' : ''
-            ]"
-          >
+        <!-- Workspace and AI Assistant Drawer Container -->
+        <div class="flex-1 flex overflow-hidden">
+          <!-- Dynamic Grid Workspace Content -->
+          <div class="flex-1 flex overflow-hidden p-1 bg-black/40">
             <div
-              v-for="tab in sessionStore.tabs"
-              :key="tab.id"
-              v-show="isTabVisible(tab.id)"
-              @click="sessionStore.activeTabId = tab.id"
+              v-if="sessionStore.tabs.length > 0"
               :class="[
-                'flex h-full w-full overflow-hidden border rounded-lg shadow-inner bg-[#0b0d13] transition-colors',
-                sessionStore.layoutMode === '1' ? 'flex-1 border-boba-800/60' : '',
-                sessionStore.layoutMode !== '1' && sessionStore.activeTabId === tab.id ? 'border-sky-500/80 ring-1 ring-sky-500/40' : 'border-boba-800/80'
+                'w-full h-full gap-1',
+                sessionStore.layoutMode === '1' ? 'flex' : '',
+                sessionStore.layoutMode === '2-col' ? 'grid grid-cols-2' : '',
+                sessionStore.layoutMode === '2-row' ? 'grid grid-rows-2' : '',
+                sessionStore.layoutMode === '3' ? 'grid grid-cols-3' : '',
+                sessionStore.layoutMode === '4' ? 'grid grid-cols-2 grid-rows-2' : ''
               ]"
             >
-              <!-- Render Editor Tab, SFTP Manager Tab, or Terminal Tab -->
-              <div class="flex-1 h-full overflow-hidden">
-                <EditorTab v-if="tab.type === 'editor'" :tab="tab" />
-                <SftpManagerTab v-else-if="tab.type === 'sftp'" :tab="tab" />
-                <TerminalTab v-else :tab="tab" />
-              </div>
+              <div
+                v-for="tab in sessionStore.tabs"
+                :key="tab.id"
+                v-show="isTabVisible(tab.id)"
+                @click="sessionStore.activeTabId = tab.id"
+                :class="[
+                  'flex h-full w-full overflow-hidden border rounded-lg shadow-inner bg-[#0b0d13] transition-colors',
+                  sessionStore.layoutMode === '1' ? 'flex-1 border-boba-800/60' : '',
+                  sessionStore.layoutMode !== '1' && sessionStore.activeTabId === tab.id ? 'border-sky-500/80 ring-1 ring-sky-500/40' : 'border-boba-800/80'
+                ]"
+              >
+                <!-- Render Editor Tab, SFTP Manager Tab, or Terminal Tab -->
+                <div class="flex-1 h-full overflow-hidden">
+                  <EditorTab v-if="tab.type === 'editor'" :tab="tab" />
+                  <SftpManagerTab v-else-if="tab.type === 'sftp'" :tab="tab" />
+                  <TerminalTab v-else :tab="tab" />
+                </div>
 
-              <!-- Terminal SFTP Drawer -->
-              <div v-if="tab.type !== 'editor' && tab.sftpOpen" class="h-full">
-                <SftpDrawer
-                  :session-id="tab.id"
-                  :connected="tab.connected"
-                  :host="tab.sessionConfig.host"
-                  :username="tab.sessionConfig.username"
-                  @close="sessionStore.toggleSftp(tab.id)"
-                />
+                <!-- Terminal SFTP Drawer -->
+                <div v-if="tab.type === 'terminal' && tab.sftpOpen" class="h-full">
+                  <SftpDrawer
+                    :session-id="tab.id"
+                    :connected="tab.connected"
+                    :host="tab.sessionConfig.host"
+                    :username="tab.sessionConfig.username"
+                    @close="sessionStore.toggleSftp(tab.id)"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Welcome Workspace when no tabs are open -->
+            <div v-if="sessionStore.tabs.length === 0" class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+              <div class="w-16 h-16 rounded-2xl bg-boba-accent/10 border border-boba-accent/30 flex items-center justify-center text-3xl font-black text-boba-accent">
+                B
+              </div>
+              <div>
+                <h2 class="text-xl font-bold text-slate-100">Welcome to BOBA</h2>
+                <p class="text-xs text-slate-400 mt-1 max-w-sm">
+                  Tabbed SSH Terminal with integrated SFTP explorer, multi-tab dynamic grid split, and zero-knowledge encrypted cloud synchronization.
+                </p>
+              </div>
+              <div class="flex space-x-3">
+                <button
+                  @click="handleOpenNewSession()"
+                  class="px-4 py-2 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-lg text-xs font-medium transition shadow-lg"
+                >
+                  + New SSH Session
+                </button>
+                <button
+                  @click="isSyncOpen = true"
+                  class="px-4 py-2 border border-boba-700 hover:bg-boba-800 rounded-lg text-xs font-medium text-slate-300 transition"
+                >
+                  Setup Cloud Sync
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Welcome Workspace when no tabs are open -->
-          <div v-if="sessionStore.tabs.length === 0" class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-            <div class="w-16 h-16 rounded-2xl bg-boba-accent/10 border border-boba-accent/30 flex items-center justify-center text-3xl font-black text-boba-accent">
-              B
-            </div>
-            <div>
-              <h2 class="text-xl font-bold text-slate-100">Welcome to BOBA</h2>
-              <p class="text-xs text-slate-400 mt-1 max-w-sm">
-                Tabbed SSH Terminal with integrated SFTP explorer, multi-tab dynamic grid split, and zero-knowledge encrypted cloud synchronization.
-              </p>
-            </div>
-            <div class="flex space-x-3">
-              <button
-                @click="handleOpenNewSession()"
-                class="px-4 py-2 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-lg text-xs font-medium transition shadow-lg"
-              >
-                + New SSH Session
-              </button>
-              <button
-                @click="isSyncOpen = true"
-                class="px-4 py-2 border border-boba-700 hover:bg-boba-800 rounded-lg text-xs font-medium text-slate-300 transition"
-              >
-                Setup Cloud Sync
-              </button>
-            </div>
-          </div>
+          <!-- AI Assistant Drawer Component -->
+          <AiAssistantDrawer />
         </div>
       </main>
     </div>
@@ -241,11 +274,69 @@
     />
     <VaultLockModal />
     <AppDialog />
+    <AiProviderModal />
+
+    <!-- Tab Context Menu Floating Overlay -->
+    <div
+      v-if="tabContextMenu.visible && tabContextMenu.tab"
+      :style="{ top: `${tabContextMenu.y}px`, left: `${tabContextMenu.x}px` }"
+      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-44 text-[11px] text-slate-200 select-none font-mono"
+      @click.stop
+    >
+      <div class="px-2.5 py-1 text-[10px] text-slate-400 font-semibold truncate border-b border-[#232b3d] mb-0.5">
+        {{ tabContextMenu.tab.title }}
+      </div>
+      <button
+        v-if="tabContextMenu.tab.type === 'terminal'"
+        @click="duplicateContextTab"
+        class="w-full text-left px-2.5 py-1 hover:bg-[#232b3d] hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>⧉</span>
+        <span>Duplikat Tab</span>
+      </button>
+      <button
+        @click="closeContextTab"
+        class="w-full text-left px-2.5 py-1 hover:bg-rose-950/60 hover:text-rose-300 flex items-center space-x-2 text-rose-400 transition"
+      >
+        <span>✕</span>
+        <span>Tutup Tab</span>
+      </button>
+      <button
+        v-if="sessionStore.tabs.length > 1"
+        @click="closeOtherContextTabs"
+        class="w-full text-left px-2.5 py-1 hover:bg-[#232b3d] hover:text-white flex items-center space-x-2 transition border-t border-[#232b3d]/60 mt-0.5"
+      >
+        <span>🚫</span>
+        <span>Tutup Tab Lainnya</span>
+      </button>
+    </div>
+
+    <!-- Error Overlay Boundary -->
+    <div
+      v-if="appError"
+      class="fixed inset-4 z-[999999] bg-rose-950/95 border-2 border-rose-500 rounded-xl p-6 shadow-2xl flex flex-col space-y-4 text-white font-mono overflow-auto select-text backdrop-blur-md"
+    >
+      <div class="flex items-center justify-between border-b border-rose-800 pb-3">
+        <h2 class="text-base font-bold text-rose-200 flex items-center space-x-2">
+          <span>⚠️</span>
+          <span>Komponen Mengalami Error:</span>
+        </h2>
+        <button
+          @click="appError = null"
+          class="px-3 py-1 bg-rose-800 hover:bg-rose-700 rounded text-xs text-white transition"
+        >
+          Tutup Error
+        </button>
+      </div>
+      <div class="text-sm font-bold text-rose-100">{{ appError.message }}</div>
+      <div v-if="appError.info" class="text-xs text-rose-300">Lokasi: {{ appError.info }}</div>
+      <pre class="flex-1 bg-black/60 p-4 rounded-lg text-xs text-rose-200 overflow-auto whitespace-pre-wrap font-mono">{{ appError.stack }}</pre>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, onErrorCaptured } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import TerminalTab from './components/TerminalTab.vue';
 import EditorTab from './components/EditorTab.vue';
@@ -257,17 +348,23 @@ import KeyManagerModal from './components/KeyManagerModal.vue';
 import ChangeMasterPasswordModal from './components/ChangeMasterPasswordModal.vue';
 import NewSessionModal from './components/NewSessionModal.vue';
 import AppDialog from './components/AppDialog.vue';
+import AiAssistantDrawer from './components/AiAssistantDrawer.vue';
+import AiProviderModal from './components/AiProviderModal.vue';
 
 import { useVaultStore } from './stores/vaultStore.js';
 import { useSyncStore } from './stores/syncStore.js';
 import { useSessionStore } from './stores/sessionStore.js';
 import { useDialogStore } from './stores/dialogStore.js';
+import { useTransferQueueStore } from './stores/transferQueueStore.js';
+import { useAiAgentStore } from './stores/aiAgentStore.js';
 import type { SshSessionConfig, ActiveTab } from './types/index.js';
 
 const vaultStore = useVaultStore();
 const syncStore = useSyncStore();
 const sessionStore = useSessionStore();
 const dialogStore = useDialogStore();
+const queueStore = useTransferQueueStore();
+const aiAgentStore = useAiAgentStore();
 
 const isSyncOpen = ref(false);
 const isKeyManagerOpen = ref(false);
@@ -275,6 +372,76 @@ const isChangePasswordOpen = ref(false);
 const isNewSessionOpen = ref(false);
 const sessionEditing = ref<SshSessionConfig | null>(null);
 const activeFolderId = ref<string | null>(null);
+const appError = ref<{ message: string; stack?: string; info?: string } | null>(null);
+
+const tabContextMenu = ref<{
+  visible: boolean;
+  x: number;
+  y: number;
+  tab: ActiveTab | null;
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  tab: null,
+});
+
+function openTabContextMenu(e: MouseEvent, tab: ActiveTab) {
+  e.preventDefault();
+  tabContextMenu.value = {
+    visible: true,
+    x: Math.min(e.clientX, window.innerWidth - 180),
+    y: e.clientY + 4,
+    tab,
+  };
+}
+
+function closeTabContextMenu() {
+  tabContextMenu.value.visible = false;
+  tabContextMenu.value.tab = null;
+}
+
+function duplicateContextTab() {
+  if (tabContextMenu.value.tab) {
+    sessionStore.duplicateTab(tabContextMenu.value.tab.id);
+  }
+  closeTabContextMenu();
+}
+
+function closeContextTab() {
+  if (tabContextMenu.value.tab) {
+    handleCloseTab(tabContextMenu.value.tab);
+  }
+  closeTabContextMenu();
+}
+
+async function closeOtherContextTabs() {
+  if (tabContextMenu.value.tab) {
+    const targetTab = tabContextMenu.value.tab;
+    closeTabContextMenu();
+    if (queueStore.hasActiveTransfers) {
+      const confirm = await dialogStore.confirm({
+        title: 'Tutup Tab Lainnya?',
+        description: 'Ada transfer yang mungkin sedang berjalan di tab lain. Menutup tab lain akan membatalkan transfer tersebut. Lanjutkan?',
+        confirmText: 'Tutup Tab Lain',
+        isDestructive: true,
+      });
+      if (!confirm) return;
+      queueStore.cancelAll();
+    }
+    sessionStore.closeOtherTabs(targetTab.id);
+  }
+}
+
+onErrorCaptured((err, instance, info) => {
+  console.error('[CRITICAL APP ERROR]', err, info);
+  appError.value = {
+    message: String((err as any)?.message || err),
+    stack: String((err as any)?.stack || ''),
+    info: String(info || ''),
+  };
+  return false;
+});
 
 async function handleOpenKeyManager() {
   const enteredPassword = await dialogStore.prompt({
@@ -311,11 +478,27 @@ async function handleCloseTab(tab: ActiveTab) {
       isDestructive: true,
     });
     if (!confirm) return;
+  } else if (tab.type === 'sftp' && queueStore.hasActiveTransfers) {
+    const confirm = await dialogStore.confirm({
+      title: 'Batalkan Transfer & Tutup Tab?',
+      description: `Masih ada transfer aktif (${queueStore.activeTransfers.length} aktif, ${queueStore.pendingTransfers.length} antrean). Menutup tab ini akan membatalkan semua transfer yang sedang berjalan. Yakin ingin menutup?`,
+      confirmText: 'Tutup & Batalkan',
+      isDestructive: true,
+    });
+    if (!confirm) return;
+    queueStore.cancelAll();
   }
   sessionStore.closeTab(tab.id);
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  // Ctrl+Shift+A: Toggle AI Server Copilot Drawer
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault();
+    aiAgentStore.toggleDrawer();
+    return;
+  }
+
   // Ctrl+Tab & Ctrl+Shift+Tab
   if (e.ctrlKey && (e.key === 'Tab' || e.code === 'Tab')) {
     e.preventDefault();
@@ -357,10 +540,13 @@ function handleKeyDown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown, { capture: true });
+  window.addEventListener('click', closeTabContextMenu);
+  queueStore.initListener();
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  window.removeEventListener('click', closeTabContextMenu);
 });
 
 function handleOpenNewSession(folderId?: string) {

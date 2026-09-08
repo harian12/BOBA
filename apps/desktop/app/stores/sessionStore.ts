@@ -109,9 +109,12 @@ export const useSessionStore = defineStore('session', () => {
     const config = customConfig || parentTab?.sessionConfig;
     const parentId = parentTab?.id;
 
-    if (config) {
+    if (config || parentId) {
       const existing = tabs.value.find(
-        t => t.type === 'sftp' && t.sessionConfig.id === config.id
+        t => t.type === 'sftp' && (
+          (config?.id && t.sessionConfig?.id === config.id) ||
+          (parentId && t.parentSessionId === parentId)
+        )
       );
 
       if (existing) {
@@ -146,8 +149,8 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function closeTab(id: string) {
-    await tauriBridge.sshClose(id).catch(() => {});
     const index = tabs.value.findIndex(t => t.id === id);
+    if (index === -1) return;
     tabs.value = tabs.value.filter(t => t.id !== id);
     if (activeTabId.value === id) {
       if (tabs.value.length === 0) {
@@ -156,6 +159,15 @@ export const useSessionStore = defineStore('session', () => {
         const nextIndex = Math.min(index, tabs.value.length - 1);
         activeTabId.value = tabs.value[nextIndex].id;
       }
+    }
+    // Non-blocking asynchronous cleanup on backend
+    tauriBridge.sshClose(id).catch(() => {});
+  }
+
+  async function closeOtherTabs(id: string) {
+    const toClose = tabs.value.filter(t => t.id !== id);
+    for (const t of toClose) {
+      await closeTab(t.id);
     }
   }
 
@@ -206,6 +218,7 @@ export const useSessionStore = defineStore('session', () => {
     openSftpTab,
     duplicateTab,
     closeTab,
+    closeOtherTabs,
     nextTab,
     prevTab,
     selectTabByIndex,

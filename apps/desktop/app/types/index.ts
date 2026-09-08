@@ -24,6 +24,8 @@ export interface SshSessionConfig {
   sftp_auto_open: boolean;
   terminal_theme?: string;
   snippets?: SnippetItem[];
+  sftp_sudo?: boolean;
+  sftp_sudo_command?: string;
 }
 
 export interface SshKeyItem {
@@ -108,4 +110,36 @@ export interface VaultSnapshot {
   sessions: SshSessionConfig[];
   keys: SshKeyItem[];
   snippets: SnippetItem[];
+}
+
+// AI Copilot & Server Agent Types
+export type AiProviderType = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'custom';
+
+export interface AiProviderConfig {
+  id: string;
+  name: string;
+  type: AiProviderType;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  availableModels?: string[];
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  args: Record<string, any>;
+  status: 'pending_approval' | 'running' | 'completed' | 'rejected' | 'failed';
+  result?: any;
+  error?: string;
+  executedAt?: number;
+}
+
+export interface AiChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  toolCalls?: AiToolCall[];
+  toolCallId?: string;
+  createdAt: number;
 }

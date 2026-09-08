@@ -232,6 +232,8 @@ pub async fn ssh_connect(
     passphrase: Option<String>,
     cols: u32,
     rows: u32,
+    sftp_sudo: Option<bool>,
+    sftp_sudo_command: Option<String>,
 ) -> Result<(), String> {
     state.ssh_manager.connect_async(
         app,
@@ -244,6 +246,8 @@ pub async fn ssh_connect(
         passphrase,
         cols,
         rows,
+        sftp_sudo,
+        sftp_sudo_command,
     ).await
 }
 
@@ -352,6 +356,16 @@ pub async fn sftp_rename_path(
 }
 
 #[tauri::command]
+pub async fn sftp_duplicate_path(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    new_path: String,
+) -> Result<(), String> {
+    state.ssh_manager.duplicate_path(&session_id, &path, &new_path).await
+}
+
+#[tauri::command]
 pub async fn sftp_download_stream(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -363,7 +377,7 @@ pub async fn sftp_download_stream(
 ) -> Result<(), String> {
     state
         .ssh_manager
-        .download_file_stream(app, session_id, transfer_id, remote_path, local_path, resume_from)
+        .download_file_stream(app, session_id, transfer_id, remote_path, local_path, resume_from, None)
         .await
 }
 
@@ -390,6 +404,32 @@ pub fn sftp_cancel_transfer(
 ) -> Result<(), String> {
     state.ssh_manager.cancel_transfer(&transfer_id);
     Ok(())
+}
+
+#[tauri::command]
+pub fn sftp_cancel_all(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.ssh_manager.cancel_all_transfers();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sftp_set_sudo(
+    state: State<'_, AppState>,
+    session_id: String,
+    enable: bool,
+    custom_command: Option<String>,
+) -> Result<bool, String> {
+    state.ssh_manager.sftp_set_sudo(&session_id, enable, custom_command).await
+}
+
+#[tauri::command]
+pub fn sftp_get_sudo_status(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<bool, String> {
+    Ok(state.ssh_manager.sftp_get_sudo_status(&session_id))
 }
 
 #[tauri::command]
@@ -430,6 +470,35 @@ pub fn fs_rename_path(old_path: String, new_path: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn fs_duplicate_path(path: String, new_path: String, is_dir: bool) -> Result<(), String> {
+    crate::ssh_session::duplicate_local_path(&path, &new_path, is_dir)
+}
+
+#[tauri::command]
+pub async fn fs_get_folder_size(dir_path: String) -> Result<u64, String> {
+    tokio::task::spawn_blocking(move || {
+        fn dir_size(path: &std::path::Path) -> u64 {
+            let mut total = 0;
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_dir() {
+                            total += dir_size(&entry.path());
+                        } else {
+                            total += meta.len();
+                        }
+                    }
+                }
+            }
+            total
+        }
+        Ok(dir_size(std::path::Path::new(&dir_path)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub fn fs_list_local_dir(dir_path: String) -> Result<Vec<crate::ssh_session::LocalFileItem>, String> {
     crate::ssh_session::list_local_dir(&dir_path)
 }
@@ -444,12 +513,15 @@ pub async fn sftp_download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     session_id: String,
+    transfer_id: Option<String>,
     remote_folder: String,
     local_folder: String,
+    concurrency: Option<usize>,
 ) -> Result<(), String> {
+    let tid = transfer_id.unwrap_or_else(|| format!("tx_down_folder_{}", chrono::Utc::now().timestamp_millis()));
     state
         .ssh_manager
-        .download_folder_recursive(app, session_id, remote_folder, local_folder)
+        .download_folder_recursive(app, session_id, tid, remote_folder, local_folder, concurrency)
         .await
 }
 
@@ -458,12 +530,15 @@ pub async fn sftp_upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     session_id: String,
+    transfer_id: Option<String>,
     local_folder: String,
     remote_folder: String,
+    concurrency: Option<usize>,
 ) -> Result<(), String> {
+    let tid = transfer_id.unwrap_or_else(|| format!("tx_up_folder_{}", chrono::Utc::now().timestamp_millis()));
     state
         .ssh_manager
-        .upload_folder_recursive(app, session_id, local_folder, remote_folder)
+        .upload_folder_recursive(app, session_id, tid, local_folder, remote_folder, concurrency)
         .await
 }
 
@@ -476,11 +551,21 @@ pub async fn sftp_transfer_remote_to_remote(
     transfer_id: String,
     src_path: String,
     dst_path: String,
+    concurrency: Option<usize>,
 ) -> Result<(), String> {
     state
         .ssh_manager
-        .transfer_remote_to_remote(app, src_session_id, dst_session_id, transfer_id, src_path, dst_path)
+        .transfer_remote_to_remote(app, src_session_id, dst_session_id, transfer_id, src_path, dst_path, concurrency)
         .await
+}
+
+#[tauri::command]
+pub fn sftp_set_concurrency(
+    state: State<'_, AppState>,
+    concurrency: usize,
+) -> Result<(), String> {
+    state.ssh_manager.set_concurrency(concurrency);
+    Ok(())
 }
 
 #[tauri::command]
@@ -498,10 +583,65 @@ pub async fn ssh_get_server_metrics(
 }
 
 #[tauri::command]
+pub async fn sftp_fix_permissions(
+    state: State<'_, AppState>,
+    session_id: String,
+    remote_path: String,
+) -> Result<String, String> {
+    state.ssh_manager.fix_web_permissions(&session_id, &remote_path).await
+}
+
+#[tauri::command]
 pub async fn ssh_exec_command(
     state: State<'_, AppState>,
     session_id: String,
     command: String,
 ) -> Result<String, String> {
     state.ssh_manager.exec_command(&session_id, &command).await
+}
+
+pub fn log_msg(msg: &str) {
+    let log_path = match std::env::var("APPDATA") {
+        Ok(appdata) => std::path::PathBuf::from(appdata).join("boba").join("boba.log"),
+        Err(_) => std::env::temp_dir().join("boba.log"),
+    };
+    if let Some(p) = log_path.parent() {
+        let _ = std::fs::create_dir_all(p);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        use std::io::Write;
+        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = writeln!(f, "[{}] {}", now, msg);
+    }
+}
+
+#[tauri::command]
+pub fn get_app_log_path() -> Result<String, String> {
+    let log_path = match std::env::var("APPDATA") {
+        Ok(appdata) => std::path::PathBuf::from(appdata).join("boba").join("boba.log"),
+        Err(_) => std::env::temp_dir().join("boba.log"),
+    };
+    Ok(log_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn open_log_file() -> Result<(), String> {
+    let path = get_app_log_path()?;
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if !std::path::Path::new(&path).exists() {
+        let _ = std::fs::write(&path, format!("[{}] BOBA log file created.\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("notepad.exe").arg(&path).spawn();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn read_recent_logs() -> Result<String, String> {
+    let path = get_app_log_path()?;
+    std::fs::read_to_string(&path).map_err(|e| format!("Log belum tersedia: {}", e))
 }

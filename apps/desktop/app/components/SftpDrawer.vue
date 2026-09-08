@@ -71,6 +71,22 @@
           @change="handleFolderUpload"
         />
 
+        <!-- Sudo Mode Toggle -->
+        <button
+          @click="toggleSudo"
+          :disabled="!connected || togglingSudo"
+          :class="[
+            'px-1.5 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 border',
+            isSudoActive
+              ? 'bg-rose-950/90 border-rose-500 text-rose-300 font-bold shadow-[0_0_6px_rgba(244,63,94,0.4)]'
+              : 'bg-[#181c26] border-[#2b3548] text-slate-400 hover:text-slate-200'
+          ]"
+          :title="isSudoActive ? 'Sudo SFTP Aktif (Root Privileges). Klik untuk matikan.' : 'Aktifkan Sudo SFTP (Root privileges via sudo sftp-server)'"
+        >
+          <span>{{ isSudoActive ? '🛡️' : '🔒' }}</span>
+          <span>{{ isSudoActive ? 'Root' : 'Sudo' }}</span>
+        </button>
+
         <!-- Refresh -->
         <button
           @click="fetchFiles"
@@ -363,6 +379,35 @@ const error = ref<string | null>(null);
 const searchQuery = ref('');
 const isDragging = ref(false);
 
+const isSudoActive = ref(false);
+const togglingSudo = ref(false);
+
+async function checkSudoStatus() {
+  if (!props.connected) return;
+  try {
+    isSudoActive.value = await tauriBridge.sftpGetSudoStatus(props.sessionId);
+  } catch {}
+}
+
+async function toggleSudo() {
+  if (togglingSudo.value || !props.connected) return;
+  togglingSudo.value = true;
+  try {
+    const next = !isSudoActive.value;
+    await tauriBridge.sftpSetSudo(props.sessionId, next);
+    isSudoActive.value = next;
+    await fetchFiles();
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Sudo SFTP Error',
+      description: String(err),
+      variant: 'error',
+    });
+  } finally {
+    togglingSudo.value = false;
+  }
+}
+
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const folderInputRef = ref<HTMLInputElement | null>(null);
 const uploading = ref(false);
@@ -408,8 +453,14 @@ async function fetchFiles() {
     const target = currentPath.value.trim() || '.';
     const list = await tauriBridge.sftpList(props.sessionId, target);
     files.value = list;
+    checkSudoStatus();
   } catch (err: any) {
-    error.value = String(err);
+    const errStr = String(err);
+    if (errStr.toLowerCase().includes('permission denied')) {
+      error.value = `${errStr} (Klik tombol 🛡️ Sudo untuk akses Root)`;
+    } else {
+      error.value = errStr;
+    }
   } finally {
     loading.value = false;
   }
