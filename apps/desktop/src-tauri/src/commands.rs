@@ -749,22 +749,36 @@ pub async fn ai_http_stream(
         return Err(err_msg);
     }
 
+    let mut stream_completed = false;
     while let Ok(Some(chunk)) = res.chunk().await {
         let text = String::from_utf8_lossy(&chunk).to_string();
+        let is_done_signal = text.contains("data: [DONE]")
+            || text.contains("\"finishReason\":")
+            || text.contains("\"finish_reason\":\"stop\"")
+            || text.contains("\"finish_reason\":\"tool_calls\"")
+            || text.contains("\"type\":\"message_stop\"");
+
         let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
             stream_id: stream_id.clone(),
             chunk: Some(text),
-            done: false,
+            done: is_done_signal,
+            error: None,
+        });
+
+        if is_done_signal {
+            stream_completed = true;
+            break;
+        }
+    }
+
+    if !stream_completed {
+        let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+            stream_id,
+            chunk: None,
+            done: true,
             error: None,
         });
     }
-
-    let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
-        stream_id,
-        chunk: None,
-        done: true,
-        error: None,
-    });
 
     Ok(())
 }

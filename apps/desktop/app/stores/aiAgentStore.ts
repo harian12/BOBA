@@ -436,10 +436,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         const cmd = toolCall.args.command;
         if (!cmd) throw new Error('Perintah (command) kosong');
         const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
-        toolCall.result = output;
+        const finalResult = output && output.trim().length > 0 ? output : '(Perintah selesai dieksekusi tanpa output / kosong)';
+        toolCall.result = finalResult;
         toolCall.status = 'completed';
         toolCall.executedAt = Date.now();
-        return output;
+        return finalResult;
       } else if (toolCall.name === 'read_file') {
         const path = toolCall.args.path;
         if (!path) throw new Error('Path file kosong');
