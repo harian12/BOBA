@@ -1343,15 +1343,38 @@
             <span>Bersihkan Selesai</span>
           </button>
 
-          <!-- Bersihkan file Gagal / Dibatalkan: khusus di tab Gagal (failed) -->
-          <button
-            v-if="!isQueueCollapsed && queueTab === 'failed' && sessionFailedTransfers.length > 0"
-            @click="queueStore.clearCancelledAndFailed()"
-            class="text-[10px] text-rose-300 hover:text-rose-100 bg-rose-950/40 border border-rose-900/50 px-2 py-0.5 rounded transition font-medium"
-            title="Hapus riwayat file yang gagal/dibatalkan"
-          >
-            Bersihkan Gagal
-          </button>
+          <!-- Action buttons khusus di tab Gagal (failed) -->
+          <template v-if="!isQueueCollapsed && queueTab === 'failed' && sessionFailedTransfers.length > 0">
+            <button
+              @click="handleResumeAllFailed"
+              :disabled="queueStore.isRetryingAll"
+              class="text-[10px] text-sky-300 hover:text-sky-100 bg-sky-950/60 hover:bg-sky-900/80 border border-sky-700/70 px-2.5 py-0.5 rounded transition font-medium flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+              title="Lanjutkan semua file yang gagal/terputus dari posisi terakhir"
+            >
+              <span>⚡</span>
+              <span>{{ queueStore.isRetryingAll ? 'Memproses...' : 'Resume Semua' }}</span>
+            </button>
+
+            <button
+              @click="handleRestartAllFailed"
+              :disabled="queueStore.isRetryingAll"
+              class="text-[10px] text-amber-300 hover:text-amber-100 bg-amber-950/60 hover:bg-amber-900/80 border border-amber-700/70 px-2.5 py-0.5 rounded transition font-medium flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+              title="Ulangi semua file yang gagal dari awal (0%)"
+            >
+              <span>🔄</span>
+              <span>{{ queueStore.isRetryingAll ? 'Memproses...' : 'Ulang Semua' }}</span>
+            </button>
+
+            <button
+              @click="queueStore.clearCancelledAndFailed()"
+              :disabled="queueStore.isRetryingAll"
+              class="text-[10px] text-rose-300 hover:text-rose-100 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/50 px-2 py-0.5 rounded transition font-medium flex items-center space-x-1 disabled:opacity-50"
+              title="Hapus riwayat file yang gagal/dibatalkan"
+            >
+              <span>🗑️</span>
+              <span>Bersihkan Gagal</span>
+            </button>
+          </template>
 
           <!-- Toggle Minimize / Maximize Button -->
           <button
@@ -1452,10 +1475,44 @@
           </div>
         </template>
 
-        <!-- Rich Active or Failed Transfer View -->
-        <template v-else>
+        <!-- Failed Queue View -->
+        <template v-else-if="queueTab === 'failed'">
+          <!-- Top Action Bar for Failed Transfers -->
           <div
-            v-for="item in currentQueueItems"
+            v-if="sessionFailedTransfers.length > 0"
+            class="bg-[#1b1520] border border-rose-900/50 rounded-lg p-2.5 flex items-center justify-between space-x-3 mb-2"
+          >
+            <div class="flex items-center space-x-2 text-xs text-rose-300 min-w-0">
+              <span class="text-sm shrink-0">⚠️</span>
+              <div class="flex flex-col min-w-0">
+                <span class="font-semibold text-rose-200">{{ sessionFailedTransfers.length }} file gagal ditransfer atau terputus</span>
+                <span class="text-[10px] text-rose-400/80 truncate">Klik Resume untuk melanjutkan dari byte terakhir, atau Ulang untuk mengulang dari awal</span>
+              </div>
+            </div>
+            <div class="flex items-center space-x-2 shrink-0">
+              <button
+                @click="handleResumeAllFailed"
+                :disabled="queueStore.isRetryingAll"
+                class="text-xs text-sky-200 hover:text-white bg-sky-900/70 hover:bg-sky-800 border border-sky-600/70 px-3 py-1 rounded font-medium transition flex items-center space-x-1.5 shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Lanjutkan semua file yang gagal dari posisi terakhir"
+              >
+                <span>⚡</span>
+                <span>{{ queueStore.isRetryingAll ? 'Memproses...' : 'Resume Semua' }}</span>
+              </button>
+              <button
+                @click="handleRestartAllFailed"
+                :disabled="queueStore.isRetryingAll"
+                class="text-xs text-amber-200 hover:text-white bg-amber-900/70 hover:bg-amber-800 border border-amber-600/70 px-3 py-1 rounded font-medium transition flex items-center space-x-1.5 shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Ulangi semua file yang gagal dari awal (0%)"
+              >
+                <span>🔄</span>
+                <span>{{ queueStore.isRetryingAll ? 'Memproses...' : 'Ulang Semua' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-for="item in sessionFailedTransfers.slice(0, 100)"
             :key="item.id"
             class="bg-[#151926] border border-[#232a3b] rounded-lg p-2 text-xs flex items-center justify-between space-x-3"
           >
@@ -1477,79 +1534,137 @@
               </div>
             </div>
 
-          <!-- Middle: Progress Bar & Transfer Stats -->
-          <div class="w-64 shrink-0 space-y-1">
-            <div class="flex justify-between text-[10px] text-slate-400">
-              <template v-if="item.direction === 'compress' || item.direction === 'extract'">
-                <span class="text-amber-300 font-mono">{{ item.status === 'completed' ? '✓ Selesai di server' : item.status === 'error' ? '⚠️ Gagal' : 'Sedang diproses di server...' }}</span>
-                <span>{{ item.status === 'completed' ? '100%' : '⏳' }}</span>
-              </template>
-              <template v-else>
+            <!-- Middle: Progress Bar & Transfer Stats -->
+            <div class="w-64 shrink-0 space-y-1">
+              <div class="flex justify-between text-[10px] text-slate-400">
                 <div class="flex items-center space-x-1.5 truncate">
                   <span>{{ formatSize(item.bytesTransferred) }} / {{ formatSize(item.totalBytes) }}</span>
-                  <span v-if="calculateEta(item)" class="text-slate-400 font-mono text-[9px]">• ETA {{ calculateEta(item) }}</span>
                 </div>
-                <span>{{ Math.round(item.percentage) }}% ({{ formatSpeed(item.speedBps) }})</span>
-              </template>
+                <span>{{ Math.round(item.percentage) }}% (0 KB/s)</span>
+              </div>
+              <div class="w-full bg-[#0b0e16] rounded-full h-1.5 overflow-hidden">
+                <div
+                  class="h-full bg-rose-500 transition-all duration-150"
+                  :style="{ width: `${item.percentage}%` }"
+                ></div>
+              </div>
             </div>
-            <div class="w-full bg-[#0b0e16] rounded-full h-1.5 overflow-hidden">
-              <div
-                :class="[
-                  'h-full transition-all duration-150',
-                  item.status === 'completed'
-                    ? 'bg-emerald-400'
-                    : item.status === 'error' || item.status === 'cancelled'
-                    ? 'bg-rose-500'
-                    : item.direction === 'compress' || item.direction === 'extract'
-                    ? 'bg-amber-400 animate-pulse'
-                    : 'bg-sky-400'
-                ]"
-                :style="{ width: item.status === 'completed' ? '100%' : (item.direction === 'compress' || item.direction === 'extract' ? '100%' : `${item.percentage}%`) }"
-              ></div>
+
+            <!-- Right: Actions (Resume, Restart, Delete) -->
+            <div class="flex items-center space-x-1.5 shrink-0">
+              <button
+                @click="handleResumeSingle(item)"
+                class="text-sky-300 hover:text-white text-[10px] px-2.5 py-0.5 rounded bg-sky-950 hover:bg-sky-800 border border-sky-700/60 transition flex items-center space-x-1 shadow"
+                title="Lanjutkan dari byte terakhir"
+              >
+                <span>⚡</span>
+                <span>Resume</span>
+              </button>
+
+              <button
+                @click="handleRestartSingle(item)"
+                class="text-amber-300 hover:text-white text-[10px] px-2 py-0.5 rounded bg-amber-950/60 hover:bg-amber-800 transition"
+                title="Ulangi dari 0%"
+              >
+                🔄 Ulang
+              </button>
+
+              <button
+                @click="queueStore.removeTransfer(item.id)"
+                class="text-slate-500 hover:text-slate-300 text-xs px-1"
+                title="Hapus"
+              >
+                ✕
+              </button>
             </div>
           </div>
 
-          <!-- Right: Actions (Resume, Restart, Cancel, Delete) -->
-          <div class="flex items-center space-x-1.5 shrink-0">
-            <!-- If transferring, show speed or Cancel -->
-            <button
-              v-if="item.status === 'transferring' || item.status === 'pending'"
-              @click="handleCancelTransfer(item)"
-              class="text-rose-400 hover:text-rose-300 text-[10px] px-2 py-0.5 rounded bg-rose-950/40 border border-rose-900/50 transition"
-            >
-              Cancel
-            </button>
-
-            <!-- If Failed, show RESUME & RESTART buttons -->
-            <button
-              v-if="item.status === 'error' || item.status === 'cancelled'"
-              @click="queueStore.resumeTransfer(item.id)"
-              class="text-sky-300 hover:text-white text-[10px] px-2.5 py-0.5 rounded bg-sky-950 hover:bg-sky-800 border border-sky-700/60 transition flex items-center space-x-1 shadow"
-              title="Lanjutkan dari byte terakhir"
-            >
-              <span>⚡</span>
-              <span>Resume</span>
-            </button>
-
-            <button
-              v-if="item.status === 'error' || item.status === 'cancelled'"
-              @click="queueStore.restartTransfer(item.id)"
-              class="text-amber-300 hover:text-white text-[10px] px-2 py-0.5 rounded bg-amber-950/60 hover:bg-amber-800 transition"
-              title="Ulangi dari 0%"
-            >
-              🔄 Ulang
-            </button>
-
-            <button
-              v-if="item.status !== 'transferring' && item.status !== 'pending'"
-              @click="queueStore.removeTransfer(item.id)"
-              class="text-slate-500 hover:text-slate-300 text-xs px-1"
-              title="Hapus"
-            >
-              ✕
-            </button>
+          <div
+            v-if="sessionFailedTransfers.length > 100"
+            class="text-center py-2 text-[11px] text-slate-500 italic bg-[#0f121a] rounded border border-dashed border-[#232b3d]"
+          >
+            Menampilkan 100 file gagal teratas dari total {{ sessionFailedTransfers.length }} file gagal. Klik Resume Semua atau Ulang Semua untuk memproses semuanya.
           </div>
-        </div>
+        </template>
+
+        <!-- Active Transfer View -->
+        <template v-else>
+          <div
+            v-for="item in sessionActiveTransfers"
+            :key="item.id"
+            class="bg-[#151926] border border-[#232a3b] rounded-lg p-2 text-xs flex items-center justify-between space-x-3"
+          >
+            <!-- Left: Direction Icon & File Name -->
+            <div class="flex items-center space-x-2 truncate flex-1 min-w-0">
+              <span class="shrink-0">{{ item.direction === 'upload' ? '⬆️' : item.direction === 'compress' ? '📦' : item.direction === 'extract' ? '📂' : item.direction === 'remote-to-remote' ? '🔄' : '⬇️' }}</span>
+              <div class="flex flex-col min-w-0 truncate">
+                <div class="flex items-center space-x-1.5 truncate">
+                  <span class="text-slate-200 font-semibold truncate max-w-xs" :title="item.remotePath">
+                    {{ item.fileName }}
+                  </span>
+                  <span class="text-[10px] text-slate-400 truncate hidden sm:inline shrink-0">
+                    ({{ getTransferItemLabel(item) }})
+                  </span>
+                </div>
+                <span v-if="item.errorMessage" class="text-[10px] text-rose-400 font-mono truncate max-w-sm" :title="item.errorMessage">
+                  ⚠️ {{ item.errorMessage }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Middle: Progress Bar & Transfer Stats -->
+            <div class="w-64 shrink-0 space-y-1">
+              <div class="flex justify-between text-[10px] text-slate-400">
+                <template v-if="item.direction === 'compress' || item.direction === 'extract'">
+                  <span class="text-amber-300 font-mono">{{ item.status === 'completed' ? '✓ Selesai di server' : item.status === 'error' ? '⚠️ Gagal' : 'Sedang diproses di server...' }}</span>
+                  <span>{{ item.status === 'completed' ? '100%' : '⏳' }}</span>
+                </template>
+                <template v-else>
+                  <div class="flex items-center space-x-1.5 truncate">
+                    <span>{{ formatSize(item.bytesTransferred) }} / {{ formatSize(item.totalBytes) }}</span>
+                    <span v-if="calculateEta(item)" class="text-slate-400 font-mono text-[9px]">• ETA {{ calculateEta(item) }}</span>
+                  </div>
+                  <span>{{ Math.round(item.percentage) }}% ({{ formatSpeed(item.speedBps) }})</span>
+                </template>
+              </div>
+              <div class="w-full bg-[#0b0e16] rounded-full h-1.5 overflow-hidden">
+                <div
+                  :class="[
+                    'h-full transition-all duration-150',
+                    item.status === 'completed'
+                      ? 'bg-emerald-400'
+                      : item.status === 'error' || item.status === 'cancelled'
+                      ? 'bg-rose-500'
+                      : item.direction === 'compress' || item.direction === 'extract'
+                      ? 'bg-amber-400 animate-pulse'
+                      : 'bg-sky-400'
+                  ]"
+                  :style="{ width: item.status === 'completed' ? '100%' : (item.direction === 'compress' || item.direction === 'extract' ? '100%' : `${item.percentage}%`) }"
+                ></div>
+              </div>
+            </div>
+
+            <!-- Right: Actions (Resume, Restart, Cancel, Delete) -->
+            <div class="flex items-center space-x-1.5 shrink-0">
+              <!-- If transferring, show speed or Cancel -->
+              <button
+                v-if="item.status === 'transferring' || item.status === 'pending'"
+                @click="handleCancelTransfer(item)"
+                class="text-rose-400 hover:text-rose-300 text-[10px] px-2 py-0.5 rounded bg-rose-950/40 border border-rose-900/50 transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                v-if="item.status !== 'transferring' && item.status !== 'pending'"
+                @click="queueStore.removeTransfer(item.id)"
+                class="text-slate-500 hover:text-slate-300 text-xs px-1"
+                title="Hapus"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         </template>
       </div>
     </div>
@@ -3103,6 +3218,61 @@ async function handleCancelAll() {
     queueStore.cancelAll();
     dialogStore.showToast(`${count} transfer dibatalkan.`, 'info', 2000);
   }
+}
+
+async function resolveDestinationSession(item: any): Promise<string | undefined> {
+  if (item.targetSessionId) return item.targetSessionId;
+  if (item.direction === 'remote-to-remote') {
+    const sId = String(item.sessionId || '');
+    const isLeft = sId.startsWith('sftp_conn_left_') || (leftPaneTarget.value && sId.includes(leftPaneTarget.value));
+    try {
+      if (isLeft) {
+        return await ensureConnected();
+      } else {
+        return await ensureLeftConnected();
+      }
+    } catch (err) {
+      console.warn('Could not resolve destination session for transfer', err);
+    }
+  }
+  return undefined;
+}
+
+async function handleResumeSingle(item: any) {
+  const dstId = await resolveDestinationSession(item);
+  await queueStore.resumeTransfer(item.id, dstId);
+}
+
+async function handleRestartSingle(item: any) {
+  const dstId = await resolveDestinationSession(item);
+  await queueStore.restartTransfer(item.id, dstId);
+}
+
+async function handleResumeAllFailed() {
+  if (queueStore.isRetryingAll) return;
+  const count = sessionFailedTransfers.value.length;
+  if (count === 0) return;
+  queueTab.value = 'active';
+  dialogStore.showToast(`Melanjutkan ${count} file yang gagal...`, 'info', 3000);
+  await queueStore.resumeAllFailed(resolveDestinationSession);
+}
+
+async function handleRestartAllFailed() {
+  if (queueStore.isRetryingAll) return;
+  const count = sessionFailedTransfers.value.length;
+  if (count === 0) return;
+
+  const isConfirmed = await dialogStore.confirm({
+    title: 'Ulang Semua File Gagal?',
+    description: `Apakah Anda yakin ingin mengulang transfer ${count} file yang gagal dari 0%?`,
+    confirmText: 'Ulang Semua',
+    cancelText: 'Batal',
+  });
+  if (!isConfirmed) return;
+
+  queueTab.value = 'active';
+  dialogStore.showToast(`Mengulang ${count} file yang gagal dari awal...`, 'info', 3000);
+  await queueStore.restartAllFailed(resolveDestinationSession);
 }
 
 onMounted(async () => {

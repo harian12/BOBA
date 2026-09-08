@@ -38,6 +38,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   let batchTimer: any = null;
   let isCancellingAll = false;
   let cancelAllTimeout: any = null;
+  const isRetryingAll = ref(false);
   const concurrencyChangeResolvers: Set<() => void> = new Set();
 
   function onConcurrencyChange(): Promise<void> {
@@ -412,7 +413,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     triggerRef(transfers);
   }
 
-  async function resumeTransfer(transferId: string) {
+  async function resumeTransfer(transferId: string, destinationSessionId?: string) {
     const item = transfers.value.find(t => t.id === transferId);
     if (!item) return;
 
@@ -420,6 +421,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
 
     item.status = 'pending';
     item.errorMessage = undefined;
+    triggerRef(transfers);
 
     try {
       if (item.direction === 'download' && item.localPath) {
@@ -439,25 +441,31 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           item.bytesTransferred
         );
       } else if (item.direction === 'remote-to-remote' && item.localPath) {
-        const dstId = item.targetSessionId;
-        if (dstId) {
-          await tauriBridge.sftpTransferRemoteToRemote(
-            item.sessionId,
-            dstId,
-            item.id,
-            item.remotePath,
-            item.localPath,
-            maxConcurrent.value
-          );
+        const dstId = destinationSessionId || item.targetSessionId || (
+          item.localPath.startsWith('Remote:') ? '' : undefined
+        );
+        if (!dstId) {
+          throw new Error('Sesi server tujuan tidak ditemukan untuk transfer ini.');
         }
+        item.targetSessionId = dstId;
+        const targetPath = item.localPath.startsWith('Remote:') ? item.remotePath : item.localPath;
+        await tauriBridge.sftpTransferRemoteToRemote(
+          item.sessionId,
+          dstId,
+          item.id,
+          item.remotePath,
+          targetPath,
+          maxConcurrent.value
+        );
       }
     } catch (err: any) {
       item.status = 'error';
       item.errorMessage = String(err);
+      triggerRef(transfers);
     }
   }
 
-  async function restartTransfer(transferId: string) {
+  async function restartTransfer(transferId: string, destinationSessionId?: string) {
     const item = transfers.value.find(t => t.id === transferId);
     if (!item) return;
 
@@ -465,6 +473,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     item.percentage = 0;
     item.status = 'pending';
     item.errorMessage = undefined;
+    triggerRef(transfers);
 
     try {
       if (item.direction === 'download' && item.localPath) {
@@ -484,23 +493,111 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           0
         );
       } else if (item.direction === 'remote-to-remote' && item.localPath) {
-        const dstId = item.targetSessionId || (
-          item.localPath.startsWith('Remote:') ? item.localPath.replace('Remote:', '') : ''
+        const dstId = destinationSessionId || item.targetSessionId || (
+          item.localPath.startsWith('Remote:') ? '' : undefined
         );
-        if (dstId) {
-          await tauriBridge.sftpTransferRemoteToRemote(
-            item.sessionId,
-            dstId,
-            item.id,
-            item.remotePath,
-            item.localPath.startsWith('Remote:') ? item.remotePath : item.localPath,
-            maxConcurrent.value
-          );
+        if (!dstId) {
+          throw new Error('Sesi server tujuan tidak ditemukan untuk transfer ini.');
         }
+        item.targetSessionId = dstId;
+        const targetPath = item.localPath.startsWith('Remote:') ? item.remotePath : item.localPath;
+        await tauriBridge.sftpTransferRemoteToRemote(
+          item.sessionId,
+          dstId,
+          item.id,
+          item.remotePath,
+          targetPath,
+          maxConcurrent.value
+        );
       }
     } catch (err: any) {
       item.status = 'error';
       item.errorMessage = String(err);
+      triggerRef(transfers);
+    }
+  }
+
+  async function resumeAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
+    if (isRetryingAll.value) return;
+    const failedList = transfers.value.filter(t => t.status === 'error' || t.status === 'cancelled');
+    if (failedList.length === 0) return;
+
+    isRetryingAll.value = true;
+    try {
+      for (const item of failedList) {
+        item.status = 'pending';
+        item.errorMessage = undefined;
+      }
+      triggerRef(transfers);
+
+      const executing = new Set<Promise<void>>();
+      for (const item of failedList) {
+        if (isCancellingAll) break;
+
+        while (executing.size >= maxConcurrent.value) {
+          await Promise.race([...executing, onConcurrencyChange()]);
+          if (isCancellingAll) break;
+        }
+        if (isCancellingAll) break;
+
+        let dstId: string | undefined;
+        try {
+          dstId = resolveDstId ? await resolveDstId(item) : item.targetSessionId;
+        } catch {
+          dstId = item.targetSessionId;
+        }
+
+        const p = resumeTransfer(item.id, dstId).finally(() => {
+          executing.delete(p);
+        });
+        executing.add(p);
+      }
+      await Promise.all(executing);
+    } finally {
+      isRetryingAll.value = false;
+    }
+  }
+
+  async function restartAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
+    if (isRetryingAll.value) return;
+    const failedList = transfers.value.filter(t => t.status === 'error' || t.status === 'cancelled');
+    if (failedList.length === 0) return;
+
+    isRetryingAll.value = true;
+    try {
+      for (const item of failedList) {
+        item.bytesTransferred = 0;
+        item.percentage = 0;
+        item.status = 'pending';
+        item.errorMessage = undefined;
+      }
+      triggerRef(transfers);
+
+      const executing = new Set<Promise<void>>();
+      for (const item of failedList) {
+        if (isCancellingAll) break;
+
+        while (executing.size >= maxConcurrent.value) {
+          await Promise.race([...executing, onConcurrencyChange()]);
+          if (isCancellingAll) break;
+        }
+        if (isCancellingAll) break;
+
+        let dstId: string | undefined;
+        try {
+          dstId = resolveDstId ? await resolveDstId(item) : item.targetSessionId;
+        } catch {
+          dstId = item.targetSessionId;
+        }
+
+        const p = restartTransfer(item.id, dstId).finally(() => {
+          executing.delete(p);
+        });
+        executing.add(p);
+      }
+      await Promise.all(executing);
+    } finally {
+      isRetryingAll.value = false;
     }
   }
 
@@ -527,6 +624,9 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     updateStatus,
     resumeTransfer,
     restartTransfer,
+    resumeAllFailed,
+    restartAllFailed,
+    isRetryingAll,
     cancelTransfer,
     cancelAll,
     hasActiveTransfers,

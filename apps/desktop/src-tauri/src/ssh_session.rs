@@ -2132,7 +2132,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     return Err(err_msg);
                 }
                 if let Some(ref kd) = known_dirs {
-                    kd.lock().unwrap().insert(parent_str);
+                    kd.lock().unwrap().insert(parent_str.clone());
                 }
             }
         }
@@ -2151,6 +2151,41 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                     self.invalidate_sftp(&dst_session_id);
                     let new_dst = self.get_or_init_sftp(&dst_session_id).await.map_err(|e| format!("Failed to reinit SFTP on dst: {}", e))?;
                     match new_dst.create(&dst_path).await {
+                        Ok(f) => f,
+                        Err(e2) => {
+                            let _ = src_file.shutdown().await;
+                            let err_msg = format!("Failed to create destination remote file '{}': {}", dst_path, e2);
+                            crate::commands::log_msg(&err_msg);
+                            let _ = app.emit("sftp-progress", TransferProgress {
+                                transfer_id: transfer_id.clone(),
+                                session_id: src_session_id.clone(),
+                                file_name: file_name.clone(),
+                                remote_path: src_path.clone(),
+                                local_path: Some(dst_path.clone()),
+                                direction: "remote-to-remote".into(),
+                                bytes_transferred: 0,
+                                total_bytes,
+                                percentage: 0.0,
+                                speed_bps: 0.0,
+                                status: "error".into(),
+                                error_message: Some(err_msg.clone()),
+                            });
+                            self.active_transfers.lock().remove(&transfer_id);
+                            return Err(err_msg);
+                        }
+                    }
+                } else if err_str.to_lowercase().contains("permission")
+                    || err_str.contains("Status(3)")
+                    || err_str.contains("Failure")
+                {
+                    if !parent_str.is_empty() && parent_str != "." && parent_str != "/" {
+                        let fix_cmd = format!(
+                            "sudo -n chmod 777 \"{}\" 2>/dev/null; sudo -n rm -f \"{}\" 2>/dev/null || rm -f \"{}\" 2>/dev/null",
+                            parent_str, dst_path, dst_path
+                        );
+                        let _ = self.exec_command(&dst_session_id, &fix_cmd).await;
+                    }
+                    match dst_sftp.create(&dst_path).await {
                         Ok(f) => f,
                         Err(e2) => {
                             let _ = src_file.shutdown().await;
