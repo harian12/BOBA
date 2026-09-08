@@ -1423,9 +1423,14 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 });
                 last_emit = Instant::now();
             }
+
+            if total_bytes > 0 && transferred >= total_bytes {
+                break;
+            }
         }
 
-        local_file.flush().await.map_err(|e| format!("Failed to flush local file: {}", e))?;
+        let _ = local_file.flush().await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), remote_file.shutdown()).await;
         self.active_transfers.lock().remove(&transfer_id);
 
         let _ = app.emit("sftp-progress", TransferProgress {
@@ -1802,9 +1807,13 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 });
                 last_emit = Instant::now();
             }
+
+            if total_bytes > 0 && transferred >= total_bytes {
+                break;
+            }
         }
 
-        let _ = remote_file.shutdown().await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), remote_file.shutdown()).await;
 
         if set_web_permissions {
             // Ensure safe web permissions (644) so web server never gets 403 Forbidden
@@ -2242,12 +2251,33 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 return Err("Transfer cancelled by user".into());
             }
 
-            let n = match src_file.read(&mut buffer).await {
-                Ok(bytes_read) => bytes_read,
-                Err(e) => {
-                    let _ = dst_file.shutdown().await;
-                    let _ = src_file.shutdown().await;
+            let n = match tokio::time::timeout(std::time::Duration::from_secs(30), src_file.read(&mut buffer)).await {
+                Ok(Ok(bytes_read)) => bytes_read,
+                Ok(Err(e)) => {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), dst_file.shutdown()).await;
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), src_file.shutdown()).await;
                     let err_msg = format!("Error reading source remote file: {}", e);
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: src_session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: src_path.clone(),
+                        local_path: Some(dst_path.clone()),
+                        direction: "remote-to-remote".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "error".into(),
+                        error_message: Some(err_msg.clone()),
+                    });
+                    self.active_transfers.lock().remove(&transfer_id);
+                    return Err(err_msg);
+                }
+                Err(_) => {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), dst_file.shutdown()).await;
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), src_file.shutdown()).await;
+                    let err_msg = format!("Timeout reading source remote file '{}' (>30s)", src_path);
                     let _ = app.emit("sftp-progress", TransferProgress {
                         transfer_id: transfer_id.clone(),
                         session_id: src_session_id.clone(),
@@ -2271,26 +2301,51 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 break;
             }
 
-            if let Err(e) = dst_file.write_all(&buffer[..n]).await {
-                let _ = dst_file.shutdown().await;
-                let _ = src_file.shutdown().await;
-                let err_msg = format!("Error writing destination remote file: {}", e);
-                let _ = app.emit("sftp-progress", TransferProgress {
-                    transfer_id: transfer_id.clone(),
-                    session_id: src_session_id.clone(),
-                    file_name: file_name.clone(),
-                    remote_path: src_path.clone(),
-                    local_path: Some(dst_path.clone()),
-                    direction: "remote-to-remote".into(),
-                    bytes_transferred: transferred,
-                    total_bytes,
-                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-                    speed_bps: 0.0,
-                    status: "error".into(),
-                    error_message: Some(err_msg.clone()),
-                });
-                self.active_transfers.lock().remove(&transfer_id);
-                return Err(err_msg);
+            let write_res = tokio::time::timeout(std::time::Duration::from_secs(30), dst_file.write_all(&buffer[..n])).await;
+            match write_res {
+                Ok(Ok(())) => {},
+                Ok(Err(e)) => {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), dst_file.shutdown()).await;
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), src_file.shutdown()).await;
+                    let err_msg = format!("Error writing destination remote file: {}", e);
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: src_session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: src_path.clone(),
+                        local_path: Some(dst_path.clone()),
+                        direction: "remote-to-remote".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "error".into(),
+                        error_message: Some(err_msg.clone()),
+                    });
+                    self.active_transfers.lock().remove(&transfer_id);
+                    return Err(err_msg);
+                }
+                Err(_) => {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), dst_file.shutdown()).await;
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), src_file.shutdown()).await;
+                    let err_msg = format!("Timeout writing destination remote file '{}' (>30s)", dst_path);
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: src_session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: src_path.clone(),
+                        local_path: Some(dst_path.clone()),
+                        direction: "remote-to-remote".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "error".into(),
+                        error_message: Some(err_msg.clone()),
+                    });
+                    self.active_transfers.lock().remove(&transfer_id);
+                    return Err(err_msg);
+                }
             }
 
             transferred += n as u64;
@@ -2316,10 +2371,14 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                 });
                 last_emit = Instant::now();
             }
+
+            if total_bytes > 0 && transferred >= total_bytes {
+                break;
+            }
         }
 
-        let _ = dst_file.shutdown().await;
-        let _ = src_file.shutdown().await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), dst_file.shutdown()).await;
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), src_file.shutdown()).await;
 
         if set_web_permissions {
             let _ = dst_sftp.set_metadata(&dst_path, russh_sftp::protocol::FileAttributes {
@@ -2396,7 +2455,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
         let (sem_id, semaphore) = self.register_semaphore(conc);
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String, u64)>(10000);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String, u64)>(500);
 
         let scanner_app = app.clone();
         let scanner_src_id = src_session_id.clone();
@@ -2725,7 +2784,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
         let (sem_id, semaphore) = self.register_semaphore(conc);
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<(std::path::PathBuf, String, String)>(10000);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(std::path::PathBuf, String, String)>(500);
 
         let scanner_app = app.clone();
         let scanner_session_id = session_id.clone();
@@ -3052,7 +3111,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             local_dirs.lock().unwrap().insert(local_root.clone());
         }
 
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String)>(10000);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String)>(500);
 
         let scanner_app = app.clone();
         let scanner_session_id = session_id.clone();

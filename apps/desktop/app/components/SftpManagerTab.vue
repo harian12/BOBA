@@ -1376,7 +1376,7 @@
         <!-- Lightweight Pending Queue View (Fast render without animation) -->
         <template v-if="queueTab === 'pending'">
           <div
-            v-for="item in sessionPendingTransfers.slice(0, 150)"
+            v-for="item in sessionPendingTransfers.slice(0, 100)"
             :key="item.id"
             class="bg-[#121622] border border-[#1f2636] rounded px-3 py-1.5 text-xs flex items-center justify-between space-x-3 hover:bg-[#161b2a] transition"
           >
@@ -1405,10 +1405,10 @@
             </div>
           </div>
           <div
-            v-if="sessionPendingTransfers.length > 150"
+            v-if="sessionPendingTransfers.length > 100"
             class="text-center py-2 text-[11px] text-slate-500 italic bg-[#0f121a] rounded border border-dashed border-[#232b3d]"
           >
-            ...dan {{ sessionPendingTransfers.length - 150 }} file lainnya dalam antrean menunggu giliran.
+            Menampilkan 100 transfer antrean teratas dari total {{ sessionPendingTransfers.length }} file yang menunggu giliran.
           </div>
         </template>
 
