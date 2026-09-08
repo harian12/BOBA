@@ -620,6 +620,11 @@ Guidelines:
   }
 
   async function sendMessage(promptText: string) {
+    if (isThinking.value) {
+      dialogStore.showToast('AI sedang memproses respon, mohon tunggu hingga selesai atau klik Stop.', 'warning', 3000);
+      return;
+    }
+
     const provider = activeProvider.value;
     if (!provider) {
       dialogStore.alert({
@@ -673,13 +678,14 @@ Guidelines:
     isThinking.value = true;
     activeAbortController = new AbortController();
 
-    // Create assistant placeholder message
+    // Create assistant placeholder message - pastikan createdAt selalu lebih baru dari pesan sebelumnya
+    const lastMsgTime = chatList.length > 0 ? (chatList[chatList.length - 1]?.createdAt || 0) : 0;
     const assistantMsg: AiChatMessage = {
       id: `msg_ai_${Date.now()}`,
       role: 'assistant',
       content: '',
       toolCalls: [],
-      createdAt: Date.now(),
+      createdAt: Math.max(Date.now(), lastMsgTime + 1),
     };
     chatList.push(assistantMsg);
     thread.updatedAt = Date.now();

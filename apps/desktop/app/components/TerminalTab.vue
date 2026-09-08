@@ -495,6 +495,12 @@ function handleAskAiAboutSelection() {
   const selection = term.getSelection();
   if (!selection || !selection.trim()) return;
 
+  if (aiStore.isThinking) {
+    dialogStore.showToast('AI Copilot sedang memproses respon sebelumnya, mohon tunggu...', 'warning', 3000);
+    return;
+  }
+
+  dialogStore.showToast('Mengirim teks pilihan terminal ke AI Copilot...', 'info', 2000);
   const sessionId = props.tab.sessionConfig?.id || props.tab.id;
   const prompt = `Tolong analisis potongan teks / pesan error dari terminal berikut dan berikan penjelasan serta solusi perbaikannya:\n\n\`\`\`\n${selection.trim()}\n\`\`\``;
   aiStore.sendPromptWithContext(prompt, sessionId);

@@ -3390,12 +3390,17 @@ function navigateLeftRemoteUp() {
 }
 
 function askAiAboutFile(side: 'left' | 'right', item: LocalFileItem | RemoteFileItem) {
+  if (aiStore.isThinking) {
+    dialogStore.showToast('AI Copilot sedang memproses respon sebelumnya, mohon tunggu...', 'warning', 3000);
+    return;
+  }
   const isLeft = side === 'left';
   const targetSessionId = isLeft
     ? (leftPaneTarget.value === 'local' ? '' : leftPaneTarget.value)
     : (rightPaneTarget.value || '');
 
   const prompt = `Tolong baca dan analisis file berikut pada server target:\nPath: ${item.path}\nNama: ${item.name}\n\nJelaskan isi konfigurasi atau baris log ini dan berikan saran jika terdapat potensi kesalahan/masalah.`;
+  dialogStore.showToast(`Mengirim file ${item.name} ke AI Copilot...`, 'info', 2000);
   aiStore.sendPromptWithContext(prompt, targetSessionId);
 }
 

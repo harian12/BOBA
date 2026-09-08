@@ -249,7 +249,7 @@
     <div
       v-else
       ref="chatFeedRef"
-      class="flex-1 overflow-y-auto p-3 space-y-3.5 no-scrollbar text-xs text-slate-200"
+      class="flex-1 overflow-y-auto p-3 space-y-3.5 text-xs text-slate-200"
     >
       <!-- Empty State with Quick Starter Chips -->
       <div
@@ -427,6 +427,21 @@
         </div>
       </template>
 
+      <!-- Tombol Generate Balasan jika pesan user belum dijawab / terputus -->
+      <div
+        v-if="!aiStore.isThinking && currentMessages.length > 0 && currentMessages[currentMessages.length - 1].role === 'user'"
+        class="flex items-center justify-end pt-1"
+      >
+        <button
+          @click="aiStore.continueAgentLoop(aiStore.selectedSessionId)"
+          type="button"
+          class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/50 rounded-lg text-[10.5px] font-semibold transition flex items-center space-x-1.5 shadow"
+        >
+          <span>✨</span>
+          <span>Dapatkan Balasan AI</span>
+        </button>
+      </div>
+
       <!-- Thinking / Token Streaming Indicator -->
       <div v-if="aiStore.isThinking" class="flex items-center space-x-2 text-sky-400 text-xs p-2.5 bg-boba-900/80 border border-boba-800/80 rounded-xl animate-pulse">
         <span class="text-sm">✨</span>
@@ -577,13 +592,15 @@ const selectedServerName = computed(() => {
 
 const currentMessages = computed(() => {
   // Saring pesan teknis internal tool role dan pesan assistant kosong tanpa konten/tool calls
-  return aiStore.getSessionMessages(aiStore.selectedSessionId).filter(m => {
+  const msgs = aiStore.getSessionMessages(aiStore.selectedSessionId).filter(m => {
     if (m.role === 'tool') return false;
     if (m.role === 'assistant') {
       return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
     }
     return true;
   });
+  // Pastikan urutan selalu terurut secara kronologis dari waktu paling awal ke paling akhir
+  return [...msgs].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 });
 
 function handleNewChat() {
