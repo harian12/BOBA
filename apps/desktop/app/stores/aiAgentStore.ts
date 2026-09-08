@@ -255,6 +255,15 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   async function executeTool(sessionId: string, toolCall: AiToolCall): Promise<any> {
     toolCall.status = 'running';
 
+    // Normalisasi nama tool jika terduplikasi saat chunk streaming
+    const validToolNames = ['exec_command', 'read_file', 'write_file', 'get_system_metrics'];
+    for (const v of validToolNames) {
+      if (toolCall.name.startsWith(v)) {
+        toolCall.name = v;
+        break;
+      }
+    }
+
     try {
       const realSessionId = await ensureSessionConnected(sessionId);
 

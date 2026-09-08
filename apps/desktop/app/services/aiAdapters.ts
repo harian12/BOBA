@@ -317,12 +317,22 @@ async function streamOpenAiCompatible(
                 if (!accumulatedToolCalls[idx]) {
                   accumulatedToolCalls[idx] = {
                     id: tc.id || `tc_${Date.now()}_${idx}`,
-                    name: tc.function?.name || '',
+                    name: '',
                     argsStr: '',
                   };
                 }
                 if (tc.id) accumulatedToolCalls[idx].id = tc.id;
-                if (tc.function?.name) accumulatedToolCalls[idx].name += tc.function.name;
+                if (tc.function?.name) {
+                  const inc = tc.function.name;
+                  const cur = accumulatedToolCalls[idx].name;
+                  if (!cur) {
+                    accumulatedToolCalls[idx].name = inc;
+                  } else if (inc.startsWith(cur)) {
+                    accumulatedToolCalls[idx].name = inc;
+                  } else if (!cur.includes(inc)) {
+                    accumulatedToolCalls[idx].name += inc;
+                  }
+                }
                 if (tc.function?.arguments) accumulatedToolCalls[idx].argsStr += tc.function.arguments;
               }
             }
