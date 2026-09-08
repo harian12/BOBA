@@ -244,6 +244,21 @@ export const tauriBridge = {
     return await invoke('fetch_ai_models', { endpoint, apiKey: apiKey || null });
   },
 
+  async aiHttpStream(
+    streamId: string,
+    url: string,
+    headers: Record<string, string>,
+    body: string
+  ): Promise<void> {
+    return await invoke('ai_http_stream', { streamId, url, headers, body });
+  },
+
+  onAiStreamEvent(callback: (payload: { stream_id: string; chunk?: string; done: boolean; error?: string }) => void): Promise<UnlistenFn> {
+    return listen('ai-stream-event', (event) => {
+      callback(event.payload as any);
+    });
+  },
+
   // Event listeners
   onSftpProgress(callback: (payload: any) => void): Promise<UnlistenFn> {
     return listen('sftp-progress', (event) => {

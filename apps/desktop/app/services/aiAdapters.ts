@@ -207,6 +207,84 @@ export async function streamChat(
 }
 
 // -------------------------------------------------------------
+// Native Desktop HTTP Stream Helper (Bypass CORS via Rust reqwest)
+// -------------------------------------------------------------
+async function streamViaNativeHttp(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+  onChunk: (chunk: string) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const streamId = `stream_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  return new Promise<void>(async (resolve, reject) => {
+    let unlisten: (() => void) | null = null;
+    let finished = false;
+
+    const cleanup = () => {
+      if (unlisten) {
+        unlisten();
+        unlisten = null;
+      }
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    };
+
+    const onAbort = () => {
+      if (!finished) {
+        finished = true;
+        cleanup();
+        reject(new DOMException('Aborted', 'AbortError'));
+      }
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        return reject(new DOMException('Aborted', 'AbortError'));
+      }
+      signal.addEventListener('abort', onAbort);
+    }
+
+    try {
+      unlisten = await tauriBridge.onAiStreamEvent((event) => {
+        if (event.stream_id !== streamId) return;
+
+        if (event.error) {
+          if (!finished) {
+            finished = true;
+            cleanup();
+            reject(new Error(event.error));
+          }
+          return;
+        }
+
+        if (event.chunk) {
+          onChunk(event.chunk);
+        }
+
+        if (event.done) {
+          if (!finished) {
+            finished = true;
+            cleanup();
+            resolve();
+          }
+        }
+      });
+
+      await tauriBridge.aiHttpStream(streamId, url, headers, body);
+    } catch (err: any) {
+      if (!finished) {
+        finished = true;
+        cleanup();
+        reject(err);
+      }
+    }
+  });
+}
+
+// -------------------------------------------------------------
 // Adapter: OpenAI-Compatible (/chat/completions)
 // -------------------------------------------------------------
 async function streamOpenAiCompatible(
@@ -225,9 +303,18 @@ async function streamOpenAiCompatible(
     endpoint = `${endpoint}${sep}key=${encodeURIComponent(apiKey)}`;
   }
 
+  // Filter pesan kosong agar API tidak menolak dengan 400 Bad Request
+  const validMessages = messages.filter(m => {
+    if (m.role === 'tool') return true;
+    if (m.role === 'assistant') {
+      return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
+    }
+    return m.content && m.content.trim().length > 0;
+  });
+
   const formattedMessages: any[] = [{ role: 'system', content: systemPrompt }];
 
-  for (const m of messages) {
+  for (const m of validMessages) {
     if (m.role === 'tool') {
       formattedMessages.push({
         role: 'tool',
@@ -255,91 +342,81 @@ async function streamOpenAiCompatible(
     }
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: formattedMessages,
-      tools: AGENT_TOOLS,
-      tool_choice: 'auto',
-      stream: true,
-    }),
-    signal,
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const reqBody = JSON.stringify({
+    model,
+    messages: formattedMessages,
+    tools: AGENT_TOOLS,
+    tool_choice: 'auto',
+    stream: true,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API Error [${response.status}]: ${errorText}`);
-  }
-
-  if (!response.body) {
-    throw new Error('No response stream returned by AI provider');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
   let buffer = '';
-
   const accumulatedToolCalls: Record<number, { id: string; name: string; argsStr: string }> = {};
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  const handleChunk = (chunkText: string) => {
+    buffer += chunkText;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(':')) continue;
+      if (trimmed === 'data: [DONE]') continue;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
-        if (trimmed === 'data: [DONE]') continue;
+      if (trimmed.startsWith('data: ')) {
+        try {
+          const json = JSON.parse(trimmed.substring(6));
+          const choice = json.choices?.[0];
+          if (!choice) continue;
 
-        if (trimmed.startsWith('data: ')) {
-          try {
-            const json = JSON.parse(trimmed.substring(6));
-            const choice = json.choices?.[0];
-            if (!choice) continue;
+          // Content delta
+          if (choice.delta?.content) {
+            callbacks.onToken(choice.delta.content);
+          }
 
-            // Content delta
-            if (choice.delta?.content) {
-              callbacks.onToken(choice.delta.content);
-            }
-
-            // Tool calls delta
-            if (choice.delta?.tool_calls) {
-              for (const tc of choice.delta.tool_calls) {
-                const idx = tc.index ?? 0;
-                if (!accumulatedToolCalls[idx]) {
-                  accumulatedToolCalls[idx] = {
-                    id: tc.id || `tc_${Date.now()}_${idx}`,
-                    name: '',
-                    argsStr: '',
-                  };
-                }
-                if (tc.id) accumulatedToolCalls[idx].id = tc.id;
-                if (tc.function?.name) {
-                  const inc = tc.function.name;
-                  const cur = accumulatedToolCalls[idx].name;
-                  if (!cur) {
-                    accumulatedToolCalls[idx].name = inc;
-                  } else if (inc.startsWith(cur)) {
-                    accumulatedToolCalls[idx].name = inc;
-                  } else if (!cur.includes(inc)) {
-                    accumulatedToolCalls[idx].name += inc;
-                  }
-                }
-                if (tc.function?.arguments) accumulatedToolCalls[idx].argsStr += tc.function.arguments;
+          // Tool calls delta
+          if (choice.delta?.tool_calls) {
+            for (const tc of choice.delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              if (!accumulatedToolCalls[idx]) {
+                accumulatedToolCalls[idx] = {
+                  id: tc.id || `tc_${Date.now()}_${idx}`,
+                  name: '',
+                  argsStr: '',
+                };
               }
+              if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+              if (tc.function?.name) {
+                const inc = tc.function.name;
+                const cur = accumulatedToolCalls[idx].name;
+                if (!cur) {
+                  accumulatedToolCalls[idx].name = inc;
+                } else if (inc.startsWith(cur)) {
+                  accumulatedToolCalls[idx].name = inc;
+                } else if (!cur.includes(inc)) {
+                  accumulatedToolCalls[idx].name += inc;
+                }
+              }
+              if (tc.function?.arguments) accumulatedToolCalls[idx].argsStr += tc.function.arguments;
             }
-          } catch (_) {}
-        }
+          }
+        } catch (_) {}
       }
+    }
+  };
+
+  try {
+    await streamViaNativeHttp(endpoint, headers, reqBody, handleChunk, signal);
+
+    if (buffer.trim()) {
+      handleChunk('\n');
     }
 
     // Process collected tool calls
@@ -394,8 +471,17 @@ async function streamAnthropic(
     input_schema: t.function.parameters,
   }));
 
+  // Filter pesan kosong agar API tidak menolak dengan 400 Bad Request
+  const validMessages = messages.filter(m => {
+    if (m.role === 'tool') return true;
+    if (m.role === 'assistant') {
+      return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
+    }
+    return m.content && m.content.trim().length > 0;
+  });
+
   const formattedMessages: any[] = [];
-  for (const m of messages) {
+  for (const m of validMessages) {
     if (m.role === 'tool') {
       formattedMessages.push({
         role: 'user',
@@ -427,71 +513,63 @@ async function streamAnthropic(
     }
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: formattedMessages,
-      tools: anthropicTools,
-      stream: true,
-    }),
-    signal,
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  };
+
+  const reqBody = JSON.stringify({
+    model,
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: formattedMessages,
+    tools: anthropicTools,
+    stream: true,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Anthropic Error [${response.status}]: ${errorText}`);
-  }
-
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder('utf-8');
   let buffer = '';
-
   const accumulatedTools: Record<number, { id: string; name: string; jsonStr: string }> = {};
   let currentToolIndex = -1;
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  const handleChunk = (chunkText: string) => {
+    buffer += chunkText;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data: ')) continue;
+      const dataStr = trimmed.substring(6);
+      if (dataStr === '[DONE]') continue;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        const dataStr = trimmed.substring(6);
-        if (dataStr === '[DONE]') continue;
+      try {
+        const event = JSON.parse(dataStr);
 
-        try {
-          const event = JSON.parse(dataStr);
-
-          if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
-            currentToolIndex = event.index;
-            accumulatedTools[currentToolIndex] = {
-              id: event.content_block.id,
-              name: event.content_block.name,
-              jsonStr: '',
-            };
-          } else if (event.type === 'content_block_delta') {
-            if (event.delta?.type === 'text_delta') {
-              callbacks.onToken(event.delta.text);
-            } else if (event.delta?.type === 'input_json_delta' && currentToolIndex >= 0) {
-              accumulatedTools[currentToolIndex].jsonStr += event.delta.partial_json;
-            }
+        if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
+          currentToolIndex = event.index;
+          accumulatedTools[currentToolIndex] = {
+            id: event.content_block.id,
+            name: event.content_block.name,
+            jsonStr: '',
+          };
+        } else if (event.type === 'content_block_delta') {
+          if (event.delta?.type === 'text_delta') {
+            callbacks.onToken(event.delta.text);
+          } else if (event.delta?.type === 'input_json_delta' && currentToolIndex >= 0) {
+            accumulatedTools[currentToolIndex].jsonStr += event.delta.partial_json;
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
+    }
+  };
+
+  try {
+    await streamViaNativeHttp(endpoint, headers, reqBody, handleChunk, signal);
+
+    if (buffer.trim()) {
+      handleChunk('\n');
     }
 
     const toolKeys = Object.keys(accumulatedTools);
@@ -549,8 +627,17 @@ async function streamGemini(
     },
   ];
 
+  // Filter pesan kosong agar API tidak menolak dengan 400 Bad Request
+  const validMessages = messages.filter(m => {
+    if (m.role === 'tool') return true;
+    if (m.role === 'assistant') {
+      return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
+    }
+    return m.content && m.content.trim().length > 0;
+  });
+
   const contents: any[] = [];
-  for (const m of messages) {
+  for (const m of validMessages) {
     if (m.role === 'tool') {
       let toolName = 'exec_command';
       for (const prev of messages) {
@@ -596,60 +683,51 @@ async function streamGemini(
     }
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      tools: geminiTools,
-    }),
-    signal,
+  const headers = { 'Content-Type': 'application/json' };
+  const reqBody = JSON.stringify({
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents,
+    tools: geminiTools,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini Error [${response.status}]: ${errorText}`);
-  }
-
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder('utf-8');
   let buffer = '';
-
   const finalToolCalls: AiToolCall[] = [];
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  const handleChunk = (chunkText: string) => {
+    buffer += chunkText;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data: ')) continue;
+      try {
+        const json = JSON.parse(trimmed.substring(6));
+        const candidate = json.candidates?.[0];
+        if (!candidate) continue;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data: ')) continue;
-        try {
-          const json = JSON.parse(trimmed.substring(6));
-          const candidate = json.candidates?.[0];
-          if (!candidate) continue;
-
-          for (const part of candidate.content?.parts || []) {
-            if (part.text) {
-              callbacks.onToken(part.text);
-            }
-            if (part.functionCall) {
-              finalToolCalls.push({
-                id: `gemini_call_${Date.now()}_${finalToolCalls.length}`,
-                name: part.functionCall.name,
-                args: part.functionCall.args || {},
-                status: 'pending_approval',
-              });
-            }
+        for (const part of candidate.content?.parts || []) {
+          if (part.text) {
+            callbacks.onToken(part.text);
           }
-        } catch (_) {}
-      }
+          if (part.functionCall) {
+            finalToolCalls.push({
+              id: `gemini_call_${Date.now()}_${finalToolCalls.length}`,
+              name: part.functionCall.name,
+              args: part.functionCall.args || {},
+              status: 'pending_approval',
+            });
+          }
+        }
+      } catch (_) {}
+    }
+  };
+
+  try {
+    await streamViaNativeHttp(endpoint, headers, reqBody, handleChunk, signal);
+
+    if (buffer.trim()) {
+      handleChunk('\n');
     }
 
     if (finalToolCalls.length > 0) {

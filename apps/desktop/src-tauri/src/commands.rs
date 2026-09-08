@@ -693,3 +693,78 @@ pub async fn fetch_ai_models(endpoint: String, api_key: Option<String>) -> Resul
 
     Ok(vec![])
 }
+
+#[derive(serde::Serialize, Clone)]
+pub struct AiStreamChunkEvent {
+    pub stream_id: String,
+    pub chunk: Option<String>,
+    pub done: bool,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn ai_http_stream(
+    app: AppHandle,
+    stream_id: String,
+    url: String,
+    headers: std::collections::HashMap<String, String>,
+    body: String,
+) -> Result<(), String> {
+    use tauri::Emitter;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let mut req = client.post(&url);
+    for (k, v) in headers {
+        req = req.header(k, v);
+    }
+
+    let mut res = match req.body(body).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            let err_msg = format!("Network request failed: {}", e);
+            let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                stream_id: stream_id.clone(),
+                chunk: None,
+                done: true,
+                error: Some(err_msg.clone()),
+            });
+            return Err(err_msg);
+        }
+    };
+
+    let status = res.status();
+    if !status.is_success() {
+        let err_text = res.text().await.unwrap_or_default();
+        let err_msg = format!("API Error [{}]: {}", status, err_text);
+        let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+            stream_id: stream_id.clone(),
+            chunk: None,
+            done: true,
+            error: Some(err_msg.clone()),
+        });
+        return Err(err_msg);
+    }
+
+    while let Ok(Some(chunk)) = res.chunk().await {
+        let text = String::from_utf8_lossy(&chunk).to_string();
+        let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+            stream_id: stream_id.clone(),
+            chunk: Some(text),
+            done: false,
+            error: None,
+        });
+    }
+
+    let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+        stream_id,
+        chunk: None,
+        done: true,
+        error: None,
+    });
+
+    Ok(())
+}

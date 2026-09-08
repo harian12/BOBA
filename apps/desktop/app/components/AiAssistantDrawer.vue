@@ -576,8 +576,14 @@ const selectedServerName = computed(() => {
 });
 
 const currentMessages = computed(() => {
-  // Saring pesan teknis internal tool role agar output tidak terduplikasi di bubble chat terpisah
-  return aiStore.getSessionMessages(aiStore.selectedSessionId).filter(m => m.role !== 'tool');
+  // Saring pesan teknis internal tool role dan pesan assistant kosong tanpa konten/tool calls
+  return aiStore.getSessionMessages(aiStore.selectedSessionId).filter(m => {
+    if (m.role === 'tool') return false;
+    if (m.role === 'assistant') {
+      return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);
+    }
+    return true;
+  });
 });
 
 function handleNewChat() {
@@ -639,14 +645,21 @@ function copyCommand(text: string) {
 
 async function retryConnection() {
   if (aiStore.isThinking || !aiStore.selectedSessionId) return;
-  const key = aiStore.selectedSessionId || 'default';
-  const allMsgs = aiStore.messages[key] || [];
-  const lastMsg = allMsgs[allMsgs.length - 1];
-  if (lastMsg && lastMsg.role === 'assistant') {
-    if (lastMsg.content.includes('⚠️ Connection Error') || lastMsg.content.includes('⚠️ Error')) {
-      lastMsg.content = lastMsg.content.replace(/\n\n⚠️ (Connection Error|Error):.*$/s, '').trim();
+  const thread = aiStore.activeThread;
+  if (!thread) return;
+
+  // Bersihkan pesan error terakhir atau pesan assistant kosong dari thread
+  while (thread.messages.length > 0) {
+    const last = thread.messages[thread.messages.length - 1];
+    if (last.role === 'assistant' && (!last.content || last.content.includes('⚠️ Connection Error') || last.content.includes('⚠️ Error'))) {
+      thread.messages.pop();
+    } else {
+      break;
     }
   }
+  thread.updatedAt = Date.now();
+  aiStore.saveState();
+
   await aiStore.continueAgentLoop(aiStore.selectedSessionId);
 }
 
