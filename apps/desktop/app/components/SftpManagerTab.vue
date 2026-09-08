@@ -3107,25 +3107,7 @@ onMounted(async () => {
   }
 });
 
-// Auto-refresh pane ketika ada transfer yang selesai di background
-let autoRefreshTimer: any = null;
-watch(() => queueStore.lastCompletedAt, (newVal) => {
-  if (!newVal) return;
-  clearTimeout(autoRefreshTimer);
-  autoRefreshTimer = setTimeout(async () => {
-    if (leftPaneTarget.value === 'local') {
-      await fetchLocalFiles(false);
-    } else if (leftPaneTarget.value) {
-      await fetchLeftRemoteFiles(false);
-    }
-    if (rightPaneTarget.value) {
-      await fetchRemoteFiles(false);
-    }
-  }, 750);
-});
-
 onUnmounted(() => {
-  clearTimeout(autoRefreshTimer);
   window.removeEventListener('click', closeContextMenu);
 });
 
