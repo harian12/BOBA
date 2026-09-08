@@ -103,8 +103,151 @@
       </div>
     </div>
 
+    <!-- Percakapan Aktif, Riwayat & Chat Baru Bar -->
+    <div class="px-3 py-1.5 bg-boba-950/90 border-b border-boba-800/80 flex items-center justify-between text-xs shrink-0">
+      <div class="flex items-center space-x-1.5 truncate flex-1 mr-2">
+        <button
+          @click="isHistoryOpen = !isHistoryOpen"
+          type="button"
+          :class="[
+            'px-2 py-0.8 rounded border text-[10.5px] flex items-center space-x-1.5 transition truncate max-w-[200px] sm:max-w-[250px]',
+            isHistoryOpen
+              ? 'bg-sky-950 text-sky-200 border-sky-600/60 shadow-sm'
+              : 'bg-boba-900/90 hover:bg-boba-850 text-slate-300 hover:text-white border-boba-800'
+          ]"
+          :title="`Klik untuk ${isHistoryOpen ? 'tutup' : 'buka'} riwayat chat server ini`"
+        >
+          <span>💬</span>
+          <span class="truncate font-medium">{{ aiStore.activeThread?.title || 'Percakapan Baru' }}</span>
+          <span class="text-[9px] text-slate-400">▼</span>
+        </button>
+
+        <span class="text-[10px] text-slate-500 font-mono hidden sm:inline">
+          ({{ currentMessages.length }} pesan)
+        </span>
+      </div>
+
+      <div class="flex items-center space-x-1.5 shrink-0">
+        <!-- Tombol Riwayat Chat -->
+        <button
+          @click="isHistoryOpen = !isHistoryOpen"
+          type="button"
+          :class="[
+            'px-2 py-0.8 rounded text-[10.5px] border transition flex items-center space-x-1 font-medium',
+            isHistoryOpen
+              ? 'bg-sky-600/30 border-sky-500/60 text-sky-200'
+              : 'bg-boba-900 hover:bg-boba-850 border-boba-800 text-slate-400 hover:text-slate-200'
+          ]"
+          title="Buka / tutup daftar riwayat chat server ini"
+        >
+          <span>🕒</span>
+          <span>Riwayat ({{ aiStore.currentSessionThreads.length }})</span>
+        </button>
+
+        <!-- Tombol Buat Chat Baru -->
+        <button
+          @click="handleNewChat"
+          type="button"
+          class="px-2.5 py-0.8 rounded-lg bg-sky-600/20 hover:bg-sky-600/35 text-sky-200 border border-sky-500/40 hover:border-sky-400 text-[10.5px] font-semibold transition flex items-center space-x-1 shadow-sm"
+          title="Mulai topik percakapan baru untuk server ini"
+        >
+          <span>+</span>
+          <span>Chat Baru</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel Riwayat Percakapan (History View) -->
+    <div
+      v-if="isHistoryOpen"
+      class="flex-1 overflow-y-auto p-3 space-y-2.5 no-scrollbar bg-boba-950/70"
+    >
+      <div class="flex items-center justify-between pb-2 border-b border-boba-800/80">
+        <div class="flex items-center space-x-1.5 truncate mr-2">
+          <span class="text-sm">🕒</span>
+          <span class="font-bold text-xs text-slate-200">Riwayat Percakapan</span>
+          <span class="text-[10px] text-sky-300/80 font-mono truncate max-w-[120px]">({{ selectedServerName }})</span>
+        </div>
+        <button
+          @click="handleNewChat"
+          type="button"
+          class="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-medium rounded-lg text-[10.5px] transition flex items-center space-x-1 shadow shrink-0"
+        >
+          <span>+</span>
+          <span>Buat Chat Baru</span>
+        </button>
+      </div>
+
+      <!-- Thread Cards List -->
+      <div v-if="aiStore.currentSessionThreads.length === 0" class="py-16 text-center text-slate-500 text-xs space-y-2">
+        <div class="text-2xl">💬</div>
+        <p>Belum ada riwayat percakapan untuk server ini.</p>
+        <button
+          @click="handleNewChat"
+          type="button"
+          class="px-3 py-1 bg-boba-900 hover:bg-boba-800 border border-boba-750 text-slate-300 rounded text-[11px] transition inline-flex items-center space-x-1"
+        >
+          <span>+ Mulai Chat Pertama</span>
+        </button>
+      </div>
+      <div v-else class="space-y-2 pt-1">
+        <div
+          v-for="thread in aiStore.currentSessionThreads"
+          :key="thread.id"
+          @click="handleSelectThread(thread.id)"
+          :class="[
+            'p-3 rounded-xl border transition-all cursor-pointer group flex flex-col space-y-1.5 relative',
+            thread.id === aiStore.activeThread?.id
+              ? 'bg-sky-950/30 border-sky-500/60 shadow-[0_0_10px_rgba(14,165,233,0.15)]'
+              : 'bg-boba-900/70 hover:bg-boba-900 border-boba-800 hover:border-boba-700'
+          ]"
+        >
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2 truncate mr-2">
+              <span class="text-xs">{{ thread.id === aiStore.activeThread?.id ? '💬' : '🗨️' }}</span>
+              <span
+                :class="[
+                  'font-semibold text-[11.5px] truncate',
+                  thread.id === aiStore.activeThread?.id ? 'text-sky-300' : 'text-slate-200 group-hover:text-white'
+                ]"
+              >
+                {{ thread.title || 'Percakapan Tanpa Judul' }}
+              </span>
+              <span
+                v-if="thread.id === aiStore.activeThread?.id"
+                class="px-1.5 py-0.2 rounded text-[8.5px] bg-sky-900/60 text-sky-300 border border-sky-700 uppercase font-mono font-bold"
+              >
+                Aktif
+              </span>
+            </div>
+
+            <!-- Action: Delete Thread -->
+            <button
+              @click.stop="handleDeleteThread(thread.id)"
+              type="button"
+              class="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded transition"
+              title="Hapus percakapan ini dari riwayat"
+            >
+              🗑️
+            </button>
+          </div>
+
+          <!-- Snippet preview of last message -->
+          <div class="text-[10.5px] text-slate-400 truncate pr-6 font-sans">
+            {{ getThreadSnippet(thread) }}
+          </div>
+
+          <div class="flex items-center justify-between text-[9.5px] text-slate-500 font-mono pt-0.5">
+            <span>{{ (thread.messages || []).filter(m => m.role !== 'tool').length }} pesan</span>
+            <span>{{ formatDateTime(thread.updatedAt || thread.createdAt) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Chat Messages Feed -->
     <div
+      v-else
       ref="chatFeedRef"
       class="flex-1 overflow-y-auto p-3 space-y-3.5 no-scrollbar text-xs text-slate-200"
     >
@@ -158,7 +301,23 @@
             ]"
           >
             <!-- Markdown / Pre-formatted Text -->
-            <div class="whitespace-pre-wrap font-sans">{{ msg.content }}</div>
+            <div v-if="msg.content" class="whitespace-pre-wrap font-sans">{{ msg.content }}</div>
+
+            <!-- Connection Error Retry Button -->
+            <div
+              v-if="msg.role === 'assistant' && (msg.content.includes('⚠️ Connection Error') || msg.content.includes('⚠️ Error'))"
+              class="mt-2.5 pt-2 border-t border-boba-800/80 flex items-center justify-end"
+            >
+              <button
+                @click="retryConnection"
+                :disabled="aiStore.isThinking"
+                type="button"
+                class="px-3 py-1 bg-amber-600/25 hover:bg-amber-600/40 text-amber-200 border border-amber-500/50 hover:border-amber-400 rounded-lg text-[10.5px] font-semibold transition flex items-center space-x-1.5 shadow disabled:opacity-50"
+              >
+                <span>🔄</span>
+                <span>Coba Hubungkan Ulang</span>
+              </button>
+            </div>
 
             <!-- Tool Call Cards if any -->
             <div v-if="msg.toolCalls && msg.toolCalls.length > 0" class="mt-2.5 space-y-2">
@@ -213,12 +372,50 @@
 
                 <!-- Terminal Execution Result Output Box -->
                 <div v-if="tc.result" class="pt-1">
-                  <div class="text-[9px] text-slate-500 uppercase mb-0.5">Hasil Output:</div>
+                  <div class="flex items-center justify-between text-[9px] text-slate-500 uppercase mb-0.5">
+                    <span>Hasil Output:</span>
+                    <button
+                      @click="copyCommand(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))"
+                      type="button"
+                      class="hover:text-slate-300 transition text-[9px] normal-case lowercase flex items-center space-x-1"
+                      title="Salin hasil output"
+                    >
+                      <span>📋 salin</span>
+                    </button>
+                  </div>
                   <pre class="bg-boba-950 border border-boba-800/60 p-2 rounded-lg text-[10px] text-slate-300 overflow-x-auto max-h-40 no-scrollbar whitespace-pre-wrap font-mono">{{ typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2) }}</pre>
                 </div>
 
-                <div v-if="tc.error" class="text-rose-400 text-[10px] bg-rose-950/40 p-1.5 rounded border border-rose-900/50">
-                  {{ tc.error }}
+                <!-- Error Display & Retry Actions -->
+                <div v-if="tc.error || tc.status === 'failed'" class="space-y-1.5 pt-1">
+                  <div v-if="tc.error" class="text-rose-400 text-[10px] bg-rose-950/40 p-2 rounded border border-rose-900/50">
+                    {{ tc.error }}
+                  </div>
+                  <div class="flex items-center justify-between pt-0.5">
+                    <span class="text-[9.5px] text-rose-400/80">Eksekusi gagal / timeout</span>
+                    <div class="flex items-center space-x-1.5">
+                      <button
+                        v-if="tc.name === 'exec_command' && tc.args.command"
+                        @click="copyCommand(tc.args.command)"
+                        type="button"
+                        class="px-2.5 py-1 bg-boba-900 hover:bg-boba-800 text-slate-300 border border-boba-750 rounded text-[10px] transition flex items-center space-x-1"
+                        title="Salin perintah ke clipboard"
+                      >
+                        <span>📋</span>
+                        <span>Salin</span>
+                      </button>
+                      <button
+                        @click="aiStore.retryToolCall(tc.id)"
+                        :disabled="aiStore.isThinking"
+                        type="button"
+                        class="px-3 py-1 bg-rose-600/25 hover:bg-rose-600/40 text-rose-200 border border-rose-500/50 hover:border-rose-400 rounded text-[10px] font-semibold transition flex items-center space-x-1 shadow-sm disabled:opacity-50"
+                        title="Jalankan ulang perintah ini di server"
+                      >
+                        <span>🔄</span>
+                        <span>Jalankan Ulang</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -306,6 +503,7 @@ const dialogStore = useDialogStore();
 
 const promptInput = ref('');
 const chatFeedRef = ref<HTMLElement | null>(null);
+const isHistoryOpen = ref(false);
 
 const DEFAULT_WIDTH = 430;
 const MIN_WIDTH = 340;
@@ -372,9 +570,85 @@ const availableSessions = computed(() => {
   return vaultStore.vault.sessions || [];
 });
 
-const currentMessages = computed(() => {
-  return aiStore.getSessionMessages(aiStore.selectedSessionId);
+const selectedServerName = computed(() => {
+  const s = availableSessions.value.find(sess => sess.id === aiStore.selectedSessionId);
+  return s ? `${s.name} (${s.username}@${s.host})` : 'Server';
 });
+
+const currentMessages = computed(() => {
+  // Saring pesan teknis internal tool role agar output tidak terduplikasi di bubble chat terpisah
+  return aiStore.getSessionMessages(aiStore.selectedSessionId).filter(m => m.role !== 'tool');
+});
+
+function handleNewChat() {
+  if (!aiStore.selectedSessionId) {
+    dialogStore.showToast('Silakan pilih Target Server terlebih dahulu', 'warning', 2500);
+    return;
+  }
+  aiStore.createNewThread(aiStore.selectedSessionId);
+  isHistoryOpen.value = false;
+  dialogStore.showToast('Percakapan baru dibuat', 'info', 1500);
+  scrollToBottom();
+}
+
+function handleSelectThread(threadId: string) {
+  aiStore.switchThread(threadId);
+  isHistoryOpen.value = false;
+  scrollToBottom();
+}
+
+async function handleDeleteThread(threadId: string) {
+  const isConfirmed = await dialogStore.confirm({
+    title: 'Hapus Percakapan',
+    description: 'Apakah Anda yakin ingin menghapus percakapan ini dari riwayat?',
+    confirmText: 'Hapus',
+    cancelText: 'Batal',
+    isDestructive: true,
+  });
+  if (isConfirmed) {
+    aiStore.deleteThread(threadId);
+    dialogStore.showToast('Percakapan berhasil dihapus', 'info', 1500);
+  }
+}
+
+function getThreadSnippet(thread: any): string {
+  const visible = (thread.messages || []).filter((m: any) => m.role !== 'tool');
+  if (visible.length === 0) return 'Belum ada pesan.';
+  const last = visible[visible.length - 1];
+  const prefix = last.role === 'user' ? 'Anda: ' : 'AI: ';
+  const content = last.content || (last.toolCalls?.length ? `[${last.toolCalls[0].name}]` : '...');
+  return prefix + (content.length > 55 ? content.slice(0, 55) + '...' : content);
+}
+
+function formatDateTime(ts: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return `Hari ini, ${timeStr}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${timeStr}`;
+}
+
+function copyCommand(text: string) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text);
+    dialogStore.showToast('Berhasil disalin ke clipboard', 'success', 2000);
+  }
+}
+
+async function retryConnection() {
+  if (aiStore.isThinking || !aiStore.selectedSessionId) return;
+  const key = aiStore.selectedSessionId || 'default';
+  const allMsgs = aiStore.messages[key] || [];
+  const lastMsg = allMsgs[allMsgs.length - 1];
+  if (lastMsg && lastMsg.role === 'assistant') {
+    if (lastMsg.content.includes('⚠️ Connection Error') || lastMsg.content.includes('⚠️ Error')) {
+      lastMsg.content = lastMsg.content.replace(/\n\n⚠️ (Connection Error|Error):.*$/s, '').trim();
+    }
+  }
+  await aiStore.continueAgentLoop(aiStore.selectedSessionId);
+}
 
 function scrollToBottom() {
   nextTick(() => {

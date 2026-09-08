@@ -143,3 +143,12 @@ export interface AiChatMessage {
   toolCallId?: string;
   createdAt: number;
 }
+
+export interface AiChatThread {
+  id: string;
+  sessionId: string;
+  title: string;
+  messages: AiChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}

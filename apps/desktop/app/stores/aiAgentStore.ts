@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { AiProviderConfig, AiChatMessage, AiToolCall } from '../types/index.js';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread } from '../types/index.js';
 import { streamChat } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useSessionStore } from './sessionStore.js';
@@ -26,6 +26,9 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     isProviderModalOpen.value = false;
   }
   const selectedSessionId = ref<string>('');
+  const threads = ref<AiChatThread[]>([]);
+  const activeThreadId = ref<string>('');
+  const activeThreadPerSession = ref<Record<string, string>>({});
   const messages = ref<Record<string, AiChatMessage[]>>({});
   const isThinking = ref<boolean>(false);
   let activeAbortController: AbortController | null = null;
@@ -79,10 +82,49 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         executionMode.value = savedMode;
       }
 
-      const savedMessages = localStorage.getItem('boba_ai_chat_history');
-      if (savedMessages) {
-        messages.value = JSON.parse(savedMessages);
+      // Load thread histories per session
+      const savedThreads = localStorage.getItem('boba_ai_chat_threads');
+      if (savedThreads) {
+        threads.value = JSON.parse(savedThreads);
+      } else {
+        // Migrasi riwayat lama ke model threads
+        const savedMessages = localStorage.getItem('boba_ai_chat_history');
+        if (savedMessages) {
+          try {
+            const legacy: Record<string, AiChatMessage[]> = JSON.parse(savedMessages);
+            for (const [sid, msgs] of Object.entries(legacy)) {
+              if (msgs && msgs.length > 0) {
+                const userMsg = msgs.find(m => m.role === 'user');
+                const title = userMsg ? (userMsg.content.slice(0, 36) + (userMsg.content.length > 36 ? '...' : '')) : 'Percakapan Sebelumnya';
+                threads.value.push({
+                  id: `th_${sid}_${Date.now()}`,
+                  sessionId: sid,
+                  title,
+                  messages: msgs,
+                  createdAt: msgs[0]?.createdAt || Date.now(),
+                  updatedAt: msgs[msgs.length - 1]?.createdAt || Date.now(),
+                });
+              }
+            }
+          } catch (_) {}
+        }
       }
+
+      const savedActivePerSession = localStorage.getItem('boba_ai_active_threads');
+      if (savedActivePerSession) {
+        try {
+          activeThreadPerSession.value = JSON.parse(savedActivePerSession);
+        } catch (_) {}
+      }
+
+      // Sync legacy messages map for backwards compatibility
+      const legacyMap: Record<string, AiChatMessage[]> = {};
+      for (const t of threads.value) {
+        if (!legacyMap[t.sessionId] || activeThreadPerSession.value[t.sessionId] === t.id) {
+          legacyMap[t.sessionId] = t.messages;
+        }
+      }
+      messages.value = legacyMap;
     } catch (e) {
       console.warn('Failed to load AI agent settings:', e);
     }
@@ -96,12 +138,24 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       localStorage.setItem('boba_ai_providers', JSON.stringify(providers.value));
       localStorage.setItem('boba_ai_active_provider', activeProviderId.value);
       localStorage.setItem('boba_ai_exec_mode', executionMode.value);
-      // Simpan maksimal 30 pesan terakhir per sesi agar storage tidak penuh
-      const trimmed: Record<string, AiChatMessage[]> = {};
-      for (const [k, v] of Object.entries(messages.value)) {
-        trimmed[k] = v.slice(-30);
+
+      // Simpan maksimal 60 thread, dan maksimal 40 pesan terakhir per thread
+      const trimmedThreads = threads.value.slice(0, 60).map(t => ({
+        ...t,
+        messages: t.messages.slice(-40),
+      }));
+      localStorage.setItem('boba_ai_chat_threads', JSON.stringify(trimmedThreads));
+      localStorage.setItem('boba_ai_active_threads', JSON.stringify(activeThreadPerSession.value));
+
+      // Sync legacy messages map for backwards compatibility
+      const legacyMap: Record<string, AiChatMessage[]> = {};
+      for (const t of threads.value) {
+        if (!legacyMap[t.sessionId] || activeThreadPerSession.value[t.sessionId] === t.id) {
+          legacyMap[t.sessionId] = t.messages;
+        }
       }
-      localStorage.setItem('boba_ai_chat_history', JSON.stringify(trimmed));
+      messages.value = legacyMap;
+      localStorage.setItem('boba_ai_chat_history', JSON.stringify(legacyMap));
     } catch (_) {}
   }
 
@@ -220,18 +274,129 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     saveState();
   }
 
-  function getSessionMessages(sessionId: string): AiChatMessage[] {
-    const key = sessionId || 'default';
-    if (!messages.value[key]) {
-      messages.value[key] = [];
+  function getOrCreateActiveThread(sessionId?: string): AiChatThread {
+    const sid = sessionId || selectedSessionId.value || 'default';
+    const currentId = activeThreadPerSession.value[sid];
+    let thread = threads.value.find(t => t.id === currentId && t.sessionId === sid);
+
+    if (!thread) {
+      // Ambil thread paling baru untuk sesi server ini jika ada
+      thread = threads.value
+        .filter(t => t.sessionId === sid)
+        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))[0];
+
+      if (!thread) {
+        thread = {
+          id: `th_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          sessionId: sid,
+          title: 'Percakapan Baru',
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        threads.value.unshift(thread);
+      }
+      activeThreadPerSession.value[sid] = thread.id;
     }
-    return messages.value[key];
+
+    activeThreadId.value = thread.id;
+    return thread;
+  }
+
+  const activeThread = computed<AiChatThread | null>(() => {
+    const sid = selectedSessionId.value || 'default';
+    const currentId = activeThreadPerSession.value[sid] || activeThreadId.value;
+    return threads.value.find(t => t.id === currentId) || threads.value.find(t => t.sessionId === sid) || null;
+  });
+
+  const currentSessionThreads = computed<AiChatThread[]>(() => {
+    const sid = selectedSessionId.value || 'default';
+    return threads.value
+      .filter(t => t.sessionId === sid)
+      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+  });
+
+  function createNewThread(sessionId?: string): string {
+    const sid = sessionId || selectedSessionId.value || 'default';
+    const active = activeThread.value;
+    // Jika thread aktif saat ini sudah kosong belum ada percakapan, gunakan saja thread ini
+    if (active && active.sessionId === sid && active.messages.length === 0) {
+      return active.id;
+    }
+
+    const newThread: AiChatThread = {
+      id: `th_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      sessionId: sid,
+      title: 'Percakapan Baru',
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    threads.value.unshift(newThread);
+    activeThreadPerSession.value[sid] = newThread.id;
+    activeThreadId.value = newThread.id;
+    saveState();
+    return newThread.id;
+  }
+
+  function switchThread(threadId: string) {
+    const target = threads.value.find(t => t.id === threadId);
+    if (!target) return;
+    activeThreadId.value = target.id;
+    activeThreadPerSession.value[target.sessionId] = target.id;
+    selectedSessionId.value = target.sessionId;
+    saveState();
+  }
+
+  function deleteThread(threadId: string) {
+    const idx = threads.value.findIndex(t => t.id === threadId);
+    if (idx === -1) return;
+    const [deleted] = threads.value.splice(idx, 1);
+    const sid = deleted.sessionId;
+
+    if (activeThreadPerSession.value[sid] === threadId) {
+      delete activeThreadPerSession.value[sid];
+      const remaining = threads.value
+        .filter(t => t.sessionId === sid)
+        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+
+      if (remaining.length > 0) {
+        activeThreadPerSession.value[sid] = remaining[0].id;
+        if (selectedSessionId.value === sid) {
+          activeThreadId.value = remaining[0].id;
+        }
+      } else if (selectedSessionId.value === sid) {
+        createNewThread(sid);
+      }
+    }
+    saveState();
+  }
+
+  function clearThreadMessages(threadId: string) {
+    const thread = threads.value.find(t => t.id === threadId);
+    if (thread) {
+      thread.messages = [];
+      thread.title = 'Percakapan Baru';
+      thread.updatedAt = Date.now();
+      saveState();
+    }
+  }
+
+  function getSessionMessages(sessionId: string): AiChatMessage[] {
+    const sid = sessionId || selectedSessionId.value || 'default';
+    const thread = getOrCreateActiveThread(sid);
+    return thread ? thread.messages : [];
   }
 
   function clearMessages(sessionId: string) {
-    const key = sessionId || 'default';
-    messages.value[key] = [];
-    saveState();
+    const sid = sessionId || selectedSessionId.value || 'default';
+    const thread = getOrCreateActiveThread(sid);
+    if (thread) {
+      thread.messages = [];
+      thread.title = 'Percakapan Baru';
+      thread.updatedAt = Date.now();
+      saveState();
+    }
   }
 
   function isDangerousCommand(cmd: string): boolean {
@@ -316,14 +481,13 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   }
 
   async function approveToolCall(toolCallId: string) {
-    const key = selectedSessionId.value || 'default';
-    const list = messages.value[key] || [];
+    const thread = getOrCreateActiveThread(selectedSessionId.value);
+    const list = thread.messages;
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
       if (tc && tc.status === 'pending_approval') {
         try {
           const result = await executeTool(selectedSessionId.value, tc);
-          saveState();
           // Masukkan tool result ke riwayat pesan dan picu AI untuk analisis lanjutan
           list.push({
             id: `msg_tool_${Date.now()}`,
@@ -332,6 +496,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
             content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
             createdAt: Date.now(),
           });
+          thread.updatedAt = Date.now();
           saveState();
           await continueAgentLoop(selectedSessionId.value);
         } catch (e: any) {
@@ -342,6 +507,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
             content: `Error executing ${tc.name}: ${e}`,
             createdAt: Date.now(),
           });
+          thread.updatedAt = Date.now();
           saveState();
         }
         break;
@@ -350,8 +516,8 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   }
 
   function rejectToolCall(toolCallId: string) {
-    const key = selectedSessionId.value || 'default';
-    const list = messages.value[key] || [];
+    const thread = getOrCreateActiveThread(selectedSessionId.value);
+    const list = thread.messages;
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
       if (tc && tc.status === 'pending_approval') {
@@ -363,7 +529,61 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
           content: 'User membatalkan/menolak eksekusi aksi ini.',
           createdAt: Date.now(),
         });
+        thread.updatedAt = Date.now();
         saveState();
+        break;
+      }
+    }
+  }
+
+  async function retryToolCall(toolCallId: string) {
+    const thread = getOrCreateActiveThread(selectedSessionId.value);
+    const list = thread.messages;
+    for (const msg of list) {
+      const tc = msg.toolCalls?.find(t => t.id === toolCallId);
+      if (tc) {
+        tc.status = 'running';
+        tc.error = undefined;
+        tc.result = undefined;
+        thread.updatedAt = Date.now();
+        saveState();
+
+        try {
+          const result = await executeTool(selectedSessionId.value, tc);
+
+          const existingToolMsg = list.find(m => m.role === 'tool' && m.toolCallId === tc.id);
+          const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+          if (existingToolMsg) {
+            existingToolMsg.content = toolContent;
+          } else {
+            list.push({
+              id: `msg_tool_${Date.now()}`,
+              role: 'tool',
+              toolCallId: tc.id,
+              content: toolContent,
+              createdAt: Date.now(),
+            });
+          }
+          thread.updatedAt = Date.now();
+          saveState();
+          await continueAgentLoop(selectedSessionId.value);
+        } catch (e: any) {
+          const existingToolMsg = list.find(m => m.role === 'tool' && m.toolCallId === tc.id);
+          const errContent = `Error executing ${tc.name}: ${e.message || String(e)}`;
+          if (existingToolMsg) {
+            existingToolMsg.content = errContent;
+          } else {
+            list.push({
+              id: `msg_tool_err_${Date.now()}`,
+              role: 'tool',
+              toolCallId: tc.id,
+              content: errContent,
+              createdAt: Date.now(),
+            });
+          }
+          thread.updatedAt = Date.now();
+          saveState();
+        }
         break;
       }
     }
@@ -419,17 +639,23 @@ Guidelines:
       return;
     }
 
-    const key = selectedSessionId.value || 'default';
-    if (!messages.value[key]) messages.value[key] = [];
-    const chatList = messages.value[key];
+    const sid = selectedSessionId.value || 'default';
+    const thread = getOrCreateActiveThread(sid);
+
+    // Auto-update judul thread jika masih default 'Percakapan Baru'
+    if (thread.title === 'Percakapan Baru' || thread.messages.length === 0) {
+      const cleanPrompt = promptText.trim().replace(/\n+/g, ' ');
+      thread.title = cleanPrompt.length > 36 ? cleanPrompt.slice(0, 36) + '...' : cleanPrompt;
+    }
 
     // Push User message
-    chatList.push({
+    thread.messages.push({
       id: `msg_user_${Date.now()}`,
       role: 'user',
       content: promptText.trim(),
       createdAt: Date.now(),
     });
+    thread.updatedAt = Date.now();
     saveState();
 
     await continueAgentLoop(selectedSessionId.value);
@@ -438,8 +664,9 @@ Guidelines:
   async function continueAgentLoop(sessionId: string) {
     const provider = activeProvider.value;
     if (!provider) return;
-    const key = sessionId || 'default';
-    const chatList = messages.value[key] || [];
+    const sid = sessionId || selectedSessionId.value || 'default';
+    const thread = getOrCreateActiveThread(sid);
+    const chatList = thread.messages;
 
     isThinking.value = true;
     activeAbortController = new AbortController();
@@ -453,6 +680,7 @@ Guidelines:
       createdAt: Date.now(),
     };
     chatList.push(assistantMsg);
+    thread.updatedAt = Date.now();
     saveState();
 
     const systemPrompt = buildSystemPrompt(sessionId);
@@ -468,13 +696,16 @@ Guidelines:
           },
           onToolCalls: (tcs: AiToolCall[]) => {
             assistantMsg.toolCalls = tcs;
+            thread.updatedAt = Date.now();
             saveState();
           },
           onError: (err: any) => {
             assistantMsg.content += `\n\n⚠️ Error: ${err.message || String(err)}`;
+            thread.updatedAt = Date.now();
             saveState();
           },
           onFinish: async () => {
+            thread.updatedAt = Date.now();
             saveState();
             isThinking.value = false;
             activeAbortController = null;
@@ -503,6 +734,7 @@ Guidelines:
       }
       isThinking.value = false;
       activeAbortController = null;
+      thread.updatedAt = Date.now();
       saveState();
     }
   }
@@ -517,6 +749,10 @@ Guidelines:
     closeProviderModal,
     executionMode,
     selectedSessionId,
+    threads,
+    activeThreadId,
+    activeThread,
+    currentSessionThreads,
     messages,
     isThinking,
     toggleDrawer,
@@ -526,13 +762,19 @@ Guidelines:
     deleteProvider,
     setActiveProvider,
     setExecutionMode,
+    createNewThread,
+    switchThread,
+    deleteThread,
+    clearThreadMessages,
     getSessionMessages,
     clearMessages,
     sendMessage,
+    continueAgentLoop,
     sendPromptWithContext,
     ensureSessionConnected,
     approveToolCall,
     rejectToolCall,
+    retryToolCall,
     stopThinking,
   };
 });

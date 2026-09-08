@@ -411,6 +411,18 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           item.remotePath,
           item.bytesTransferred
         );
+      } else if (item.direction === 'remote-to-remote' && item.localPath) {
+        const dstId = item.targetSessionId;
+        if (dstId) {
+          await tauriBridge.sftpTransferRemoteToRemote(
+            item.sessionId,
+            dstId,
+            item.id,
+            item.remotePath,
+            item.localPath,
+            maxConcurrent.value
+          );
+        }
       }
     } catch (err: any) {
       item.status = 'error';

@@ -541,9 +541,9 @@ impl SshManager {
                 String::from_utf8(output).map_err(|e| format!("Exec output not UTF-8: {}", e))
             };
 
-            return match tokio::time::timeout(std::time::Duration::from_secs(15), exec_fut).await {
+            return match tokio::time::timeout(std::time::Duration::from_secs(180), exec_fut).await {
                 Ok(res) => res,
-                Err(_) => Err("Command timed out after 15s".into()),
+                Err(_) => Err("Command timed out after 180s".into()),
             };
         }
 
@@ -1963,8 +1963,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             transfer_id: transfer_id.clone(),
             session_id: src_session_id.clone(),
             file_name: file_name.clone(),
-            remote_path: dst_path.clone(),
-            local_path: Some(format!("Remote:{}", src_session_id)),
+            remote_path: src_path.clone(),
+            local_path: Some(dst_path.clone()),
             direction: "remote-to-remote".into(),
             bytes_transferred: 0,
             total_bytes,
@@ -2032,8 +2032,13 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             Ok(f) => f,
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("handle limit reached") || err_str.contains("Limit exceeded") {
-                    crate::commands::log_msg(&format!("Handle limit reached on src. Reconnecting SFTP for session '{}'...", src_session_id));
+                if err_str.contains("handle limit reached")
+                    || err_str.contains("Limit exceeded")
+                    || err_str.contains("session closed")
+                    || err_str.contains("Timeout")
+                    || err_str.contains("channel closed")
+                {
+                    crate::commands::log_msg(&format!("Transient SFTP error on src ({}). Reconnecting SFTP for session '{}'...", err_str, src_session_id));
                     self.invalidate_sftp(&src_session_id);
                     let new_src = self.get_or_init_sftp(&src_session_id).await.map_err(|e| format!("Failed to reinit SFTP on src: {}", e))?;
                     match new_src.open(&src_path).await {
@@ -2127,8 +2132,13 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             Ok(f) => f,
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("handle limit reached") || err_str.contains("Limit exceeded") {
-                    crate::commands::log_msg(&format!("Handle limit reached on dst. Reconnecting SFTP for session '{}'...", dst_session_id));
+                if err_str.contains("handle limit reached")
+                    || err_str.contains("Limit exceeded")
+                    || err_str.contains("session closed")
+                    || err_str.contains("Timeout")
+                    || err_str.contains("channel closed")
+                {
+                    crate::commands::log_msg(&format!("Transient SFTP error on dst ({}). Reconnecting SFTP for session '{}'...", err_str, dst_session_id));
                     self.invalidate_sftp(&dst_session_id);
                     let new_dst = self.get_or_init_sftp(&dst_session_id).await.map_err(|e| format!("Failed to reinit SFTP on dst: {}", e))?;
                     match new_dst.create(&dst_path).await {

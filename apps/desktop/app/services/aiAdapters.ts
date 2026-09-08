@@ -219,7 +219,8 @@ async function streamOpenAiCompatible(
   signal?: AbortSignal
 ) {
   let endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
-  if (apiKey && !endpoint.includes('key=')) {
+  // Hanya tambahkan query key jika endpoint menuju Google Generative Language API
+  if (apiKey && !endpoint.includes('key=') && baseUrl.includes('googleapis.com')) {
     const sep = endpoint.includes('?') ? '&' : '?';
     endpoint = `${endpoint}${sep}key=${encodeURIComponent(apiKey)}`;
   }
@@ -551,13 +552,26 @@ async function streamGemini(
   const contents: any[] = [];
   for (const m of messages) {
     if (m.role === 'tool') {
+      let toolName = 'exec_command';
+      for (const prev of messages) {
+        if (prev.toolCalls) {
+          const match = prev.toolCalls.find(tc => tc.id === m.toolCallId);
+          if (match) {
+            toolName = match.name;
+            break;
+          }
+        }
+      }
       contents.push({
-        role: 'function',
+        role: 'user',
         parts: [
           {
             functionResponse: {
-              name: m.toolCallId || 'exec_command',
-              response: { result: m.content },
+              name: toolName,
+              response: {
+                name: toolName,
+                content: m.content,
+              },
             },
           },
         ],
