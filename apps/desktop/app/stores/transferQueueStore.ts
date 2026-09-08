@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, reactive, triggerRef } from 'vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 
 export interface TransferItem {
@@ -121,6 +121,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       if (pendingBatch.length > 0) {
         transfers.value.unshift(...pendingBatch);
         pendingBatch = [];
+        triggerRef(transfers);
       }
       batchTimer = null;
     }
@@ -140,8 +141,12 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
         item.speedBps = payload.status === 'cancelled' ? 0 : (payload.speed_bps || 0);
         const prevStatus = item.status;
         item.status = payload.status || item.status;
-        if (payload.status === 'completed' && prevStatus !== 'completed') {
-          lastCompletedAt.value = Date.now();
+        if (payload.status === 'completed') {
+          item.percentage = 100;
+          item.speedBps = 0;
+          if (prevStatus !== 'completed') {
+            lastCompletedAt.value = Date.now();
+          }
         }
         if (payload.error_message) {
           item.errorMessage = payload.error_message;
@@ -149,13 +154,16 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
         if (!transferMap.has(item.id)) {
           transferMap.set(item.id, item);
         }
+        if (prevStatus !== item.status) {
+          triggerRef(transfers);
+        }
       } else {
         // Abaikan jika status adalah cancelled atau error (sisa cancel yang lewat)
         if (payload.status === 'cancelled' || payload.status === 'error') {
           return;
         }
         // Auto-register items emitted by backend (e.g. recursive folder upload/download)
-        const newItem: TransferItem = {
+        const newItem: TransferItem = reactive({
           id: payload.transfer_id,
           sessionId: payload.session_id || '',
           fileName: payload.file_name || 'File',
@@ -169,7 +177,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           status: payload.status || 'transferring',
           errorMessage: payload.error_message,
           createdAt: Date.now(),
-        };
+        });
         transferMap.set(newItem.id, newItem);
         pendingBatch.unshift(newItem);
         if (!batchTimer) {
@@ -193,7 +201,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   ): string {
     initListener();
     const id = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newItem: TransferItem = {
+    const newItem: TransferItem = reactive({
       id,
       sessionId,
       targetSessionId,
@@ -209,10 +217,11 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       speedBps: 0,
       status: 'pending',
       createdAt: Date.now(),
-    };
+    });
 
     transferMap.set(id, newItem);
     transfers.value.unshift(newItem);
+    triggerRef(transfers);
     return id;
   }
 
@@ -227,7 +236,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   ): string {
     initListener();
     const id = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newItem: TransferItem = {
+    const newItem: TransferItem = reactive({
       id,
       sessionId,
       fileName,
@@ -242,10 +251,11 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       speedBps: 0,
       status: 'pending',
       createdAt: Date.now(),
-    };
+    });
 
     transferMap.set(id, newItem);
     transfers.value.unshift(newItem);
+    triggerRef(transfers);
     return id;
   }
 
@@ -260,7 +270,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   ): string {
     initListener();
     const id = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newItem: TransferItem = {
+    const newItem: TransferItem = reactive({
       id,
       sessionId,
       fileName,
@@ -275,10 +285,11 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       speedBps: 0,
       status: 'pending',
       createdAt: Date.now(),
-    };
+    });
 
     transferMap.set(id, newItem);
     transfers.value.unshift(newItem);
+    triggerRef(transfers);
     return id;
   }
 
@@ -290,7 +301,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   ): string {
     initListener();
     const id = `op_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newItem: TransferItem = {
+    const newItem: TransferItem = reactive({
       id,
       sessionId,
       fileName: (type === 'compress' ? '📦 ' : '📂 ') + targetName,
@@ -303,22 +314,29 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       status: 'transferring',
       createdAt: Date.now(),
       startedAt: Date.now(),
-    };
+    });
 
     transferMap.set(id, newItem);
     transfers.value.unshift(newItem);
+    triggerRef(transfers);
     return id;
   }
 
   function updateStatus(id: string, status: TransferItem['status'], errorMessage?: string) {
     const item = transferMap.get(id) || transfers.value.find(t => t.id === id);
     if (item) {
+      const prevStatus = item.status;
       item.status = status;
       if (status === 'completed') {
         item.percentage = 100;
+        item.speedBps = 0;
+        lastCompletedAt.value = Date.now();
       }
       if (errorMessage) {
         item.errorMessage = errorMessage;
+      }
+      if (prevStatus !== status) {
+        triggerRef(transfers);
       }
     }
   }
@@ -336,6 +354,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       // Langsung hapus item dari antrean agar tidak nyangkut di list UI
       transferMap.delete(transferId);
       transfers.value = transfers.value.filter(t => t.id !== transferId);
+      triggerRef(transfers);
     }
   }
 
@@ -359,30 +378,35 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     for (const t of transfers.value) {
       transferMap.set(t.id, t);
     }
+    triggerRef(transfers);
   }
 
   function clearCancelledAndFailed() {
     const toRemove = new Set(transfers.value.filter(t => t.status === 'error' || t.status === 'cancelled').map(t => t.id));
     toRemove.forEach(id => transferMap.delete(id));
     transfers.value = transfers.value.filter(t => t.status !== 'error' && t.status !== 'cancelled');
+    triggerRef(transfers);
   }
 
   function clearAll() {
     cancelAll();
     transferMap.clear();
     transfers.value = [];
+    triggerRef(transfers);
   }
 
   function clearCompleted() {
     const completedIds = new Set(transfers.value.filter(t => t.status === 'completed').map(t => t.id));
     completedIds.forEach(id => transferMap.delete(id));
     transfers.value = transfers.value.filter(t => t.status === 'transferring' || t.status === 'pending');
+    triggerRef(transfers);
   }
 
   function removeTransfer(transferId: string) {
     cancelTransfer(transferId);
     transferMap.delete(transferId);
     transfers.value = transfers.value.filter(t => t.id !== transferId);
+    triggerRef(transfers);
   }
 
   async function resumeTransfer(transferId: string) {

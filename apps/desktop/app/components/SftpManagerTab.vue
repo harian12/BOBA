@@ -4357,7 +4357,23 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
         } else {
           const srcId = await ensureConnected();
           const dstId = await ensureLeftConnected();
-          await tauriBridge.sftpTransferRemoteToRemote(srcId, dstId, '', draggedItem.path, `${targetFolder.path}/${draggedItem.name}`, queueStore.maxConcurrent);
+          const targetRemotePath = `${targetFolder.path.replace(/\/+$/, '')}/${draggedItem.name}`;
+          const transferId = queueStore.addRemoteToRemote(
+            srcId,
+            draggedItem.path,
+            (draggedItem.is_dir ? '📁 ' : '') + draggedItem.name,
+            draggedItem.size,
+            targetRemotePath,
+            rightServerName.value,
+            leftServerName.value,
+            dstId
+          );
+          try {
+            await tauriBridge.sftpTransferRemoteToRemote(srcId, dstId, transferId, draggedItem.path, targetRemotePath, queueStore.maxConcurrent);
+            queueStore.updateStatus(transferId, 'completed');
+          } catch (e) {
+            queueStore.updateStatus(transferId, 'error', String(e));
+          }
           await fetchLeftRemoteFiles();
         }
         dialogStore.showToast(`Ditransfer ke "${targetFolder.name}"`, 'success', 2000);
@@ -4374,7 +4390,23 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
         } else {
           const srcId = await ensureLeftConnected();
           const dstId = await ensureConnected();
-          await tauriBridge.sftpTransferRemoteToRemote(srcId, dstId, '', draggedItem.path, `${targetFolder.path}/${draggedItem.name}`, queueStore.maxConcurrent);
+          const targetRemotePath = `${targetFolder.path.replace(/\/+$/, '')}/${draggedItem.name}`;
+          const transferId = queueStore.addRemoteToRemote(
+            srcId,
+            draggedItem.path,
+            (draggedItem.is_dir ? '📁 ' : '') + draggedItem.name,
+            draggedItem.size,
+            targetRemotePath,
+            leftServerName.value,
+            rightServerName.value,
+            dstId
+          );
+          try {
+            await tauriBridge.sftpTransferRemoteToRemote(srcId, dstId, transferId, draggedItem.path, targetRemotePath, queueStore.maxConcurrent);
+            queueStore.updateStatus(transferId, 'completed');
+          } catch (e) {
+            queueStore.updateStatus(transferId, 'error', String(e));
+          }
         }
         dialogStore.showToast(`Ditransfer ke "${targetFolder.name}"`, 'success', 2000);
         await fetchRemoteFiles();

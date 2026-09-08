@@ -1817,10 +1817,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         if set_web_permissions {
             // Ensure safe web permissions (644) so web server never gets 403 Forbidden
-            let _ = sftp.set_metadata(&remote_path, russh_sftp::protocol::FileAttributes {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), sftp.set_metadata(&remote_path, russh_sftp::protocol::FileAttributes {
                 permissions: Some(0o644),
                 ..Default::default()
-            }).await;
+            })).await;
         }
 
         self.active_transfers.lock().remove(&transfer_id);
@@ -2381,10 +2381,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), src_file.shutdown()).await;
 
         if set_web_permissions {
-            let _ = dst_sftp.set_metadata(&dst_path, russh_sftp::protocol::FileAttributes {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), dst_sftp.set_metadata(&dst_path, russh_sftp::protocol::FileAttributes {
                 permissions: Some(0o644),
                 ..Default::default()
-            }).await;
+            })).await;
         }
 
         self.active_transfers.lock().remove(&transfer_id);
