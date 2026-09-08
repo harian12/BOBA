@@ -3,7 +3,7 @@
     v-show="aiStore.isDrawerOpen"
     :style="{ width: `${drawerWidth}px` }"
     :class="[
-      'relative border-l border-boba-800 bg-[#0d101a] flex flex-col h-full shrink-0 select-none z-30 font-sans shadow-2xl',
+      'relative border-l border-boba-800 bg-boba-950 flex flex-col h-full shrink-0 select-none z-30 font-sans shadow-2xl',
       isResizing ? 'select-none pointer-events-auto' : 'transition-[width] duration-150'
     ]"
   >
@@ -11,23 +11,23 @@
     <div
       @mousedown="startResize"
       @dblclick="toggleExpandWidth"
-      class="absolute -left-1 top-0 bottom-0 w-2 cursor-col-resize hover:bg-purple-500/50 active:bg-purple-500 transition-colors z-40 group flex items-center justify-center"
+      class="absolute -left-1 top-0 bottom-0 w-2 cursor-col-resize hover:bg-boba-accent/60 active:bg-boba-accent transition-colors z-40 group flex items-center justify-center"
       title="Tarik untuk ubah ukuran chat (klik ganda untuk perlebar/kecilkan)"
     >
-      <div class="h-8 w-0.5 rounded-full bg-slate-600/30 group-hover:bg-purple-300 transition-colors"></div>
+      <div class="h-8 w-0.5 rounded-full bg-slate-600/40 group-hover:bg-sky-400 transition-colors"></div>
     </div>
 
     <!-- Drawer Header -->
-    <div class="h-11 px-3 bg-[#090b12] border-b border-[#1b2234] flex items-center justify-between shrink-0">
+    <div class="h-11 px-3 bg-boba-900 border-b border-boba-800 flex items-center justify-between shrink-0">
       <div class="flex items-center space-x-2 truncate">
         <span class="text-sm">✨</span>
-        <span class="font-bold text-xs text-purple-300">AI Server Copilot</span>
+        <span class="font-bold text-xs text-sky-300">AI Server Copilot</span>
 
         <!-- Active Model Pill -->
         <span
           v-if="aiStore.activeProvider"
           @click="aiStore.isProviderModalOpen = true"
-          class="px-2 py-0.5 rounded bg-purple-950/60 border border-purple-800/60 text-[10px] text-purple-300 truncate max-w-[120px] font-mono cursor-pointer hover:border-purple-400"
+          class="px-2 py-0.5 rounded bg-boba-850 border border-boba-700 text-[10px] text-sky-300 truncate max-w-[120px] font-mono cursor-pointer hover:border-boba-accent hover:text-white transition"
           :title="`Klik untuk ganti model (${aiStore.activeProvider.model})`"
         >
           {{ aiStore.activeProvider.model }}
@@ -41,8 +41,8 @@
           :class="[
             'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border',
             aiStore.executionMode === 'auto'
-              ? 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
-              : 'bg-sky-950/60 border-sky-800 text-sky-300'
+              ? 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+              : 'bg-boba-850 border-boba-700 text-sky-300 hover:border-boba-600'
           ]"
           :title="aiStore.executionMode === 'auto' ? 'Mode Otomatis: Perintah non-berbahaya langsung dieksekusi' : 'Mode Konfirmasi: AI meminta persetujuan sebelum mengeksekusi perintah'"
         >
@@ -52,7 +52,7 @@
         <!-- Provider Settings Button -->
         <button
           @click="aiStore.isProviderModalOpen = true"
-          class="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 text-xs transition"
+          class="p-1 rounded text-slate-400 hover:text-white hover:bg-boba-800 text-xs transition"
           title="Pengaturan Provider & Model AI"
         >
           ⚙️
@@ -61,7 +61,7 @@
         <!-- Clear Chat History -->
         <button
           @click="handleClearChat"
-          class="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 text-xs transition"
+          class="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-boba-800 text-xs transition"
           title="Bersihkan riwayat chat sesi ini"
         >
           🗑️
@@ -70,7 +70,7 @@
         <!-- Toggle Expand / Shrink Width -->
         <button
           @click="toggleExpandWidth"
-          class="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 text-xs transition"
+          class="p-1 rounded text-slate-400 hover:text-white hover:bg-boba-800 text-xs transition font-mono"
           :title="drawerWidth > 550 ? 'Kembalikan ukuran normal' : 'Perlebar room chat'"
         >
           {{ drawerWidth > 550 ? '⤡' : '⤢' }}
@@ -79,7 +79,7 @@
         <!-- Close Drawer Button -->
         <button
           @click="aiStore.closeDrawer"
-          class="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800/60 text-xs transition"
+          class="p-1 rounded text-slate-400 hover:text-white hover:bg-boba-800 text-xs transition"
           title="Tutup drawer AI Copilot (Ctrl+Shift+A)"
         >
           ✕
@@ -88,12 +88,12 @@
     </div>
 
     <!-- Target Server Bar -->
-    <div class="px-3 py-1.5 bg-[#0b0e17] border-b border-[#181f30] flex items-center justify-between text-[11px] text-slate-400">
-      <span class="text-[10px] uppercase font-mono text-slate-500">Target Server:</span>
+    <div class="px-3 py-1.5 bg-boba-900/70 border-b border-boba-800 flex items-center justify-between text-[11px] text-slate-400">
+      <span class="text-[10px] uppercase font-mono text-slate-400 font-semibold tracking-wider">Target Server:</span>
       <div class="flex-1 ml-2">
         <select
           v-model="aiStore.selectedSessionId"
-          class="w-full bg-[#07090f] border border-[#212a3d] text-sky-300 rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-purple-500 font-mono cursor-pointer"
+          class="w-full bg-boba-950 border border-boba-800 text-sky-300 rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-boba-accent focus:ring-1 focus:ring-boba-accent/30 font-mono cursor-pointer transition"
         >
           <option value="">-- Pilih Server Sesi SSH --</option>
           <option v-for="s in availableSessions" :key="s.id" :value="s.id">
@@ -106,33 +106,33 @@
     <!-- Chat Messages Feed -->
     <div
       ref="chatFeedRef"
-      class="flex-1 overflow-y-auto p-3 space-y-3 no-scrollbar text-xs text-slate-200"
+      class="flex-1 overflow-y-auto p-3 space-y-3.5 no-scrollbar text-xs text-slate-200"
     >
       <!-- Empty State with Quick Starter Chips -->
       <div
         v-if="currentMessages.length === 0"
         class="h-full flex flex-col items-center justify-center text-center space-y-4 px-4 py-8 text-slate-400"
       >
-        <div class="w-12 h-12 rounded-full bg-purple-950/60 border border-purple-800/60 flex items-center justify-center text-2xl shadow-lg">
+        <div class="w-12 h-12 rounded-xl bg-boba-900 border border-boba-800 flex items-center justify-center text-2xl shadow-lg">
           ✨
         </div>
         <div class="space-y-1">
-          <h4 class="font-bold text-slate-200 text-sm">BOBA AI Server Copilot</h4>
+          <h4 class="font-bold text-slate-100 text-sm">BOBA AI Server Copilot</h4>
           <p class="text-[11px] text-slate-400 leading-relaxed max-w-xs">
             Perintahkan AI untuk mengecek log, memperbaiki konfigurasi Nginx/Apache, memantau metrik, atau menjalankan diagnosa di server target.
           </p>
         </div>
 
         <!-- Quick Starter Action Chips -->
-        <div class="w-full space-y-1.5 pt-2">
-          <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider text-left">Contoh Perintah:</div>
+        <div class="w-full space-y-2 pt-2">
+          <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider text-left">Contoh Perintah Cepat:</div>
           <button
             v-for="chip in starterChips"
             :key="chip"
             @click="handleSendChip(chip)"
-            class="w-full text-left p-2 rounded-lg bg-[#111624] border border-[#212c44] hover:border-purple-500 hover:bg-[#182033] text-slate-300 hover:text-purple-200 text-[11px] transition flex items-center space-x-2"
+            class="w-full text-left p-2.5 rounded-lg bg-boba-900 border border-boba-800 hover:border-boba-accent/60 hover:bg-boba-850 text-slate-300 hover:text-white text-[11px] transition flex items-center space-x-2.5 shadow-sm group"
           >
-            <span class="text-purple-400 shrink-0">💡</span>
+            <span class="text-boba-accent group-hover:scale-110 transition-transform shrink-0">💡</span>
             <span class="truncate">{{ chip }}</span>
           </button>
         </div>
@@ -151,10 +151,10 @@
           <!-- Message Bubble -->
           <div
             :class="[
-              'max-w-[95%] p-2.5 rounded-xl leading-relaxed text-[11.5px] select-text break-words',
+              'max-w-[95%] p-3 rounded-2xl leading-relaxed text-[11.5px] select-text break-words shadow-sm',
               msg.role === 'user'
-                ? 'bg-gradient-to-r from-purple-700 to-indigo-700 text-white rounded-br-none shadow'
-                : 'bg-[#131826] border border-[#232d42] text-slate-200 rounded-bl-none shadow'
+                ? 'bg-boba-accent/15 border border-boba-accent/40 text-slate-100 rounded-br-sm'
+                : 'bg-boba-900 border border-boba-800 text-slate-200 rounded-bl-sm'
             ]"
           >
             <!-- Markdown / Pre-formatted Text -->
@@ -165,10 +165,10 @@
               <div
                 v-for="tc in msg.toolCalls"
                 :key="tc.id"
-                class="rounded-lg bg-[#0a0d16] border border-[#253047] p-2.5 space-y-2 text-[11px] font-mono"
+                class="rounded-xl bg-boba-950 border border-boba-800 p-2.5 space-y-2 text-[11px] font-mono shadow-inner"
               >
-                <div class="flex items-center justify-between border-b border-[#1b2336] pb-1.5">
-                  <div class="flex items-center space-x-1.5 text-purple-300 font-semibold">
+                <div class="flex items-center justify-between border-b border-boba-800/80 pb-1.5">
+                  <div class="flex items-center space-x-1.5 text-sky-300 font-semibold">
                     <span>⚡</span>
                     <span>{{ tc.name }}</span>
                   </div>
@@ -179,7 +179,7 @@
                       tc.status === 'completed' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
                       tc.status === 'failed' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
                       tc.status === 'running' ? 'bg-sky-950 text-sky-300 border border-sky-800 animate-pulse' :
-                      tc.status === 'rejected' ? 'bg-slate-800 text-slate-400' :
+                      tc.status === 'rejected' ? 'bg-boba-800 text-slate-400' :
                       'bg-amber-950 text-amber-300 border border-amber-800'
                     ]"
                   >
@@ -188,7 +188,7 @@
                 </div>
 
                 <!-- Tool Arguments / Command to run -->
-                <div class="bg-[#06080e] p-1.5 rounded text-[10px] text-slate-300 overflow-x-auto no-scrollbar">
+                <div class="bg-boba-900/90 border border-boba-800/60 p-2 rounded-lg text-[10px] text-slate-300 overflow-x-auto no-scrollbar">
                   <span v-if="tc.name === 'exec_command'" class="text-amber-200">$ {{ tc.args.command }}</span>
                   <span v-else-if="tc.name === 'read_file'" class="text-sky-300">📄 Baca: {{ tc.args.path }}</span>
                   <span v-else-if="tc.name === 'write_file'" class="text-emerald-300">✏️ Tulis: {{ tc.args.path }} ({{ (tc.args.content || '').length }} bytes)</span>
@@ -199,7 +199,7 @@
                 <div v-if="tc.status === 'pending_approval'" class="flex items-center justify-end space-x-2 pt-1">
                   <button
                     @click="aiStore.rejectToolCall(tc.id)"
-                    class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] transition"
+                    class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-[10px] transition"
                   >
                     Tolak
                   </button>
@@ -214,7 +214,7 @@
                 <!-- Terminal Execution Result Output Box -->
                 <div v-if="tc.result" class="pt-1">
                   <div class="text-[9px] text-slate-500 uppercase mb-0.5">Hasil Output:</div>
-                  <pre class="bg-[#05060a] p-2 rounded text-[10px] text-slate-300 overflow-x-auto max-h-36 no-scrollbar whitespace-pre-wrap">{{ typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2) }}</pre>
+                  <pre class="bg-boba-950 border border-boba-800/60 p-2 rounded-lg text-[10px] text-slate-300 overflow-x-auto max-h-40 no-scrollbar whitespace-pre-wrap font-mono">{{ typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2) }}</pre>
                 </div>
 
                 <div v-if="tc.error" class="text-rose-400 text-[10px] bg-rose-950/40 p-1.5 rounded border border-rose-900/50">
@@ -231,43 +231,61 @@
       </template>
 
       <!-- Thinking / Token Streaming Indicator -->
-      <div v-if="aiStore.isThinking" class="flex items-center space-x-2 text-purple-400 text-xs p-2 animate-pulse">
-        <span>✨</span>
-        <span>AI sedang berpikir & menganalisis server...</span>
+      <div v-if="aiStore.isThinking" class="flex items-center space-x-2 text-sky-400 text-xs p-2.5 bg-boba-900/80 border border-boba-800/80 rounded-xl animate-pulse">
+        <span class="text-sm">✨</span>
+        <span class="font-medium">AI sedang berpikir & menganalisis server...</span>
       </div>
     </div>
 
-    <!-- Input Footer -->
-    <div class="p-3 bg-[#0a0d16] border-t border-[#1a2236] space-y-2 shrink-0">
-      <div class="relative">
+    <!-- Input Footer (Revamped Chat Form) -->
+    <div class="p-3 bg-boba-950 border-t border-boba-800 shrink-0">
+      <div class="bg-boba-900 border border-boba-800 focus-within:border-boba-accent focus-within:ring-1 focus-within:ring-boba-accent/30 rounded-xl p-2.5 transition-all shadow-inner space-y-2">
         <textarea
           v-model="promptInput"
           @keydown.enter.exact.prevent="handleSend"
           :disabled="aiStore.isThinking"
           rows="2"
-          placeholder="Ketik instruksi untuk server... (Enter untuk kirim, Shift+Enter untuk baris baru)"
-          class="w-full bg-[#05070d] border border-[#212b40] focus:border-purple-500 rounded-lg p-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none resize-none font-sans"
+          placeholder="Ketik instruksi untuk server... (cth: Cek penggunaan CPU dan RAM, analisa error log Nginx)"
+          class="w-full bg-transparent border-none focus:outline-none text-xs text-slate-100 placeholder-slate-500 resize-none font-sans leading-relaxed"
         ></textarea>
 
-        <!-- Send / Stop Button -->
-        <div class="absolute right-2 bottom-3 flex items-center space-x-1">
-          <button
-            v-if="aiStore.isThinking"
-            @click="aiStore.stopThinking"
-            class="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-semibold transition shadow flex items-center space-x-1"
-          >
-            <span>⏹</span>
-            <span>Stop</span>
-          </button>
-          <button
-            v-else
-            @click="handleSend"
-            :disabled="!promptInput.trim()"
-            class="px-3 py-1 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded text-[10px] font-semibold transition shadow flex items-center space-x-1"
-          >
-            <span>Kirim</span>
-            <span>➔</span>
-          </button>
+        <!-- Form Action Bar -->
+        <div class="flex items-center justify-between pt-1 border-t border-boba-800/60">
+          <div class="flex items-center space-x-2 text-[10px] text-slate-500">
+            <span class="hidden sm:inline">Enter ↵ Kirim · Shift+Enter Baris baru</span>
+          </div>
+
+          <div class="flex items-center space-x-1.5">
+            <!-- Clear input button if typed -->
+            <button
+              v-if="promptInput.trim()"
+              @click="promptInput = ''"
+              type="button"
+              class="px-2 py-1 text-[10px] text-slate-400 hover:text-rose-400 transition"
+              title="Kosongkan teks"
+            >
+              Hapus
+            </button>
+
+            <!-- Send / Stop Button -->
+            <button
+              v-if="aiStore.isThinking"
+              @click="aiStore.stopThinking"
+              class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold transition shadow flex items-center space-x-1.5 animate-pulse"
+            >
+              <span>⏹</span>
+              <span>Stop</span>
+            </button>
+            <button
+              v-else
+              @click="handleSend"
+              :disabled="!promptInput.trim()"
+              class="px-3.5 py-1.5 bg-boba-accent hover:bg-boba-accent-hover disabled:opacity-40 disabled:hover:bg-boba-accent text-white rounded-lg text-xs font-semibold transition shadow flex items-center space-x-1.5"
+            >
+              <span>Kirim</span>
+              <span>➔</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
