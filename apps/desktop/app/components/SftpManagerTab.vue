@@ -1674,7 +1674,9 @@
                 </template>
                 <template v-else>
                   <div class="flex items-center space-x-1.5 truncate">
-                    <span>{{ formatSize(item.bytesTransferred) }} / {{ formatSize(item.totalBytes) }}</span>
+                    <span v-if="item.totalBytes > 0">{{ formatSize(item.bytesTransferred) }} / {{ formatSize(item.totalBytes) }}</span>
+                    <span v-else-if="item.bytesTransferred > 0">{{ formatSize(item.bytesTransferred) }}</span>
+                    <span v-else class="text-slate-500 italic">Memindai folder...</span>
                     <span v-if="calculateEta(item)" class="text-slate-400 font-mono text-[9px]">• ETA {{ calculateEta(item) }}</span>
                   </div>
                   <span>{{ Math.round(item.percentage) }}% ({{ formatSpeed(item.speedBps) }})</span>
@@ -4245,7 +4247,7 @@ async function transferRemoteRightToLeft(item: RemoteFileItem) {
       srcId,
       item.path,
       (item.is_dir ? '📁 ' : '') + item.name,
-      item.size,
+      item.is_dir ? 0 : item.size,
       targetRemotePath,
       rightServerName.value,
       leftServerName.value,
@@ -4303,7 +4305,7 @@ async function transferRemoteToRemote(item: RemoteFileItem) {
       srcId,
       item.path,
       (item.is_dir ? '📁 ' : '') + item.name,
-      item.size,
+      item.is_dir ? 0 : item.size,
       targetRemotePath,
       leftServerName.value,
       rightServerName.value,
@@ -4587,7 +4589,7 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
             srcId,
             draggedItem.path,
             (draggedItem.is_dir ? '📁 ' : '') + draggedItem.name,
-            draggedItem.size,
+            draggedItem.is_dir ? 0 : draggedItem.size,
             targetRemotePath,
             rightServerName.value,
             leftServerName.value,
@@ -4620,7 +4622,7 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
             srcId,
             draggedItem.path,
             (draggedItem.is_dir ? '📁 ' : '') + draggedItem.name,
-            draggedItem.size,
+            draggedItem.is_dir ? 0 : draggedItem.size,
             targetRemotePath,
             leftServerName.value,
             rightServerName.value,

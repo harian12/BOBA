@@ -139,15 +139,23 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
         if (item.status === 'cancelled') {
           return;
         }
-        item.bytesTransferred = payload.bytes_transferred || 0;
-        item.totalBytes = payload.total_bytes || item.totalBytes;
-        item.percentage = payload.percentage || 0;
+        if (payload.file_name) {
+          item.fileName = payload.file_name;
+        }
+        item.bytesTransferred = payload.bytes_transferred !== undefined ? payload.bytes_transferred : item.bytesTransferred;
+        if (payload.total_bytes !== undefined && payload.total_bytes > 0) {
+          item.totalBytes = payload.total_bytes;
+        }
+        item.percentage = payload.percentage !== undefined ? payload.percentage : item.percentage;
         item.speedBps = payload.status === 'cancelled' ? 0 : (payload.speed_bps || 0);
         const prevStatus = item.status;
         item.status = payload.status || item.status;
         if (payload.status === 'completed') {
           item.percentage = 100;
           item.speedBps = 0;
+          if (item.totalBytes > 0) {
+            item.bytesTransferred = item.totalBytes;
+          }
           if (prevStatus !== 'completed') {
             lastCompletedAt.value = Date.now();
           }
@@ -162,8 +170,8 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
           triggerRef(transfers);
         }
       } else {
-        // Abaikan jika status adalah cancelled atau error (sisa cancel yang lewat)
-        if (payload.status === 'cancelled' || payload.status === 'error') {
+        // Abaikan jika status adalah cancelled (sisa cancel yang lewat)
+        if (payload.status === 'cancelled') {
           return;
         }
         // Auto-register items emitted by backend (e.g. recursive folder upload/download)
@@ -334,6 +342,9 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       if (status === 'completed') {
         item.percentage = 100;
         item.speedBps = 0;
+        if (item.totalBytes > 0) {
+          item.bytesTransferred = item.totalBytes;
+        }
         lastCompletedAt.value = Date.now();
       }
       if (errorMessage) {

@@ -1112,6 +1112,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         local_path: String,
         resume_from: Option<u64>,
         parent_cancel: Option<Arc<AtomicBool>>,
+        folder_transferred_bytes: Option<Arc<AtomicU64>>,
+        is_child_of_folder: bool,
     ) -> Result<(), String> {
         let start_epoch = self.cancel_epoch.load(Ordering::SeqCst);
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -1397,9 +1399,12 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
 
             transferred += n as u64;
+            if let Some(ref fx) = folder_transferred_bytes {
+                fx.fetch_add(n as u64, Ordering::Relaxed);
+            }
 
             // Emit progress event every 200ms or on completion
-            if last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes {
+            if !is_child_of_folder && (last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes) {
                 let elapsed_secs = start_time.elapsed().as_secs_f64();
                 let newly_transferred = transferred.saturating_sub(initial_offset);
                 let speed_bps = if elapsed_secs > 0.0 { newly_transferred as f64 / elapsed_secs } else { 0.0 };
@@ -1431,20 +1436,22 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), remote_file.shutdown()).await;
         self.active_transfers.lock().remove(&transfer_id);
 
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: session_id.clone(),
-            file_name,
-            remote_path,
-            local_path: Some(local_path),
-            direction: "download".into(),
-            bytes_transferred: transferred,
-            total_bytes,
-            percentage: 100.0,
-            speed_bps: 0.0,
-            status: "completed".into(),
-            error_message: None,
-        });
+        if !is_child_of_folder {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: session_id.clone(),
+                file_name,
+                remote_path,
+                local_path: Some(local_path),
+                direction: "download".into(),
+                bytes_transferred: transferred,
+                total_bytes,
+                percentage: 100.0,
+                speed_bps: 0.0,
+                status: "completed".into(),
+                error_message: None,
+            });
+        }
 
         Ok(())
     }
@@ -1470,6 +1477,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             None,
             true, // single file upload sets web permissions
             None,
+            None,
+            false,
         ).await
     }
 
@@ -1485,6 +1494,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         known_dirs: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>,
         set_web_permissions: bool,
         parent_cancel: Option<Arc<AtomicBool>>,
+        folder_transferred_bytes: Option<Arc<AtomicU64>>,
+        is_child_of_folder: bool,
     ) -> Result<(), String> {
         let start_epoch = self.cancel_epoch.load(Ordering::SeqCst);
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -1533,21 +1544,23 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let initial_offset = resume_from.unwrap_or(0);
 
-        // Emit transferring status immediately so it shows up in "⚡ Proses" tab
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: session_id.clone(),
-            file_name: file_name.clone(),
-            remote_path: remote_path.clone(),
-            local_path: Some(local_path.clone()),
-            direction: "upload".into(),
-            bytes_transferred: initial_offset,
-            total_bytes,
-            percentage: if total_bytes > 0 { (initial_offset as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-            speed_bps: 0.0,
-            status: "transferring".into(),
-            error_message: None,
-        });
+        // Emit transferring status immediately so it shows up in "⚡ Proses" tab (if top-level)
+        if !is_child_of_folder {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: session_id.clone(),
+                file_name: file_name.clone(),
+                remote_path: remote_path.clone(),
+                local_path: Some(local_path.clone()),
+                direction: "upload".into(),
+                bytes_transferred: initial_offset,
+                total_bytes,
+                percentage: if total_bytes > 0 { (initial_offset as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                speed_bps: 0.0,
+                status: "transferring".into(),
+                error_message: None,
+            });
+        }
 
         let sftp = match sftp_opt {
             Some(s) => s,
@@ -1781,9 +1794,12 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
 
             transferred += n as u64;
+            if let Some(ref fx) = folder_transferred_bytes {
+                fx.fetch_add(n as u64, Ordering::Relaxed);
+            }
 
             // Emit progress event every 200ms or on completion
-            if last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes {
+            if !is_child_of_folder && (last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes) {
                 let elapsed_secs = start_time.elapsed().as_secs_f64();
                 let newly_transferred = transferred.saturating_sub(initial_offset);
                 let speed_bps = if elapsed_secs > 0.0 { newly_transferred as f64 / elapsed_secs } else { 0.0 };
@@ -1823,20 +1839,22 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         self.active_transfers.lock().remove(&transfer_id);
 
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: session_id.clone(),
-            file_name,
-            remote_path,
-            local_path: Some(local_path),
-            direction: "upload".into(),
-            bytes_transferred: transferred,
-            total_bytes,
-            percentage: 100.0,
-            speed_bps: 0.0,
-            status: "completed".into(),
-            error_message: None,
-        });
+        if !is_child_of_folder {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: session_id.clone(),
+                file_name,
+                remote_path,
+                local_path: Some(local_path),
+                direction: "upload".into(),
+                bytes_transferred: transferred,
+                total_bytes,
+                percentage: 100.0,
+                speed_bps: 0.0,
+                status: "completed".into(),
+                error_message: None,
+            });
+        }
 
         Ok(())
     }
@@ -1901,45 +1919,15 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         };
 
         if src_meta.is_dir() {
-            let res = self.transfer_remote_to_remote_folder_recursive(
-                app.clone(),
-                src_session_id.clone(),
-                dst_session_id.clone(),
-                transfer_id.clone(),
-                src_path.clone(),
-                dst_path.clone(),
+            return self.transfer_remote_to_remote_folder_recursive(
+                app,
+                src_session_id,
+                dst_session_id,
+                transfer_id,
+                src_path,
+                dst_path,
                 concurrency,
             ).await;
-
-            let file_name = std::path::Path::new(&src_path)
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| src_path.clone());
-
-            let status = if res.is_ok() {
-                "completed".into()
-            } else if res.as_ref().err().map_or(false, |e| e.contains("cancelled")) {
-                "cancelled".into()
-            } else {
-                "error".into()
-            };
-
-            let _ = app.emit("sftp-progress", TransferProgress {
-                transfer_id: transfer_id.clone(),
-                session_id: src_session_id.clone(),
-                file_name: format!("📁 {}", file_name),
-                remote_path: src_path.clone(),
-                local_path: Some(dst_path.clone()),
-                direction: "remote-to-remote".into(),
-                bytes_transferred: 0,
-                total_bytes: 0,
-                percentage: 100.0,
-                speed_bps: 0.0,
-                status,
-                error_message: res.as_ref().err().cloned(),
-            });
-
-            return res;
         }
 
         self.transfer_remote_to_remote_file(
@@ -1977,6 +1965,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             None,
             true, // single file: set web permissions
             None,
+            None,
+            false,
         ).await
     }
 
@@ -1994,6 +1984,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         known_dirs: Option<Arc<std::sync::Mutex<std::collections::HashSet<String>>>>,
         set_web_permissions: bool,
         parent_cancel: Option<Arc<AtomicBool>>,
+        folder_transferred_bytes: Option<Arc<AtomicU64>>,
+        is_child_of_folder: bool,
     ) -> Result<(), String> {
         let start_epoch = self.cancel_epoch.load(Ordering::SeqCst);
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -2015,21 +2007,23 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             .unwrap_or(&src_path)
             .to_string();
 
-        // 1. Pancarkan status "transferring" segera saat worker mulai memproses file ini
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: src_session_id.clone(),
-            file_name: file_name.clone(),
-            remote_path: src_path.clone(),
-            local_path: Some(dst_path.clone()),
-            direction: "remote-to-remote".into(),
-            bytes_transferred: 0,
-            total_bytes,
-            percentage: 0.0,
-            speed_bps: 0.0,
-            status: "transferring".into(),
-            error_message: None,
-        });
+        // 1. Pancarkan status "transferring" segera saat worker mulai memproses file ini (jika top-level)
+        if !is_child_of_folder {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: src_session_id.clone(),
+                file_name: file_name.clone(),
+                remote_path: src_path.clone(),
+                local_path: Some(dst_path.clone()),
+                direction: "remote-to-remote".into(),
+                bytes_transferred: 0,
+                total_bytes,
+                percentage: 0.0,
+                speed_bps: 0.0,
+                status: "transferring".into(),
+                error_message: None,
+            });
+        }
 
         let src_sftp = match src_sftp_opt {
             Some(s) => s,
@@ -2336,20 +2330,22 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             let _ = dst_file.shutdown().await;
             let _ = src_file.shutdown().await;
             self.active_transfers.lock().remove(&transfer_id);
-            let _ = app.emit("sftp-progress", TransferProgress {
-                transfer_id: transfer_id.clone(),
-                session_id: src_session_id.clone(),
-                file_name,
-                remote_path: src_path,
-                local_path: Some(dst_path),
-                direction: "remote-to-remote".into(),
-                bytes_transferred: 0,
-                total_bytes: 0,
-                percentage: 100.0,
-                speed_bps: 0.0,
-                status: "completed".into(),
-                error_message: None,
-            });
+            if !is_child_of_folder {
+                let _ = app.emit("sftp-progress", TransferProgress {
+                    transfer_id: transfer_id.clone(),
+                    session_id: src_session_id.clone(),
+                    file_name,
+                    remote_path: src_path,
+                    local_path: Some(dst_path),
+                    direction: "remote-to-remote".into(),
+                    bytes_transferred: 0,
+                    total_bytes: 0,
+                    percentage: 100.0,
+                    speed_bps: 0.0,
+                    status: "completed".into(),
+                    error_message: None,
+                });
+            }
             return Ok(());
         }
 
@@ -2483,8 +2479,11 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
 
             transferred += n as u64;
+            if let Some(ref fx) = folder_transferred_bytes {
+                fx.fetch_add(n as u64, Ordering::Relaxed);
+            }
 
-            if last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes {
+            if !is_child_of_folder && (last_emit.elapsed().as_millis() > 200 || transferred >= total_bytes) {
                 let elapsed_secs = start_time.elapsed().as_secs_f64();
                 let speed_bps = if elapsed_secs > 0.0 { transferred as f64 / elapsed_secs } else { 0.0 };
                 let percentage = if total_bytes > 0 { ((transferred as f32 / total_bytes as f32) * 100.0).min(100.0) } else { 100.0 };
@@ -2523,20 +2522,22 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         self.active_transfers.lock().remove(&transfer_id);
 
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: src_session_id.clone(),
-            file_name,
-            remote_path: src_path,
-            local_path: Some(dst_path),
-            direction: "remote-to-remote".into(),
-            bytes_transferred: transferred,
-            total_bytes,
-            percentage: 100.0,
-            speed_bps: 0.0,
-            status: "completed".into(),
-            error_message: None,
-        });
+        if !is_child_of_folder {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: src_session_id.clone(),
+                file_name,
+                remote_path: src_path,
+                local_path: Some(dst_path),
+                direction: "remote-to-remote".into(),
+                bytes_transferred: transferred,
+                total_bytes,
+                percentage: 100.0,
+                speed_bps: 0.0,
+                status: "completed".into(),
+                error_message: None,
+            });
+        }
 
         Ok(())
     }
@@ -2587,10 +2588,20 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             known_dirs.lock().unwrap().insert(dst_root.clone());
         }
 
+        let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
+        let (sem_id, semaphore) = self.register_semaphore(conc);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String, u64)>(500);
+
+        let total_files = Arc::new(AtomicU64::new(0));
+        let done_files = Arc::new(AtomicU64::new(0));
+        let total_bytes = Arc::new(AtomicU64::new(0));
+        let transferred_bytes = Arc::new(AtomicU64::new(0));
+        let scan_finished = Arc::new(AtomicBool::new(false));
+
         let _ = app.emit("sftp-progress", TransferProgress {
             transfer_id: transfer_id.clone(),
             session_id: src_session_id.clone(),
-            file_name: format!("📁 {}", folder_name),
+            file_name: format!("📁 {} (Memindai...)", folder_name),
             remote_path: src_folder.clone(),
             local_path: Some(dst_parent_folder.clone()),
             direction: "remote-to-remote".into(),
@@ -2602,12 +2613,81 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             error_message: None,
         });
 
-        let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
-        let (sem_id, semaphore) = self.register_semaphore(conc);
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String, u64)>(500);
+        // 250ms progress ticker for the folder
+        let ticker_app = app.clone();
+        let ticker_tid = transfer_id.clone();
+        let ticker_src_id = src_session_id.clone();
+        let ticker_folder_name = folder_name.to_string();
+        let ticker_src_folder = src_folder.clone();
+        let ticker_dst_parent = dst_parent_folder.clone();
+        let ticker_total_files = total_files.clone();
+        let ticker_done_files = done_files.clone();
+        let ticker_total_bytes = total_bytes.clone();
+        let ticker_transferred_bytes = transferred_bytes.clone();
+        let ticker_scan_finished = scan_finished.clone();
+        let ticker_cancel = cancel_flag.clone();
+        let ticker_stop = Arc::new(tokio::sync::Notify::new());
+        let ticker_stop_clone = ticker_stop.clone();
 
-        let scanner_app = app.clone();
-        let scanner_src_id = src_session_id.clone();
+        let progress_ticker = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last_bytes = 0u64;
+            let mut last_tick = Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = ticker_stop_clone.notified() => break,
+                    _ = interval.tick() => {
+                        if ticker_cancel.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        let tot_f = ticker_total_files.load(Ordering::Relaxed);
+                        let done_f = ticker_done_files.load(Ordering::Relaxed);
+                        let tot_b = ticker_total_bytes.load(Ordering::Relaxed);
+                        let xfer_b = ticker_transferred_bytes.load(Ordering::Relaxed);
+                        let scan_done = ticker_scan_finished.load(Ordering::Relaxed);
+
+                        let now = Instant::now();
+                        let dt = now.duration_since(last_tick).as_secs_f64();
+                        let delta_b = xfer_b.saturating_sub(last_bytes);
+                        let current_speed = if dt > 0.0 { delta_b as f64 / dt } else { 0.0 };
+                        last_bytes = xfer_b;
+                        last_tick = now;
+
+                        let pct = if tot_b > 0 {
+                            ((xfer_b as f64 / tot_b as f64) * 100.0).min(99.9) as f32
+                        } else {
+                            0.0
+                        };
+
+                        let label = if scan_done {
+                            format!("📁 {} ({}/{} file)", ticker_folder_name, done_f, tot_f)
+                        } else if tot_f > 0 {
+                            format!("📁 {} ({}/{} file...)", ticker_folder_name, done_f, tot_f)
+                        } else {
+                            format!("📁 {} (Memindai...)", ticker_folder_name)
+                        };
+
+                        let _ = ticker_app.emit("sftp-progress", TransferProgress {
+                            transfer_id: ticker_tid.clone(),
+                            session_id: ticker_src_id.clone(),
+                            file_name: label,
+                            remote_path: ticker_src_folder.clone(),
+                            local_path: Some(ticker_dst_parent.clone()),
+                            direction: "remote-to-remote".into(),
+                            bytes_transferred: xfer_b,
+                            total_bytes: tot_b,
+                            percentage: pct,
+                            speed_bps: current_speed,
+                            status: "transferring".into(),
+                            error_message: None,
+                        });
+                    }
+                }
+            }
+        });
+
         let scanner_dst_id = dst_session_id.clone();
         let scanner_this = self.clone();
         let scanner_src_sftp = src_sftp.clone();
@@ -2615,6 +2695,9 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let scanner_src_folder = src_folder.clone();
         let scanner_dst_root = dst_root.clone();
         let scanner_known_dirs = known_dirs.clone();
+        let total_files_scan = total_files.clone();
+        let total_bytes_scan = total_bytes.clone();
+        let scan_finished_task = scan_finished.clone();
 
         // 5 Parallel directory scan workers to smoothly feed the queue
         let scan_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
@@ -2666,8 +2749,6 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                 let src_folder_c = scanner_src_folder.clone();
                                 let dst_root_c = scanner_dst_root.clone();
                                 let this_c = scanner_this.clone();
-                                let app_c = scanner_app.clone();
-                                let src_id_c = scanner_src_id.clone();
                                 let dst_id_c = scanner_dst_id.clone();
                                 let known_dirs_c = scanner_known_dirs.clone();
                                 let dir_tx_c = dir_tx.clone();
@@ -2677,6 +2758,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                 let done_notify_c = done_notify.clone();
                                 let cancel_task = cancel_flag_scan.clone();
                                 let epoch_task = epoch_scan.clone();
+                                let total_files_task = total_files_scan.clone();
+                                let total_bytes_task = total_bytes_scan.clone();
 
                                 scan_join_set.spawn(async move {
                                     let _permit = permit;
@@ -2723,23 +2806,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                             let _ = dir_tx_c.send(full_src).await;
                                         } else {
                                             let size = entry.metadata().size.unwrap_or(0);
+                                            total_files_task.fetch_add(1, Ordering::Relaxed);
+                                            total_bytes_task.fetch_add(size, Ordering::Relaxed);
                                             let idx = file_idx_c.fetch_add(1, Ordering::Relaxed);
                                             let transfer_id = format!("tx_{}_{}_{}", chrono::Utc::now().timestamp_millis(), idx, name.replace('/', "_"));
-
-                                            let _ = app_c.emit("sftp-progress", TransferProgress {
-                                                transfer_id: transfer_id.clone(),
-                                                session_id: src_id_c.clone(),
-                                                file_name: rel.to_string(),
-                                                remote_path: full_src.clone(),
-                                                local_path: Some(full_dst.clone()),
-                                                direction: "remote-to-remote".into(),
-                                                bytes_transferred: 0,
-                                                total_bytes: size,
-                                                percentage: 0.0,
-                                                speed_bps: 0.0,
-                                                status: "pending".into(),
-                                                error_message: None,
-                                            });
 
                                             if tx_c.send((full_src, full_dst, transfer_id, size)).await.is_err() {
                                                 if active_dirs_c.fetch_sub(1, Ordering::SeqCst) == 1 {
@@ -2762,6 +2832,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
 
             while let Some(_) = scan_join_set.join_next().await {}
+            scan_finished_task.store(true, Ordering::SeqCst);
         });
 
         let mut join_set = tokio::task::JoinSet::new();
@@ -2840,6 +2911,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                             let known_dirs_c = known_dirs.clone();
                             let cancel_c = cancel_flag.clone();
                             let epoch_c = start_epoch;
+                            let done_files_c = done_files.clone();
+                            let transferred_bytes_c = transferred_bytes.clone();
 
                             join_set.spawn(async move {
                                 let _permit = permit;
@@ -2859,7 +2932,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                     Some(known_dirs_c),
                                     false, // batch: fix_web_permissions is called once at the end
                                     Some(cancel_c),
+                                    Some(transferred_bytes_c),
+                                    true, // is_child_of_folder
                                 ).await;
+                                done_files_c.fetch_add(1, Ordering::Relaxed);
                             });
                         }
                         None => break,
@@ -2870,16 +2946,52 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let _ = scan_handle.await;
         while let Some(_) = join_set.join_next().await {}
+        ticker_stop.notify_one();
+        let _ = progress_ticker.await;
+
         self.unregister_semaphore(sem_id);
         self.active_transfers.lock().remove(&transfer_id);
         self.folder_notifiers.lock().remove(&transfer_id);
 
+        let final_done_f = done_files.load(Ordering::Relaxed);
+        let final_tot_b = total_bytes.load(Ordering::Relaxed);
+        let final_xfer_b = transferred_bytes.load(Ordering::Relaxed);
+
         if cancel_flag.load(Ordering::SeqCst) || self.cancel_epoch.load(Ordering::SeqCst) != start_epoch {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: src_session_id.clone(),
+                file_name: format!("📁 {} (Dibatalkan)", folder_name),
+                remote_path: src_folder.clone(),
+                local_path: Some(dst_parent_folder.clone()),
+                direction: "remote-to-remote".into(),
+                bytes_transferred: final_xfer_b,
+                total_bytes: final_tot_b,
+                percentage: 0.0,
+                speed_bps: 0.0,
+                status: "cancelled".into(),
+                error_message: Some("Transfer cancelled by user".into()),
+            });
             return Err("Transfer cancelled by user".into());
         }
 
         // Fix web permissions (755 for dirs, 644 for files)
         let _ = self.fix_web_permissions(&dst_session_id, &dst_root).await;
+
+        let _ = app.emit("sftp-progress", TransferProgress {
+            transfer_id: transfer_id.clone(),
+            session_id: src_session_id.clone(),
+            file_name: format!("📁 {} ({} file)", folder_name, final_done_f),
+            remote_path: src_folder.clone(),
+            local_path: Some(dst_parent_folder.clone()),
+            direction: "remote-to-remote".into(),
+            bytes_transferred: final_tot_b,
+            total_bytes: final_tot_b,
+            percentage: 100.0,
+            speed_bps: 0.0,
+            status: "completed".into(),
+            error_message: None,
+        });
 
         Ok(())
     }
@@ -2934,10 +3046,16 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             known_dirs.lock().unwrap().insert(target_remote_root.clone());
         }
 
+        let total_files = Arc::new(AtomicU64::new(0));
+        let done_files = Arc::new(AtomicU64::new(0));
+        let total_bytes = Arc::new(AtomicU64::new(0));
+        let transferred_bytes = Arc::new(AtomicU64::new(0));
+        let scan_finished = Arc::new(AtomicBool::new(false));
+
         let _ = app.emit("sftp-progress", TransferProgress {
             transfer_id: transfer_id.clone(),
             session_id: session_id.clone(),
-            file_name: format!("📁 {}", folder_name),
+            file_name: format!("📁 {} (Memindai...)", folder_name),
             remote_path: target_remote_root.clone(),
             local_path: Some(local_folder.clone()),
             direction: "upload".into(),
@@ -2949,11 +3067,85 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             error_message: None,
         });
 
+        // 250ms progress ticker for the folder
+        let ticker_app = app.clone();
+        let ticker_tid = transfer_id.clone();
+        let ticker_session_id = session_id.clone();
+        let ticker_folder_name = folder_name.clone();
+        let ticker_target_root = target_remote_root.clone();
+        let ticker_local_folder = local_folder.clone();
+        let ticker_total_files = total_files.clone();
+        let ticker_done_files = done_files.clone();
+        let ticker_total_bytes = total_bytes.clone();
+        let ticker_transferred_bytes = transferred_bytes.clone();
+        let ticker_scan_finished = scan_finished.clone();
+        let ticker_cancel = cancel_flag.clone();
+        let ticker_stop = Arc::new(tokio::sync::Notify::new());
+        let ticker_stop_clone = ticker_stop.clone();
+
+        let progress_ticker = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last_bytes = 0u64;
+            let mut last_tick = Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = ticker_stop_clone.notified() => break,
+                    _ = interval.tick() => {
+                        if ticker_cancel.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        let tot_f = ticker_total_files.load(Ordering::Relaxed);
+                        let done_f = ticker_done_files.load(Ordering::Relaxed);
+                        let tot_b = ticker_total_bytes.load(Ordering::Relaxed);
+                        let xfer_b = ticker_transferred_bytes.load(Ordering::Relaxed);
+                        let scan_done = ticker_scan_finished.load(Ordering::Relaxed);
+
+                        let now = Instant::now();
+                        let dt = now.duration_since(last_tick).as_secs_f64();
+                        let delta_b = xfer_b.saturating_sub(last_bytes);
+                        let current_speed = if dt > 0.0 { delta_b as f64 / dt } else { 0.0 };
+                        last_bytes = xfer_b;
+                        last_tick = now;
+
+                        let pct = if tot_b > 0 {
+                            ((xfer_b as f64 / tot_b as f64) * 100.0).min(99.9) as f32
+                        } else {
+                            0.0
+                        };
+
+                        let label = if scan_done {
+                            format!("📁 {} ({}/{} file)", ticker_folder_name, done_f, tot_f)
+                        } else if tot_f > 0 {
+                            format!("📁 {} ({}/{} file...)", ticker_folder_name, done_f, tot_f)
+                        } else {
+                            format!("📁 {} (Memindai...)", ticker_folder_name)
+                        };
+
+                        let _ = ticker_app.emit("sftp-progress", TransferProgress {
+                            transfer_id: ticker_tid.clone(),
+                            session_id: ticker_session_id.clone(),
+                            file_name: label,
+                            remote_path: ticker_target_root.clone(),
+                            local_path: Some(ticker_local_folder.clone()),
+                            direction: "upload".into(),
+                            bytes_transferred: xfer_b,
+                            total_bytes: tot_b,
+                            percentage: pct,
+                            speed_bps: current_speed,
+                            status: "transferring".into(),
+                            error_message: None,
+                        });
+                    }
+                }
+            }
+        });
+
         let conc = concurrency.unwrap_or_else(|| self.get_concurrency()).clamp(1, 20);
         let (sem_id, semaphore) = self.register_semaphore(conc);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(std::path::PathBuf, String, String)>(500);
 
-        let scanner_app = app.clone();
         let scanner_session_id = session_id.clone();
         let scanner_sftp = sftp.clone();
         let scanner_this = self.clone();
@@ -2964,6 +3156,9 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let folder_notify_scan = folder_notify.clone();
         let global_notify_scan = self.cancel_notify.clone();
         let epoch_scan = self.cancel_epoch.clone();
+        let total_files_scan = total_files.clone();
+        let total_bytes_scan = total_bytes.clone();
+        let scan_finished_task = scan_finished.clone();
 
         // Parallel directory scanner (5 workers) to traverse folders concurrently
         let scan_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
@@ -3011,7 +3206,6 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                 let base_local_c = scanner_base_local.clone();
                                 let target_root_c = scanner_target_remote_root.clone();
                                 let this_c = scanner_this.clone();
-                                let app_c = scanner_app.clone();
                                 let sess_c = scanner_session_id.clone();
                                 let sftp_c = scanner_sftp.clone();
                                 let known_dirs_c = scanner_known_dirs.clone();
@@ -3022,6 +3216,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                 let done_notify_c = done_notify.clone();
                                 let cancel_task = cancel_flag_scan.clone();
                                 let epoch_task = epoch_scan.clone();
+                                let total_files_task = total_files_scan.clone();
+                                let total_bytes_task = total_bytes_scan.clone();
 
                                 scan_join_set.spawn(async move {
                                     let _permit = permit;
@@ -3066,23 +3262,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                             let _ = dir_tx_c.send(path).await;
                                         } else {
                                             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                                            total_files_task.fetch_add(1, Ordering::Relaxed);
+                                            total_bytes_task.fetch_add(size, Ordering::Relaxed);
                                             let idx = file_idx_c.fetch_add(1, Ordering::Relaxed);
                                             let file_transfer_id = format!("tx_{}_{}_{}", chrono::Utc::now().timestamp_millis(), idx, rel.replace('/', "_"));
-
-                                            let _ = app_c.emit("sftp-progress", TransferProgress {
-                                                transfer_id: file_transfer_id.clone(),
-                                                session_id: sess_c.clone(),
-                                                file_name: rel.clone(),
-                                                remote_path: remote_path.clone(),
-                                                local_path: Some(path.to_string_lossy().to_string()),
-                                                direction: "upload".into(),
-                                                bytes_transferred: 0,
-                                                total_bytes: size,
-                                                percentage: 0.0,
-                                                speed_bps: 0.0,
-                                                status: "pending".into(),
-                                                error_message: None,
-                                            });
 
                                             if tx_c.send((path, remote_path, file_transfer_id)).await.is_err() {
                                                 return;
@@ -3102,6 +3285,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
 
             while let Some(_) = scan_join_set.join_next().await {}
+            scan_finished_task.store(true, Ordering::SeqCst);
         });
 
         let mut join_set = tokio::task::JoinSet::new();
@@ -3178,6 +3362,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                             let known_dirs_c = known_dirs.clone();
                             let cancel_c = cancel_flag.clone();
                             let epoch_c = start_epoch;
+                            let done_files_c = done_files.clone();
+                            let transferred_bytes_c = transferred_bytes.clone();
 
                             join_set.spawn(async move {
                                 let _permit = permit;
@@ -3195,7 +3381,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                     Some(known_dirs_c),
                                     false, // batch: fix_web_permissions is called once at the end
                                     Some(cancel_c),
+                                    Some(transferred_bytes_c),
+                                    true, // is_child_of_folder
                                 ).await;
+                                done_files_c.fetch_add(1, Ordering::Relaxed);
                             });
                         }
                         None => break,
@@ -3206,20 +3395,27 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let _ = scan_handle.await;
         while let Some(_) = join_set.join_next().await {}
+        ticker_stop.notify_one();
+        let _ = progress_ticker.await;
+
         self.unregister_semaphore(sem_id);
         self.active_transfers.lock().remove(&transfer_id);
         self.folder_notifiers.lock().remove(&transfer_id);
+
+        let final_done_f = done_files.load(Ordering::Relaxed);
+        let final_tot_b = total_bytes.load(Ordering::Relaxed);
+        let final_xfer_b = transferred_bytes.load(Ordering::Relaxed);
 
         if cancel_flag.load(Ordering::SeqCst) || self.cancel_epoch.load(Ordering::SeqCst) != start_epoch {
             let _ = app.emit("sftp-progress", TransferProgress {
                 transfer_id: transfer_id.clone(),
                 session_id: session_id.clone(),
-                file_name: folder_name,
+                file_name: format!("📁 {} (Dibatalkan)", folder_name),
                 remote_path: target_remote_root,
                 local_path: Some(local_folder),
                 direction: "upload".into(),
-                bytes_transferred: 0,
-                total_bytes: 0,
+                bytes_transferred: final_xfer_b,
+                total_bytes: final_tot_b,
                 percentage: 0.0,
                 speed_bps: 0.0,
                 status: "cancelled".into(),
@@ -3234,12 +3430,12 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let _ = app.emit("sftp-progress", TransferProgress {
             transfer_id: transfer_id.clone(),
             session_id: session_id.clone(),
-            file_name: folder_name,
+            file_name: format!("📁 {} ({} file)", folder_name, final_done_f),
             remote_path: target_remote_root,
             local_path: Some(local_folder),
             direction: "upload".into(),
-            bytes_transferred: 0,
-            total_bytes: 0,
+            bytes_transferred: final_tot_b,
+            total_bytes: final_tot_b,
             percentage: 100.0,
             speed_bps: 0.0,
             status: "completed".into(),
@@ -3292,10 +3488,16 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             local_dirs.lock().unwrap().insert(local_root.clone());
         }
 
+        let total_files = Arc::new(AtomicU64::new(0));
+        let done_files = Arc::new(AtomicU64::new(0));
+        let total_bytes = Arc::new(AtomicU64::new(0));
+        let transferred_bytes = Arc::new(AtomicU64::new(0));
+        let scan_finished = Arc::new(AtomicBool::new(false));
+
         let _ = app.emit("sftp-progress", TransferProgress {
             transfer_id: transfer_id.clone(),
             session_id: session_id.clone(),
-            file_name: format!("📁 {}", folder_name),
+            file_name: format!("📁 {} (Memindai...)", folder_name),
             remote_path: remote_folder.clone(),
             local_path: Some(local_parent_dir.clone()),
             direction: "download".into(),
@@ -3307,10 +3509,83 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             error_message: None,
         });
 
+        // 250ms progress ticker for the folder
+        let ticker_app = app.clone();
+        let ticker_tid = transfer_id.clone();
+        let ticker_session_id = session_id.clone();
+        let ticker_folder_name = folder_name.clone();
+        let ticker_remote_folder = remote_folder.clone();
+        let ticker_local_parent = local_parent_dir.clone();
+        let ticker_total_files = total_files.clone();
+        let ticker_done_files = done_files.clone();
+        let ticker_total_bytes = total_bytes.clone();
+        let ticker_transferred_bytes = transferred_bytes.clone();
+        let ticker_scan_finished = scan_finished.clone();
+        let ticker_cancel = cancel_flag.clone();
+        let ticker_stop = Arc::new(tokio::sync::Notify::new());
+        let ticker_stop_clone = ticker_stop.clone();
+
+        let progress_ticker = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last_bytes = 0u64;
+            let mut last_tick = Instant::now();
+
+            loop {
+                tokio::select! {
+                    _ = ticker_stop_clone.notified() => break,
+                    _ = interval.tick() => {
+                        if ticker_cancel.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        let tot_f = ticker_total_files.load(Ordering::Relaxed);
+                        let done_f = ticker_done_files.load(Ordering::Relaxed);
+                        let tot_b = ticker_total_bytes.load(Ordering::Relaxed);
+                        let xfer_b = ticker_transferred_bytes.load(Ordering::Relaxed);
+                        let scan_done = ticker_scan_finished.load(Ordering::Relaxed);
+
+                        let now = Instant::now();
+                        let dt = now.duration_since(last_tick).as_secs_f64();
+                        let delta_b = xfer_b.saturating_sub(last_bytes);
+                        let current_speed = if dt > 0.0 { delta_b as f64 / dt } else { 0.0 };
+                        last_bytes = xfer_b;
+                        last_tick = now;
+
+                        let pct = if tot_b > 0 {
+                            ((xfer_b as f64 / tot_b as f64) * 100.0).min(99.9) as f32
+                        } else {
+                            0.0
+                        };
+
+                        let label = if scan_done {
+                            format!("📁 {} ({}/{} file)", ticker_folder_name, done_f, tot_f)
+                        } else if tot_f > 0 {
+                            format!("📁 {} ({}/{} file...)", ticker_folder_name, done_f, tot_f)
+                        } else {
+                            format!("📁 {} (Memindai...)", ticker_folder_name)
+                        };
+
+                        let _ = ticker_app.emit("sftp-progress", TransferProgress {
+                            transfer_id: ticker_tid.clone(),
+                            session_id: ticker_session_id.clone(),
+                            file_name: label,
+                            remote_path: ticker_remote_folder.clone(),
+                            local_path: Some(ticker_local_parent.clone()),
+                            direction: "download".into(),
+                            bytes_transferred: xfer_b,
+                            total_bytes: tot_b,
+                            percentage: pct,
+                            speed_bps: current_speed,
+                            status: "transferring".into(),
+                            error_message: None,
+                        });
+                    }
+                }
+            }
+        });
+
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String, String)>(500);
 
-        let scanner_app = app.clone();
-        let scanner_session_id = session_id.clone();
         let scanner_sftp = sftp.clone();
         let scanner_remote_folder = remote_folder.clone();
         let scanner_local_root = local_root.clone();
@@ -3319,6 +3594,9 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let folder_notify_scan = folder_notify.clone();
         let global_notify_scan = self.cancel_notify.clone();
         let epoch_scan = self.cancel_epoch.clone();
+        let total_files_scan = total_files.clone();
+        let total_bytes_scan = total_bytes.clone();
+        let scan_finished_task = scan_finished.clone();
 
         // Parallel remote directory scanner (5 workers)
         let scan_semaphore = Arc::new(tokio::sync::Semaphore::new(5));
@@ -3367,8 +3645,6 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                 let remote_folder_c = scanner_remote_folder.clone();
                                 let local_root_c = scanner_local_root.clone();
                                 let local_dirs_c = scanner_local_dirs.clone();
-                                let app_c = scanner_app.clone();
-                                let sess_c = scanner_session_id.clone();
                                 let dir_tx_c = dir_tx.clone();
                                 let tx_c = tx.clone();
                                 let active_dirs_c = active_dirs.clone();
@@ -3376,6 +3652,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                 let done_notify_c = done_notify.clone();
                                 let cancel_task = cancel_flag_scan.clone();
                                 let epoch_task = epoch_scan.clone();
+                                let total_files_task = total_files_scan.clone();
+                                let total_bytes_task = total_bytes_scan.clone();
 
                                 scan_join_set.spawn(async move {
                                     let _permit = permit;
@@ -3423,25 +3701,12 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                             let _ = dir_tx_c.send(full_remote).await;
                                         } else {
                                             let size = entry.metadata().size.unwrap_or(0);
+                                            total_files_task.fetch_add(1, Ordering::Relaxed);
+                                            total_bytes_task.fetch_add(size, Ordering::Relaxed);
                                             let local_dest = local_root_c.join(rel.replace('/', "\\"));
                                             let local_dest_str = local_dest.to_string_lossy().to_string();
                                             let idx = file_idx_c.fetch_add(1, Ordering::Relaxed);
                                             let file_transfer_id = format!("tx_{}_{}_{}", chrono::Utc::now().timestamp_millis(), idx, name.replace('/', "_"));
-
-                                            let _ = app_c.emit("sftp-progress", TransferProgress {
-                                                transfer_id: file_transfer_id.clone(),
-                                                session_id: sess_c.clone(),
-                                                file_name: rel.to_string(),
-                                                remote_path: full_remote.clone(),
-                                                local_path: Some(local_dest_str.clone()),
-                                                direction: "download".into(),
-                                                bytes_transferred: 0,
-                                                total_bytes: size,
-                                                percentage: 0.0,
-                                                speed_bps: 0.0,
-                                                status: "pending".into(),
-                                                error_message: None,
-                                            });
 
                                             if tx_c.send((full_remote, local_dest_str, file_transfer_id)).await.is_err() {
                                                 return;
@@ -3461,6 +3726,7 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
             }
 
             while let Some(_) = scan_join_set.join_next().await {}
+            scan_finished_task.store(true, Ordering::SeqCst);
         });
 
         let mut join_set = tokio::task::JoinSet::new();
@@ -3535,6 +3801,8 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                             let sess_c = session_id.clone();
                             let cancel_c = cancel_flag.clone();
                             let epoch_c = start_epoch;
+                            let done_files_c = done_files.clone();
+                            let transferred_bytes_c = transferred_bytes.clone();
 
                             join_set.spawn(async move {
                                 let _permit = permit;
@@ -3549,7 +3817,10 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
                                     local_dest,
                                     None,
                                     Some(cancel_c),
+                                    Some(transferred_bytes_c),
+                                    true, // is_child_of_folder
                                 ).await;
+                                done_files_c.fetch_add(1, Ordering::Relaxed);
                             });
                         }
                         None => break,
@@ -3560,20 +3831,27 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
         let _ = scan_handle.await;
         while let Some(_) = join_set.join_next().await {}
+        ticker_stop.notify_one();
+        let _ = progress_ticker.await;
+
         self.unregister_semaphore(sem_id);
         self.active_transfers.lock().remove(&transfer_id);
         self.folder_notifiers.lock().remove(&transfer_id);
+
+        let final_done_f = done_files.load(Ordering::Relaxed);
+        let final_tot_b = total_bytes.load(Ordering::Relaxed);
+        let final_xfer_b = transferred_bytes.load(Ordering::Relaxed);
 
         if cancel_flag.load(Ordering::SeqCst) || self.cancel_epoch.load(Ordering::SeqCst) != start_epoch {
             let _ = app.emit("sftp-progress", TransferProgress {
                 transfer_id: transfer_id.clone(),
                 session_id: session_id.clone(),
-                file_name: folder_name,
+                file_name: format!("📁 {} (Dibatalkan)", folder_name),
                 remote_path: remote_folder,
                 local_path: Some(local_root.to_string_lossy().to_string()),
                 direction: "download".into(),
-                bytes_transferred: 0,
-                total_bytes: 0,
+                bytes_transferred: final_xfer_b,
+                total_bytes: final_tot_b,
                 percentage: 0.0,
                 speed_bps: 0.0,
                 status: "cancelled".into(),
@@ -3585,12 +3863,12 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         let _ = app.emit("sftp-progress", TransferProgress {
             transfer_id: transfer_id.clone(),
             session_id: session_id.clone(),
-            file_name: folder_name,
+            file_name: format!("📁 {} ({} file)", folder_name, final_done_f),
             remote_path: remote_folder,
             local_path: Some(local_root.to_string_lossy().to_string()),
             direction: "download".into(),
-            bytes_transferred: 0,
-            total_bytes: 0,
+            bytes_transferred: final_tot_b,
+            total_bytes: final_tot_b,
             percentage: 100.0,
             speed_bps: 0.0,
             status: "completed".into(),

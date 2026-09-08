@@ -377,7 +377,7 @@ pub async fn sftp_download_stream(
 ) -> Result<(), String> {
     state
         .ssh_manager
-        .download_file_stream(app, session_id, transfer_id, remote_path, local_path, resume_from, None)
+        .download_file_stream(app, session_id, transfer_id, remote_path, local_path, resume_from, None, None, false)
         .await
 }
 
