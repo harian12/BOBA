@@ -645,3 +645,51 @@ pub fn read_recent_logs() -> Result<String, String> {
     let path = get_app_log_path()?;
     std::fs::read_to_string(&path).map_err(|e| format!("Log belum tersedia: {}", e))
 }
+
+#[tauri::command]
+pub async fn fetch_ai_models(endpoint: String, api_key: Option<String>) -> Result<Vec<String>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let mut req = client.get(&endpoint);
+    if let Some(ref key) = api_key {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", trimmed));
+        }
+    }
+
+    let res = req.send().await.map_err(|e| format!("Network request failed: {}", e))?;
+    let status = res.status();
+    if !status.is_success() {
+        let err_body = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP error {}: {}", status, err_body));
+    }
+
+    let json: serde_json::Value = res.json().await.map_err(|e| format!("Invalid JSON response: {}", e))?;
+    if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+        let mut models: Vec<String> = data
+            .iter()
+            .filter_map(|m| m.get("id").and_then(|id| id.as_str()).map(|s| s.to_string()))
+            .collect();
+        models.sort();
+        return Ok(models);
+    }
+    if let Some(models) = json.get("models").and_then(|d| d.as_array()) {
+        let mut list: Vec<String> = models
+            .iter()
+            .filter_map(|m| {
+                m.get("name")
+                    .or_else(|| m.get("model"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
+        list.sort();
+        return Ok(list);
+    }
+
+    Ok(vec![])
+}

@@ -199,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import type { AiProviderConfig, AiProviderType } from '../types/index.js';
 import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
@@ -346,4 +346,18 @@ watch(
     }
   }
 );
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && aiStore.isProviderModalOpen) {
+    aiStore.closeProviderModal();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
 </script>

@@ -240,6 +240,10 @@ export const tauriBridge = {
     return await invoke('read_recent_logs');
   },
 
+  async fetchAiModels(endpoint: string, apiKey?: string): Promise<string[]> {
+    return await invoke('fetch_ai_models', { endpoint, apiKey: apiKey || null });
+  },
+
   // Event listeners
   onSftpProgress(callback: (payload: any) => void): Promise<UnlistenFn> {
     return listen('sftp-progress', (event) => {

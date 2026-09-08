@@ -1,4 +1,5 @@
 import type { AiProviderConfig, AiChatMessage, AiToolCall } from '../types/index.js';
+import { tauriBridge } from './tauriBridge.js';
 
 export const AGENT_TOOLS = [
   {
@@ -78,7 +79,16 @@ export async function fetchAvailableModels(provider: Partial<AiProviderConfig>):
     // 1. OLLAMA
     if (type === 'ollama') {
       const url = rawBaseUrl || 'http://localhost:11434';
-      const res = await fetch(`${url}/api/tags`, {
+      const endpoint = `${url}/api/tags`;
+      try {
+        const nativeModels = await tauriBridge.fetchAiModels(endpoint, apiKey);
+        if (Array.isArray(nativeModels) && nativeModels.length > 0) {
+          return nativeModels;
+        }
+      } catch {
+        // Fallback to browser fetch
+      }
+      const res = await fetch(endpoint, {
         headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -134,7 +144,25 @@ export async function fetchAvailableModels(provider: Partial<AiProviderConfig>):
     const baseUrl = rawBaseUrl || 'https://api.openai.com/v1';
     // Handle both "/v1" and plain root base urls
     const endpoint = baseUrl.endsWith('/models') ? baseUrl : `${baseUrl}/models`;
-    const res = await fetch(endpoint, {
+
+    // Try native Tauri backend first (bypasses browser CORS/preflight limitations completely)
+    try {
+      const nativeModels = await tauriBridge.fetchAiModels(endpoint, apiKey);
+      if (Array.isArray(nativeModels) && nativeModels.length > 0) {
+        return nativeModels;
+      }
+    } catch {
+      // Fallback to browser fetch
+    }
+
+    // Append ?key= parameter to allow preflight OPTIONS to pass on gateways that require API key for CORS preflight
+    let fetchUrl = endpoint;
+    if (apiKey && !fetchUrl.includes('key=')) {
+      const sep = fetchUrl.includes('?') ? '&' : '?';
+      fetchUrl = `${fetchUrl}${sep}key=${encodeURIComponent(apiKey)}`;
+    }
+
+    const res = await fetch(fetchUrl, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
@@ -190,7 +218,11 @@ async function streamOpenAiCompatible(
   callbacks: StreamCallbacks,
   signal?: AbortSignal
 ) {
-  const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+  let endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+  if (apiKey && !endpoint.includes('key=')) {
+    const sep = endpoint.includes('?') ? '&' : '?';
+    endpoint = `${endpoint}${sep}key=${encodeURIComponent(apiKey)}`;
+  }
 
   const formattedMessages: any[] = [{ role: 'system', content: systemPrompt }];
 

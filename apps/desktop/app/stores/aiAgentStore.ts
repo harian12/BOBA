@@ -17,6 +17,14 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   const isDrawerOpen = ref<boolean>(false);
   const isProviderModalOpen = ref<boolean>(false);
   const executionMode = ref<'confirm' | 'auto'>('confirm');
+
+  function openProviderModal() {
+    isProviderModalOpen.value = true;
+  }
+
+  function closeProviderModal() {
+    isProviderModalOpen.value = false;
+  }
   const selectedSessionId = ref<string>('');
   const messages = ref<Record<string, AiChatMessage[]>>({});
   const isThinking = ref<boolean>(false);
@@ -496,6 +504,8 @@ Guidelines:
     activeProvider,
     isDrawerOpen,
     isProviderModalOpen,
+    openProviderModal,
+    closeProviderModal,
     executionMode,
     selectedSessionId,
     messages,
