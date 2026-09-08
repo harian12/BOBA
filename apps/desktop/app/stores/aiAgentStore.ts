@@ -614,7 +614,8 @@ Guidelines:
 1. Always analyze server status first before changing files or restarting services.
 2. Be concise, direct, and explain clearly why a command or config change is needed.
 3. Respond in Bahasa Indonesia with technical terms in English (e.g. "Berikut hasil pengecekan log Nginx:").
-4. If asked to fix a problem, explain your diagnosis, use tools to gather facts, and then apply fixes.`;
+4. If asked to fix a problem, explain your diagnosis, use tools to gather facts, and then apply fixes.
+5. MANDATORY COMPLETION REPORT: When all actions and commands for the requested task have finished running, you MUST provide a clear completion message summarizing what was done, confirming whether it succeeded, and outlining the current state (cth: "✅ Docker berhasil diinstal dan service aktif. Kontainer LMS-CMS telah berjalan di port 8080..."). NEVER leave your message empty after tool execution.`;
   }
 
   async function sendMessage(promptText: string) {
@@ -705,12 +706,10 @@ Guidelines:
             saveState();
           },
           onFinish: async () => {
-            thread.updatedAt = Date.now();
-            saveState();
             isThinking.value = false;
             activeAbortController = null;
 
-            // Cek apakah ada tool calls yang dihasilkan
+            // Cek apakah ada tool calls lanjutan yang dihasilkan
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
               if (executionMode.value === 'auto') {
                 // Eksekusi otomatis jika BUKAN perintah berbahaya
@@ -723,7 +722,20 @@ Guidelines:
                   }
                 }
               }
+            } else {
+              // Jika TIDAK ADA tool calls lanjutan (tugas telah selesai)
+              // Cek apakah giliran ini merespons hasil tool call sebelumnya
+              const prevMsg = chatList[chatList.length - 2];
+              if (prevMsg && prevMsg.role === 'tool') {
+                if (!assistantMsg.content || assistantMsg.content.trim().length === 0) {
+                  assistantMsg.content = '✅ Seluruh perintah telah berhasil dieksekusi di server.';
+                }
+                dialogStore.showToast('Tugas AI Copilot selesai dieksekusi', 'success', 3000);
+              }
             }
+
+            thread.updatedAt = Date.now();
+            saveState();
           },
         },
         activeAbortController.signal
