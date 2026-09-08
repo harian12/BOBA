@@ -417,7 +417,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     const item = transfers.value.find(t => t.id === transferId);
     if (!item) return;
 
-    if (item.status !== 'error' && item.status !== 'cancelled') return;
+    if (item.status === 'transferring' || item.status === 'completed') return;
 
     item.status = 'pending';
     item.errorMessage = undefined;
@@ -469,6 +469,8 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     const item = transfers.value.find(t => t.id === transferId);
     if (!item) return;
 
+    if (item.status === 'transferring') return;
+
     item.bytesTransferred = 0;
     item.percentage = 0;
     item.status = 'pending';
@@ -519,19 +521,23 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
 
   async function resumeAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
     if (isRetryingAll.value) return;
-    const failedList = transfers.value.filter(t => t.status === 'error' || t.status === 'cancelled');
-    if (failedList.length === 0) return;
+    const targetList = transfers.value.filter(
+      t => t.status === 'error' || t.status === 'cancelled' || t.status === 'pending'
+    );
+    if (targetList.length === 0) return;
 
     isRetryingAll.value = true;
     try {
-      for (const item of failedList) {
-        item.status = 'pending';
-        item.errorMessage = undefined;
+      for (const item of targetList) {
+        if (item.status !== 'pending') {
+          item.status = 'pending';
+          item.errorMessage = undefined;
+        }
       }
       triggerRef(transfers);
 
       const executing = new Set<Promise<void>>();
-      for (const item of failedList) {
+      for (const item of targetList) {
         if (isCancellingAll) break;
 
         while (executing.size >= maxConcurrent.value) {
@@ -560,12 +566,14 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
 
   async function restartAllFailed(resolveDstId?: (item: TransferItem) => Promise<string | undefined> | string | undefined) {
     if (isRetryingAll.value) return;
-    const failedList = transfers.value.filter(t => t.status === 'error' || t.status === 'cancelled');
-    if (failedList.length === 0) return;
+    const targetList = transfers.value.filter(
+      t => t.status === 'error' || t.status === 'cancelled' || t.status === 'pending'
+    );
+    if (targetList.length === 0) return;
 
     isRetryingAll.value = true;
     try {
-      for (const item of failedList) {
+      for (const item of targetList) {
         item.bytesTransferred = 0;
         item.percentage = 0;
         item.status = 'pending';
@@ -574,7 +582,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
       triggerRef(transfers);
 
       const executing = new Set<Promise<void>>();
-      for (const item of failedList) {
+      for (const item of targetList) {
         if (isCancellingAll) break;
 
         while (executing.size >= maxConcurrent.value) {

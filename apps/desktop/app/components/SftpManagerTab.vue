@@ -1376,6 +1376,18 @@
             </button>
           </template>
 
+          <!-- Tombol Mulai/Proses Antrean: khusus di tab Antrean (pending) -->
+          <button
+            v-if="!isQueueCollapsed && queueTab === 'pending' && sessionPendingTransfers.length > 0"
+            @click="handleProcessPending"
+            :disabled="queueStore.isRetryingAll"
+            class="text-[10px] text-emerald-300 hover:text-emerald-100 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/70 px-2.5 py-0.5 rounded transition font-medium flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+            title="Mulai memproses semua file dalam antrean sekarang"
+          >
+            <span>▶️</span>
+            <span>{{ queueStore.isRetryingAll ? 'Memproses...' : `Mulai Antrean (${sessionPendingTransfers.length})` }}</span>
+          </button>
+
           <!-- Toggle Minimize / Maximize Button -->
           <button
             @click="toggleQueueCollapse"
@@ -1398,6 +1410,28 @@
 
         <!-- Lightweight Pending Queue View (Fast render without animation) -->
         <template v-if="queueTab === 'pending'">
+          <!-- Banner Mulai Antrean -->
+          <div
+            v-if="sessionPendingTransfers.length > 0"
+            class="bg-[#101b1e] border border-emerald-900/50 rounded-lg p-2.5 flex items-center justify-between space-x-3 mb-2"
+          >
+            <div class="flex items-center space-x-2 text-xs text-emerald-300 min-w-0">
+              <span class="text-sm shrink-0">⏳</span>
+              <div class="flex flex-col min-w-0">
+                <span class="font-semibold text-emerald-200">{{ sessionPendingTransfers.length }} file menunggu giliran antrean</span>
+                <span class="text-[10px] text-emerald-400/80 truncate">Klik tombol di sebelah kanan untuk langsung memproses dan mentransfer semua antrean</span>
+              </div>
+            </div>
+            <button
+              @click="handleProcessPending"
+              :disabled="queueStore.isRetryingAll"
+              class="text-xs text-emerald-100 hover:text-white bg-emerald-800 hover:bg-emerald-700 border border-emerald-600/80 px-3 py-1 rounded font-medium transition flex items-center space-x-1.5 shadow disabled:opacity-50 shrink-0"
+            >
+              <span>▶️</span>
+              <span>{{ queueStore.isRetryingAll ? 'Memproses...' : 'Proses Semua Antrean Sekarang' }}</span>
+            </button>
+          </div>
+
           <div
             v-for="item in sessionPendingTransfers.slice(0, 100)"
             :key="item.id"
@@ -1419,6 +1453,13 @@
               <span class="text-[10px] text-amber-300/80 italic font-sans">
                 Menunggu giliran
               </span>
+              <button
+                @click="handleResumeSingle(item)"
+                class="text-sky-300 hover:text-white text-[10px] px-2 py-0.5 rounded bg-sky-950 hover:bg-sky-800 border border-sky-700/60 transition"
+                title="Mulai transfer file ini sekarang"
+              >
+                ⚡ Mulai
+              </button>
               <button
                 @click="handleCancelTransfer(item)"
                 class="text-rose-400 hover:text-rose-300 text-[10px] px-2 py-0.5 rounded bg-rose-950/40 border border-rose-900/50 transition"
@@ -3273,6 +3314,16 @@ async function handleRestartAllFailed() {
   queueTab.value = 'active';
   dialogStore.showToast(`Mengulang ${count} file yang gagal dari awal...`, 'info', 3000);
   await queueStore.restartAllFailed(resolveDestinationSession);
+}
+
+async function handleProcessPending() {
+  if (queueStore.isRetryingAll) return;
+  const count = sessionPendingTransfers.value.length;
+  if (count === 0) return;
+
+  queueTab.value = 'active';
+  dialogStore.showToast(`Memulai proses ${count} antrean transfer...`, 'info', 3000);
+  await queueStore.resumeAllFailed(resolveDestinationSession);
 }
 
 onMounted(async () => {
