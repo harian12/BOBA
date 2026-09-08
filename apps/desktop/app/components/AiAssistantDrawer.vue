@@ -591,8 +591,13 @@ const selectedServerName = computed(() => {
 });
 
 const currentMessages = computed(() => {
+  const sid = aiStore.selectedSessionId || 'default';
+  const thread = aiStore.activeThread;
+  // Akses thread?.updatedAt agar computed selalu re-trigger jika ada event streaming token atau tool execution
+  const _ = thread?.updatedAt;
+  const rawList = aiStore.getSessionMessages(sid);
   // Saring pesan teknis internal tool role dan pesan assistant kosong tanpa konten/tool calls
-  const msgs = aiStore.getSessionMessages(aiStore.selectedSessionId).filter(m => {
+  const msgs = rawList.filter(m => {
     if (m.role === 'tool') return false;
     if (m.role === 'assistant') {
       return (m.content && m.content.trim().length > 0) || (m.toolCalls && m.toolCalls.length > 0);

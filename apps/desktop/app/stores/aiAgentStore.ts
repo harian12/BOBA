@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, reactive } from 'vue';
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread } from '../types/index.js';
 import { streamChat } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
@@ -688,13 +688,13 @@ Core Rules & Interactive Behavior:
 
     // Create assistant placeholder message - pastikan createdAt selalu lebih baru dari pesan sebelumnya
     const lastMsgTime = chatList.length > 0 ? (chatList[chatList.length - 1]?.createdAt || 0) : 0;
-    const assistantMsg: AiChatMessage = {
+    const assistantMsg = reactive<AiChatMessage>({
       id: `msg_ai_${Date.now()}`,
       role: 'assistant',
       content: '',
       toolCalls: [],
       createdAt: Math.max(Date.now(), lastMsgTime + 1),
-    };
+    });
     chatList.push(assistantMsg);
     thread.updatedAt = Date.now();
     saveState();
@@ -709,6 +709,7 @@ Core Rules & Interactive Behavior:
         {
           onToken: (token: string) => {
             assistantMsg.content += token;
+            thread.updatedAt = Date.now();
           },
           onToolCalls: (tcs: AiToolCall[]) => {
             assistantMsg.toolCalls = tcs;
