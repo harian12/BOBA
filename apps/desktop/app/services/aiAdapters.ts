@@ -14,6 +14,14 @@ export const AGENT_TOOLS = [
             type: 'string',
             description: 'The exact bash command to execute (e.g. "systemctl status nginx", "cat /etc/hosts", "df -h")',
           },
+          description: {
+            type: 'string',
+            description: 'Penjelasan ringkas dalam Bahasa Indonesia yang mudah dipahami pengguna awam tentang tujuan perintah ini.',
+          },
+          impact: {
+            type: 'string',
+            description: 'Penjelasan dampak atau konsekuensi perintah terhadap server (misal: aman/read-only, restart layanan, perubahan file, atau potensi downtime).',
+          },
         },
         required: ['command'],
       },

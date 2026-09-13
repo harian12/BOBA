@@ -342,32 +342,94 @@
                       'bg-amber-950 text-amber-300 border border-amber-800'
                     ]"
                   >
-                    {{ tc.status }}
+                    {{ formatToolStatus(tc.status) }}
                   </span>
                 </div>
 
-                <!-- Tool Arguments / Command to run -->
-                <div class="bg-boba-900/90 border border-boba-800/60 p-2 rounded-lg text-[10px] text-slate-300 overflow-x-auto no-scrollbar">
-                  <span v-if="tc.name === 'exec_command'" class="text-amber-200">$ {{ tc.args.command }}</span>
-                  <span v-else-if="tc.name === 'read_file'" class="text-sky-300">📄 Baca: {{ tc.args.path }}</span>
+                <!-- Keterangan Eksekusi untuk Pengguna Awam (Khusus exec_command) -->
+                <div v-if="tc.name === 'exec_command'" class="rounded-lg bg-boba-900/90 border border-boba-800/80 p-2.5 space-y-2 font-sans">
+                  <!-- Header Bar: Rencana & Badge Risiko -->
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center space-x-1.5 text-sky-300 font-semibold text-[11px]">
+                      <span>💡</span>
+                      <span>Rencana Eksekusi:</span>
+                    </div>
+                    <span
+                      :class="[
+                        'px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wide flex items-center space-x-1 uppercase',
+                        getCommandInsight(tc).badgeClass
+                      ]"
+                    >
+                      <span>{{ getCommandInsight(tc).icon }}</span>
+                      <span>{{ getCommandInsight(tc).riskLabel }}</span>
+                    </span>
+                  </div>
+
+                  <!-- Deskripsi Tujuan Perintah -->
+                  <div class="text-[11.5px] text-slate-200 leading-snug">
+                    {{ getCommandInsight(tc).description }}
+                  </div>
+
+                  <!-- Dampak Terhadap Server -->
+                  <div class="flex items-start space-x-2 text-[10.5px] bg-black/40 border border-white/5 p-2 rounded-md leading-relaxed">
+                    <span class="text-amber-400 font-bold shrink-0 mt-0.5">⚡</span>
+                    <div>
+                      <span class="text-amber-300 font-semibold">Dampak: </span>
+                      <span class="text-slate-300">{{ getCommandInsight(tc).impact }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Box Perintah Terminal Bash -->
+                  <div class="pt-0.5">
+                    <div class="flex items-center justify-between text-[9px] text-slate-400 font-mono mb-1">
+                      <span>Perintah Terminal:</span>
+                      <button
+                        v-if="tc.args.command"
+                        @click="copyCommand(tc.args.command)"
+                        type="button"
+                        class="text-slate-400 hover:text-slate-200 transition text-[9px] flex items-center space-x-1 font-sans"
+                        title="Salin perintah bash"
+                      >
+                        <span>📋</span>
+                        <span>Salin</span>
+                      </button>
+                    </div>
+                    <div class="bg-black/60 border border-boba-800/80 p-2 rounded text-[10.5px] font-mono text-amber-200 overflow-x-auto select-all">
+                      $ {{ tc.args.command || '(perintah kosong)' }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tool Arguments untuk selain exec_command (read_file, write_file, get_system_metrics) -->
+                <div v-else class="bg-boba-900/90 border border-boba-800/60 p-2 rounded-lg text-[10px] text-slate-300 overflow-x-auto no-scrollbar">
+                  <span v-if="tc.name === 'read_file'" class="text-sky-300">📄 Baca: {{ tc.args.path }}</span>
                   <span v-else-if="tc.name === 'write_file'" class="text-emerald-300">✏️ Tulis: {{ tc.args.path }} ({{ (tc.args.content || '').length }} bytes)</span>
                   <span v-else class="text-slate-400">{{ JSON.stringify(tc.args) }}</span>
                 </div>
 
                 <!-- Approval Actions for Pending Tool Calls -->
-                <div v-if="tc.status === 'pending_approval'" class="flex items-center justify-end space-x-2 pt-1">
-                  <button
-                    @click="aiStore.rejectToolCall(tc.id)"
-                    class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-[10px] transition"
-                  >
-                    Tolak
-                  </button>
-                  <button
-                    @click="aiStore.approveToolCall(tc.id)"
-                    class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded text-[10px] transition shadow"
-                  >
-                    ✓ Jalankan di Server
-                  </button>
+                <div v-if="tc.status === 'pending_approval'" class="flex items-center justify-between pt-1 border-t border-boba-800/60 font-sans">
+                  <span class="text-[10px] text-slate-400">
+                    Perlu konfirmasi untuk dijalankan di server
+                  </span>
+                  <div class="flex items-center space-x-2">
+                    <button
+                      @click="aiStore.rejectToolCall(tc.id)"
+                      class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-[10.5px] font-medium transition"
+                    >
+                      Tolak
+                    </button>
+                    <button
+                      @click="aiStore.approveToolCall(tc.id)"
+                      :class="[
+                        'px-3 py-1 text-white font-semibold rounded text-[10.5px] transition shadow flex items-center space-x-1',
+                        tc.name === 'exec_command' ? getCommandInsight(tc).buttonClass : 'bg-emerald-600 hover:bg-emerald-500'
+                      ]"
+                    >
+                      <span>✓</span>
+                      <span>Jalankan di Server</span>
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Terminal Execution Result Output Box -->
@@ -510,11 +572,28 @@ import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { explainBashCommand } from '../services/commandExplainer.js';
 
 const aiStore = useAiAgentStore();
 const sessionStore = useSessionStore();
 const vaultStore = useVaultStore();
 const dialogStore = useDialogStore();
+
+function getCommandInsight(tc: any) {
+  const cmd = tc.args?.command || tc.args?.cmd || tc.args?.bash || (typeof tc.args === 'string' ? tc.args : '');
+  return explainBashCommand(cmd, tc.args?.description, tc.args?.impact);
+}
+
+function formatToolStatus(status: string): string {
+  switch (status) {
+    case 'pending_approval': return 'Menunggu Izin';
+    case 'running': return 'Menjalankan...';
+    case 'completed': return 'Selesai';
+    case 'failed': return 'Gagal';
+    case 'rejected': return 'Dibatalkan';
+    default: return status;
+  }
+}
 
 const promptInput = ref('');
 const chatFeedRef = ref<HTMLElement | null>(null);

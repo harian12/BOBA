@@ -3,6 +3,7 @@ import { ref, computed, reactive } from 'vue';
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread } from '../types/index.js';
 import { streamChat } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
+import { inspectCommandRisk } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
 import { useVaultStore } from './vaultStore.js';
 import { useDialogStore } from './dialogStore.js';
@@ -400,20 +401,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   }
 
   function isDangerousCommand(cmd: string): boolean {
-    const lower = cmd.trim().toLowerCase();
-    const dangerousPatterns = [
-      /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f?\s+\//, // rm -rf /
-      /\brm\s+-[a-zA-Z]*f[a-zA-Z]*r?\s+\//,
-      /\bmkfs\b/,
-      /\bfdisk\b/,
-      /\bparted\b/,
-      /\bdd\s+if=/,
-      /\bshutdown\b/,
-      /\breboot\b/,
-      /\bpasswd\b/,
-      /\bchmod\s+-R\s+777\s+\//,
-    ];
-    return dangerousPatterns.some(pattern => pattern.test(lower));
+    return inspectCommandRisk(cmd) === 'danger';
   }
 
   // Eksekusi tool call ke server target
@@ -433,8 +421,9 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       const realSessionId = await ensureSessionConnected(sessionId);
 
       if (toolCall.name === 'exec_command') {
-        const cmd = toolCall.args.command;
+        const cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
         if (!cmd) throw new Error('Perintah (command) kosong');
+        toolCall.args.command = cmd;
         const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
         const finalResult = output && output.trim().length > 0 ? output : '(Perintah selesai dieksekusi tanpa output / kosong)';
         toolCall.result = finalResult;
@@ -607,6 +596,9 @@ Current Target Server: ${hostInfo}
 
 You have access to tools to inspect and configure the server:
 - exec_command: execute bash commands to inspect status, logs, packages, services, network, or perform configuration.
+  PENTING: Saat memanggil 'exec_command', kamu WAJIB menyertakan:
+  * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan perintah ini.
+  * 'impact': Penjelasan dampak langsung atau efek samping terhadap server (apakah aman/hanya membaca data, merestart service, memodifikasi konfigurasi, atau berpotensi downtime).
 - read_file: read full text of configuration files or logs.
 - write_file: update or create configuration files (a backup will be made automatically).
 - get_system_metrics: check current CPU, RAM, Disk, and load average.
@@ -752,7 +744,8 @@ You MUST strictly follow this operational discipline:
                 const pendingCalls = assistantMsg.toolCalls.filter(tc => tc.status === 'pending_approval');
                 let executedAny = false;
                 for (const tc of pendingCalls) {
-                  if (tc.name === 'exec_command' && isDangerousCommand(tc.args.command || '')) {
+                  const cmd = (tc.args?.command || tc.args?.cmd || tc.args?.bash || '').trim();
+                  if (tc.name === 'exec_command' && isDangerousCommand(cmd)) {
                     dialogStore.showToast('Perintah berisiko tinggi memerlukan persetujuan manual', 'warning', 3000);
                   } else {
                     try {
