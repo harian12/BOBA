@@ -35,9 +35,23 @@
       </div>
 
       <div class="flex items-center space-x-1">
+        <!-- Copilot Mode Switch (Plan vs Build) -->
+        <button
+          @click="toggleCopilotMode"
+          :class="[
+            'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border',
+            aiStore.copilotMode === 'plan'
+              ? 'bg-purple-950/80 border-purple-600 text-purple-200 shadow-[0_0_8px_rgba(168,85,247,0.25)]'
+              : 'bg-emerald-950/80 border-emerald-600 text-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
+          ]"
+          :title="aiStore.copilotMode === 'plan' ? 'Mode Plan: Diagnosa & Analisis rencana (Read-Only)' : 'Mode Build: Eksekusi perubahan & perbaikan server'"
+        >
+          <span>{{ aiStore.copilotMode === 'plan' ? '📋 Plan' : '🔨 Build' }}</span>
+        </button>
+
         <!-- Execution Mode Switch (Confirm vs Auto) -->
         <button
-          @click="aiStore.setExecutionMode(aiStore.executionMode === 'confirm' ? 'auto' : 'confirm')"
+          @click="toggleExecutionMode"
           :class="[
             'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border',
             aiStore.executionMode === 'auto'
@@ -525,8 +539,20 @@
 
         <!-- Form Action Bar -->
         <div class="flex items-center justify-between pt-1 border-t border-boba-800/60">
-          <div class="flex items-center space-x-2 text-[10px] text-slate-500">
-            <span class="hidden sm:inline">Enter ↵ Kirim · Shift+Enter Baris baru</span>
+          <div class="flex items-center space-x-2 text-[10px]">
+            <span
+              @click="toggleCopilotMode"
+              :class="[
+                'px-1.5 py-0.2 rounded font-mono font-medium cursor-pointer transition border',
+                aiStore.copilotMode === 'plan'
+                  ? 'bg-purple-950/80 border-purple-700/60 text-purple-300 hover:bg-purple-900/60'
+                  : 'bg-emerald-950/80 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/60'
+              ]"
+              :title="aiStore.copilotMode === 'plan' ? 'Klik untuk beralih ke Mode Build' : 'Klik untuk beralih ke Mode Plan'"
+            >
+              {{ aiStore.copilotMode === 'plan' ? '📋 Plan' : '🔨 Build' }}
+            </span>
+            <span class="text-slate-500 hidden sm:inline">Enter ↵ Kirim · Shift+Enter Baris baru</span>
           </div>
 
           <div class="flex items-center space-x-1.5">
@@ -649,6 +675,26 @@ function toggleExpandWidth() {
   localStorage.setItem('boba_ai_drawer_width', String(drawerWidth.value));
 }
 
+function toggleCopilotMode() {
+  const next = aiStore.copilotMode === 'plan' ? 'build' : 'plan';
+  aiStore.setCopilotMode(next);
+  dialogStore.showToast(
+    next === 'plan' ? 'Mode Plan Aktif: Read-Only & Diagnosa' : 'Mode Build Aktif: Eksekusi Penuh & Perbaikan',
+    'info',
+    2000
+  );
+}
+
+function toggleExecutionMode() {
+  const next = aiStore.executionMode === 'confirm' ? 'auto' : 'confirm';
+  aiStore.setExecutionMode(next);
+  dialogStore.showToast(
+    next === 'auto' ? 'Mode Otomatis Aktif (Auto-Execution)' : 'Mode Konfirmasi Aktif (Manual Approval)',
+    'info',
+    2000
+  );
+}
+
 onMounted(() => {
   initWidth();
 });
@@ -748,6 +794,17 @@ async function retryConnection() {
   if (aiStore.isThinking || !aiStore.selectedSessionId) return;
   const thread = aiStore.activeThread;
   if (!thread) return;
+
+  // Reset status running yang tertinggal akibat pemutusan koneksi
+  for (const m of thread.messages) {
+    if (m.toolCalls) {
+      for (const tc of m.toolCalls) {
+        if (tc.status === 'running') {
+          tc.status = 'failed';
+        }
+      }
+    }
+  }
 
   // Bersihkan pesan error terakhir atau pesan assistant kosong dari thread
   while (thread.messages.length > 0) {

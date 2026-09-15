@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
-import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread } from '../types/index.js';
-import { streamChat } from '../services/aiAdapters.js';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
+import { streamChat, truncateOutput } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { inspectCommandRisk } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
@@ -18,6 +18,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   const isDrawerOpen = ref<boolean>(false);
   const isProviderModalOpen = ref<boolean>(false);
   const executionMode = ref<'confirm' | 'auto'>('confirm');
+  const copilotMode = ref<AiCopilotMode>('build');
 
   function openProviderModal() {
     isProviderModalOpen.value = true;
@@ -83,6 +84,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         executionMode.value = savedMode;
       }
 
+      const savedCopilotMode = localStorage.getItem('boba_ai_copilot_mode');
+      if (savedCopilotMode === 'plan' || savedCopilotMode === 'build') {
+        copilotMode.value = savedCopilotMode;
+      }
+
       // Load thread histories per session
       const savedThreads = localStorage.getItem('boba_ai_chat_threads');
       if (savedThreads) {
@@ -139,11 +145,12 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       localStorage.setItem('boba_ai_providers', JSON.stringify(providers.value));
       localStorage.setItem('boba_ai_active_provider', activeProviderId.value);
       localStorage.setItem('boba_ai_exec_mode', executionMode.value);
+      localStorage.setItem('boba_ai_copilot_mode', copilotMode.value);
 
-      // Simpan maksimal 60 thread, dan maksimal 40 pesan terakhir per thread
+      // Simpan maksimal 60 thread riwayat
       const trimmedThreads = threads.value.slice(0, 60).map(t => ({
         ...t,
-        messages: t.messages.slice(-40),
+        messages: t.messages,
       }));
       localStorage.setItem('boba_ai_chat_threads', JSON.stringify(trimmedThreads));
       localStorage.setItem('boba_ai_active_threads', JSON.stringify(activeThreadPerSession.value));
@@ -272,6 +279,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
   function setExecutionMode(mode: 'confirm' | 'auto') {
     executionMode.value = mode;
+    saveState();
+  }
+
+  function setCopilotMode(mode: AiCopilotMode) {
+    copilotMode.value = mode;
     saveState();
   }
 
@@ -420,6 +432,19 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     try {
       const realSessionId = await ensureSessionConnected(sessionId);
 
+      // Guard: Cek batasan Mode Plan
+      if (copilotMode.value === 'plan') {
+        if (toolCall.name === 'write_file') {
+          throw new Error('Aksi ditolak: Mode saat ini adalah PLAN (Read-Only). Ubah ke Mode BUILD untuk menulis/memodifikasi file.');
+        }
+        if (toolCall.name === 'exec_command') {
+          const cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
+          if (isDangerousCommand(cmd)) {
+            throw new Error('Aksi ditolak: Perintah berbahaya dicegah dalam Mode PLAN. Ubah ke Mode BUILD jika ingin mengeksekusinya.');
+          }
+        }
+      }
+
       if (toolCall.name === 'exec_command') {
         const cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
         if (!cmd) throw new Error('Perintah (command) kosong');
@@ -478,12 +503,13 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       if (tc && tc.status === 'pending_approval') {
         try {
           const result = await executeTool(selectedSessionId.value, tc);
+          const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
           // Masukkan tool result ke riwayat pesan dan picu AI untuk analisis lanjutan
           list.push({
             id: `msg_tool_${Date.now()}`,
             role: 'tool',
             toolCallId: tc.id,
-            content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+            content: toolContent,
             createdAt: Date.now(),
           });
           thread.updatedAt = Date.now();
@@ -540,9 +566,9 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
         try {
           const result = await executeTool(selectedSessionId.value, tc);
+          const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
 
           const existingToolMsg = list.find(m => m.role === 'tool' && m.toolCallId === tc.id);
-          const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
           if (existingToolMsg) {
             existingToolMsg.content = toolContent;
           } else {
@@ -591,52 +617,40 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     const session = vaultStore.vault.sessions.find(s => s.id === sessionId);
     const hostInfo = session ? `Host: ${session.username}@${session.host}:${session.port} (${session.name})` : 'No active session attached';
 
+    const modeDirective = copilotMode.value === 'plan'
+      ? `### OPERATIONAL MODE: 📋 PLAN (READ-ONLY & DIAGNOSTIK)
+Saat ini kamu berada dalam Mode PLAN.
+- FOKUS: Hanya mendiagnosa, membaca log/konfigurasi, memeriksa status server, dan MENYUSUN RENCANA AKSI YANG JELAS.
+- DILARANG: Memodifikasi file (write_file dinonaktifkan), menginstal software, merestart service penting, atau mengeksekusi aksi yang mengubah state server.
+- Setelah selesai mengumpulkan data dan menganalisis, sajikan ringkasan temuan dan susun langkah-langkah perbaikan, lalu minta pengguna untuk beralih ke Mode BUILD untuk mengeksekusi rencananya.`
+      : `### OPERATIONAL MODE: 🔨 BUILD (EKSEKUSI & PERBAIKAN AKTIF)
+Saat ini kamu berada dalam Mode BUILD.
+- Kamu memiliki izin untuk mengeksekusi perintah bash, memperbarui konfigurasi (write_file), dan mengonfigurasi layanan server remote.`;
+
     return `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Linux System Administrator running the LFG (Autonomous Shipping & Ops) Engine.
 Current Target Server: ${hostInfo}
 
+${modeDirective}
+
+### ATURAN MUTLAK EKSEKUSI PERINTAH (STRICTLY SEQUENTIAL):
+- Kamu HANYA BOLEH memanggil MAKSIMAL 1 tool dalam satu respon/giliran. DILARANG KERAS memanggil lebih dari satu tool sekaligus secara paralel.
+- Kamu WAJIB menunggu hasil output eksekusi dari tool sebelumnya sebelum menentukan dan memanggil langkah/perintah berikutnya.
+- Saat memanggil 'exec_command', kamu WAJIB menyertakan:
+  * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan perintah ini.
+  * 'impact': Penjelasan dampak langsung atau efek samping terhadap server (apakah aman/read-only, restart service, memodifikasi konfigurasi, atau berpotensi downtime).
+
 You have access to tools to inspect and configure the server:
 - exec_command: execute bash commands to inspect status, logs, packages, services, network, or perform configuration.
-  PENTING: Saat memanggil 'exec_command', kamu WAJIB menyertakan:
-  * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan perintah ini.
-  * 'impact': Penjelasan dampak langsung atau efek samping terhadap server (apakah aman/hanya membaca data, merestart service, memodifikasi konfigurasi, atau berpotensi downtime).
 - read_file: read full text of configuration files or logs.
-- write_file: update or create configuration files (a backup will be made automatically).
+- write_file: update or create configuration files (a backup will be made automatically, only in BUILD mode).
 - get_system_metrics: check current CPU, RAM, Disk, and load average.
 
 ### LFG DevOps Engine (Autonomous Execution Pipeline)
-You MUST strictly follow this operational discipline:
-
-1. STAGE 1 - PLAN FIRST:
-   - Sebelum memodifikasi konfigurasi, menginstal paket, atau men-deploy container/service, rumuskan rencana singkat:
-     a. Diagnosa & Fakta: Periksa kondisi server saat ini (file config, status service, port, log error).
-     b. Rencana Aksi: Langkah-langkah terstruktur yang akan dijalankan.
-     c. Gate Verifikasi: Tentukan perintah apa yang membuktikan bahwa perubahan berhasil.
-
-2. STAGE 2 - AUTONOMOUS EXECUTION:
-   - Jalankan langkah-langkah yang telah direncanakan secara bersih menggunakan tool Anda.
-   - INTERACTIVE GUARD (DILARANG MEMAKSAKAN WORKAROUND): Jika terhalang masalah autentikasi atau izin (misal: Docker pull gagal karena repo/image GHCR private, 401/403, butuh Personal Access Token, butuh password sudo), HENTIKAN EKSEKUSI SEGERA. Jelaskan kendala sebenarnya dan tanyakan pilihan kepada pengguna. DILARANG memaksakan alternatif berat (seperti mem-build image dari source code di server lokal atau menginstal compiler) tanpa izin pengguna.
-
-3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT (Wajib Verifikasi):
-   - JANGAN PERNAH menyimpulkan tugas selesai hanya karena perintah deploy/restart menghasilkan exit code 0.
-   - WAJIB jalankan perintah verifikasi untuk mengumpulkan bukti konkret:
-     - Untuk Docker: Jalankan 'docker ps -f name=...' atau 'docker logs --tail 20 ...' untuk memastikan container benar-benar running dan tidak crash-loop (Exit 1).
-     - Untuk Service Linux/Systemd: Periksa 'systemctl is-active <service>' dan log status terkini.
-     - Untuk Web / API: Periksa port terbuka via 'ss -tulpn | grep <port>' atau 'curl -I -s http://localhost:<port>'.
-     - Untuk Konfigurasi: Uji sintaks sebelum me-reload (misal: 'nginx -t', 'apache2ctl configtest', 'php -l').
-
-4. STAGE 4 - SELF-HEALING LOOP:
-   - Jika verifikasi menemukan kegagalan (port tabrakan, env variable kurang, syntax error di file konfigurasi, permission denied):
-     - Cari akar masalah langsung dari log service terkait.
-     - Terapkan perbaikan yang tepat sasaran.
-     - Jalankan ulang verifikasi hingga dipastikan sehat (atau tanyakan pengguna jika butuh input/kredensial eksternal).
-
-5. STAGE 5 - COMPLETION PROOF & SUMMARY:
-   - Ketika seluruh aksi dan verifikasi selesai, berikan laporan penutup terstruktur:
-     - Ringkasan aksi yang dilakukan.
-     - Bukti konkret verifikasi (status running, ID container, port aktif, atau respon HTTP).
-     - Konfirmasi kondisi akhir sistem yang stabil.
-   - Gunakan Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris (e.g. "Berikut hasil verifikasi container...").
-   - DILARANG meninggalkan pesan penutup kosong setelah eksekusi tool.`;
+1. STAGE 1 - PLAN FIRST: Rumuskan rencana singkat sebelum memodifikasi konfigurasi atau men-deploy container/service.
+2. STAGE 2 - AUTONOMOUS EXECUTION: Jalankan langkah demi langkah secara berurutan. Jangan memaksakan workaround berat jika terhalang izin atau autentikasi.
+3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT: Periksa keaktifan service/konfigurasi secara nyata (docker ps, systemctl is-active, ss/curl, nginx -t).
+4. STAGE 4 - SELF-HEALING LOOP: Perbaiki jika ditemukan kegagalan verifikasi.
+5. STAGE 5 - COMPLETION PROOF & SUMMARY: Berikan laporan penutup terstruktur dalam Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris. DILARANG meninggalkan pesan kosong.`;
   }
 
   async function sendMessage(promptText: string) {
@@ -695,6 +709,17 @@ You MUST strictly follow this operational discipline:
     const thread = getOrCreateActiveThread(sid);
     const chatList = thread.messages;
 
+    // Guard: Pastikan tidak ada tool call yang masih menggantung (pending_approval atau running)
+    const hasUnfinishedToolCall = chatList.some(m =>
+      m.role === 'assistant' &&
+      m.toolCalls &&
+      m.toolCalls.some(tc => tc.status === 'pending_approval' || tc.status === 'running')
+    );
+    if (hasUnfinishedToolCall) {
+      dialogStore.showToast('Selesaikan atau setujui perintah terminal yang aktif terlebih dahulu.', 'warning', 3000);
+      return;
+    }
+
     isThinking.value = true;
     activeAbortController = new AbortController();
 
@@ -724,7 +749,8 @@ You MUST strictly follow this operational discipline:
             thread.updatedAt = Date.now();
           },
           onToolCalls: (tcs: AiToolCall[]) => {
-            assistantMsg.toolCalls = tcs;
+            // Ambil hanya 1 perintah pertama untuk sequential discipline
+            assistantMsg.toolCalls = tcs.slice(0, 1);
             thread.updatedAt = Date.now();
             saveState();
           },
@@ -740,40 +766,43 @@ You MUST strictly follow this operational discipline:
             // Cek apakah ada tool calls lanjutan yang dihasilkan
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
               if (executionMode.value === 'auto') {
-                // Eksekusi otomatis jika BUKAN perintah berbahaya secara batch
-                const pendingCalls = assistantMsg.toolCalls.filter(tc => tc.status === 'pending_approval');
-                let executedAny = false;
-                for (const tc of pendingCalls) {
-                  const cmd = (tc.args?.command || tc.args?.cmd || tc.args?.bash || '').trim();
-                  if (tc.name === 'exec_command' && isDangerousCommand(cmd)) {
+                // Eksekusi otomatis jika BUKAN perintah berbahaya
+                const pendingCall = assistantMsg.toolCalls.find(tc => tc.status === 'pending_approval');
+                if (pendingCall) {
+                  const cmd = (pendingCall.args?.command || pendingCall.args?.cmd || pendingCall.args?.bash || '').trim();
+                  if (pendingCall.name === 'exec_command' && isDangerousCommand(cmd)) {
                     dialogStore.showToast('Perintah berisiko tinggi memerlukan persetujuan manual', 'warning', 3000);
+                  } else if (copilotMode.value === 'plan' && pendingCall.name === 'write_file') {
+                    dialogStore.showToast('Penulisan file dicegah dalam Mode Plan (Read-Only)', 'warning', 3000);
                   } else {
+                    let executed = false;
                     try {
-                      const result = await executeTool(selectedSessionId.value, tc);
+                      const result = await executeTool(selectedSessionId.value, pendingCall);
+                      const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
                       chatList.push({
                         id: `msg_tool_${Date.now()}`,
                         role: 'tool',
-                        toolCallId: tc.id,
-                        content: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+                        toolCallId: pendingCall.id,
+                        content: toolContent,
                         createdAt: Date.now(),
                       });
-                      executedAny = true;
+                      executed = true;
                     } catch (e: any) {
                       chatList.push({
                         id: `msg_tool_err_${Date.now()}`,
                         role: 'tool',
-                        toolCallId: tc.id,
-                        content: `Error executing ${tc.name}: ${e.message || String(e)}`,
+                        toolCallId: pendingCall.id,
+                        content: `Error executing ${pendingCall.name}: ${e.message || String(e)}`,
                         createdAt: Date.now(),
                       });
-                      executedAny = true;
+                      executed = true;
+                    }
+                    if (executed) {
+                      thread.updatedAt = Date.now();
+                      saveState();
+                      await continueAgentLoop(selectedSessionId.value);
                     }
                   }
-                }
-                if (executedAny) {
-                  thread.updatedAt = Date.now();
-                  saveState();
-                  await continueAgentLoop(selectedSessionId.value);
                 }
               }
             } else {
@@ -792,7 +821,8 @@ You MUST strictly follow this operational discipline:
             saveState();
           },
         },
-        activeAbortController.signal
+        activeAbortController.signal,
+        copilotMode.value
       );
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -814,6 +844,7 @@ You MUST strictly follow this operational discipline:
     openProviderModal,
     closeProviderModal,
     executionMode,
+    copilotMode,
     selectedSessionId,
     threads,
     activeThreadId,
@@ -828,6 +859,7 @@ You MUST strictly follow this operational discipline:
     deleteProvider,
     setActiveProvider,
     setExecutionMode,
+    setCopilotMode,
     saveState,
     createNewThread,
     switchThread,

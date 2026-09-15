@@ -135,6 +135,8 @@ export interface AiToolCall {
   executedAt?: number;
 }
 
+export type AiCopilotMode = 'plan' | 'build';
+
 export interface AiChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';

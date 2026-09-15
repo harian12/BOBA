@@ -117,21 +117,21 @@
                 </ul>
               </div>
 
-              <!-- Card 2: Mode Eksekusi Agent -->
+              <!-- Card 2: Mode Kerja & Eksekusi Agent -->
               <div class="bg-boba-900 border border-boba-800 rounded-xl p-3.5 space-y-2">
                 <div class="flex items-center space-x-2 text-amber-300 font-semibold text-xs border-b border-boba-800 pb-1.5">
                   <span>🛡️</span>
-                  <span>2. Mode Eksekusi (Confirm vs Auto)</span>
+                  <span>2. Mode Kerja (Plan/Build) & Eksekusi</span>
                 </div>
                 <ul class="text-[11px] text-slate-300 space-y-1.5 leading-relaxed list-disc list-inside">
                   <li>
-                    <strong class="text-sky-300">🛡️ Mode Konfirmasi (Confirm):</strong> AI akan merancang perintah, lalu menampilkan kartu konfirmasi di chat. Perintah hanya dijalankan setelah Anda menekan <span class="text-emerald-400 font-medium">✓ Jalankan</span>.
+                    <strong class="text-purple-300">📋 Mode Plan:</strong> Diagnostik murni (Read-Only). AI hanya membaca file log/status dan menyusun rencana perbaikan tanpa memodifikasi sistem server.
                   </li>
                   <li>
-                    <strong class="text-amber-300">⚡ Mode Otomatis (Auto):</strong> AI mengeksekusi instruksi server secara mandiri untuk alur kerja cepat.
+                    <strong class="text-emerald-300">🔨 Mode Build:</strong> Mode eksekusi penuh untuk memperbaiki server, mengedit konfigurasi, dan menjalankan perintah perbaikan.
                   </li>
                   <li>
-                    <strong class="text-rose-400">Guardrail Keamanan:</strong> Perintah berbahaya (<code class="bg-boba-950 px-1 py-0.5 rounded text-rose-300 font-mono">rm -rf /</code>, <code class="bg-boba-950 px-1 py-0.5 rounded text-rose-300 font-mono">mkfs</code>, <code class="bg-boba-950 px-1 py-0.5 rounded text-rose-300 font-mono">reboot</code>, dll) otomatis ditahan untuk konfirmasi manual pada mode apapun.
+                    <strong class="text-sky-300">🛡️ Confirm vs ⚡ Auto:</strong> Pilih apakah setiap perintah memerlukan persetujuan manual Anda atau dieksekusi otomatis oleh AI.
                   </li>
                 </ul>
               </div>

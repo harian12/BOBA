@@ -1,4 +1,4 @@
-import type { AiProviderConfig, AiChatMessage, AiToolCall } from '../types/index.js';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode } from '../types/index.js';
 import { tauriBridge } from './tauriBridge.js';
 
 export const AGENT_TOOLS = [
@@ -77,6 +77,19 @@ export const AGENT_TOOLS = [
     },
   },
 ];
+
+export function getAgentTools(mode: AiCopilotMode = 'build') {
+  if (mode === 'plan') {
+    // Mode plan hanya read-only/diagnostik: sembunyikan write_file
+    return AGENT_TOOLS.filter(t => t.function.name !== 'write_file');
+  }
+  return AGENT_TOOLS;
+}
+
+export function truncateOutput(text: string, _maxLen?: number): string {
+  // Limit dilepas penuh sesuai permintaan pengguna
+  return text || '';
+}
 
 export async function fetchAvailableModels(provider: Partial<AiProviderConfig>): Promise<string[]> {
   const type = provider.type || 'openai';
@@ -199,18 +212,19 @@ export async function streamChat(
   messages: AiChatMessage[],
   systemPrompt: string,
   callbacks: StreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  copilotMode: AiCopilotMode = 'build'
 ): Promise<void> {
   const type = provider.type;
   const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
 
   if (type === 'anthropic') {
-    await streamAnthropic(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal);
+    await streamAnthropic(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
   } else if (type === 'gemini') {
-    await streamGemini(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal);
+    await streamGemini(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
   } else {
     // OpenAI, Ollama, DeepSeek, OpenRouter, Custom
-    await streamOpenAiCompatible(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal);
+    await streamOpenAiCompatible(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
   }
 }
 
@@ -300,8 +314,11 @@ export function sanitizeMessagesForOpenAi(
   messages: AiChatMessage[],
   systemPrompt: string
 ): any[] {
+  // Seluruh riwayat pesan dikirim penuh (tanpa limit pemotongan pesan)
+  const windowedMessages = [...messages];
+
   const toolNameMap = new Map<string, string>();
-  for (const m of messages) {
+  for (const m of windowedMessages) {
     if (m.toolCalls) {
       for (const tc of m.toolCalls) {
         if (tc.id) toolNameMap.set(tc.id, tc.name);
@@ -309,16 +326,9 @@ export function sanitizeMessagesForOpenAi(
     }
   }
 
-  const answeredToolIds = new Set<string>();
-  for (const m of messages) {
-    if (m.role === 'tool' && m.toolCallId) {
-      answeredToolIds.add(m.toolCallId);
-    }
-  }
-
   const rawFormatted: any[] = [];
 
-  for (const m of messages) {
+  for (const m of windowedMessages) {
     if (m.role === 'tool') {
       const toolName = (m.toolCallId && toolNameMap.get(m.toolCallId)) || 'exec_command';
       const cleanContent = m.content && m.content.trim().length > 0
@@ -336,7 +346,8 @@ export function sanitizeMessagesForOpenAi(
         .replace(/\n*⚠️ (Connection Error|Error):[\s\S]*$/, '')
         .trim();
 
-      const validToolCalls = (m.toolCalls || []).filter(tc => tc.id && tc.name);
+      // KUNCI: Batasi tool call maksimal 1 per giliran agar strictly sequential
+      const validToolCalls = (m.toolCalls || []).filter(tc => tc.id && tc.name).slice(0, 1);
 
       if (validToolCalls.length > 0) {
         rawFormatted.push({
@@ -351,18 +362,6 @@ export function sanitizeMessagesForOpenAi(
             },
           })),
         });
-
-        for (const tc of validToolCalls) {
-          if (!answeredToolIds.has(tc.id)) {
-            answeredToolIds.add(tc.id);
-            rawFormatted.push({
-              role: 'tool',
-              tool_call_id: tc.id,
-              name: tc.name,
-              content: '(Perintah dibatalkan atau belum dijalankan)',
-            });
-          }
-        }
       } else if (cleanText.length > 0) {
         rawFormatted.push({
           role: 'assistant',
@@ -387,12 +386,21 @@ export function sanitizeMessagesForOpenAi(
     const prev = normalized[normalized.length - 1];
 
     if (item.role === 'tool') {
-      if (prev && (prev.role === 'tool' || (prev.role === 'assistant' && prev.tool_calls))) {
+      // Pastikan role 'tool' HANYA dikirim jika pesan sebelumnya adalah 'assistant' yang memiliki tool_call_id tersebut
+      const prevHasThisToolCall =
+        prev &&
+        prev.role === 'assistant' &&
+        Array.isArray(prev.tool_calls) &&
+        prev.tool_calls.some((tc: any) => tc.id === item.tool_call_id);
+
+      if (prevHasThisToolCall) {
         normalized.push(item);
       } else {
+        // Jika tidak berurutan langsung di bawah assistant pemanggilnya (orphaned), ubah ke role 'user'
+        // Ini mutlak mencegah error DeepSeek 400: "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
         normalized.push({
           role: 'user',
-          content: `[Hasil Eksekusi ${item.name}]: ${item.content}`,
+          content: `[Hasil Eksekusi ${item.name}]:\n${item.content}`,
         });
       }
     } else if (item.role === 'assistant') {
@@ -401,11 +409,25 @@ export function sanitizeMessagesForOpenAi(
           if (prev.content && !item.content) item.content = prev.content;
           normalized[normalized.length - 1] = item;
         } else if (!item.tool_calls && prev.tool_calls) {
-          // Pertahankan prev
+          // Pertahankan prev dengan tool_calls
         } else {
           prev.content = `${prev.content || ''}\n${item.content || ''}`.trim();
         }
       } else {
+        // Jika asisten memiliki tool_calls yang tidak pernah dijawab di pesan berikutnya (misal in-flight/cancelled)
+        if (item.tool_calls && item.tool_calls.length > 0) {
+          const nextItem = rawFormatted[i + 1];
+          const hasImmediateAnswer =
+            nextItem &&
+            nextItem.role === 'tool' &&
+            item.tool_calls.some((tc: any) => tc.id === nextItem.tool_call_id);
+
+          if (!hasImmediateAnswer && i === rawFormatted.length - 1) {
+            // Hapus tool_calls pada pesan asisten paling akhir agar LLM tidak menolak payload
+            item.tool_calls = undefined;
+            if (!item.content) item.content = 'Sedang menganalisis status server...';
+          }
+        }
         normalized.push(item);
       }
     } else if (item.role === 'user') {
@@ -434,7 +456,8 @@ async function streamOpenAiCompatible(
   messages: AiChatMessage[],
   systemPrompt: string,
   callbacks: StreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  copilotMode: AiCopilotMode = 'build'
 ) {
   let endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
   // Hanya tambahkan query key jika endpoint menuju Google Generative Language API
@@ -455,8 +478,9 @@ async function streamOpenAiCompatible(
   const reqBody = JSON.stringify({
     model,
     messages: formattedMessages,
-    tools: AGENT_TOOLS,
+    tools: getAgentTools(copilotMode),
     tool_choice: 'auto',
+    parallel_tool_calls: false, // Mutlak false agar AI hanya mengajukan 1 perintah per giliran
     stream: true,
   });
 
@@ -541,6 +565,10 @@ async function streamOpenAiCompatible(
           status: 'pending_approval',
         });
       }
+      // Wajib: Ambil hanya 1 perintah pertama per giliran
+      if (finalToolCalls.length > 1) {
+        finalToolCalls.length = 1;
+      }
       callbacks.onToolCalls(finalToolCalls);
     }
 
@@ -564,11 +592,13 @@ async function streamAnthropic(
   messages: AiChatMessage[],
   systemPrompt: string,
   callbacks: StreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  copilotMode: AiCopilotMode = 'build'
 ) {
   const endpoint = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`;
 
-  const anthropicTools = AGENT_TOOLS.map(t => ({
+  const toolsToUse = getAgentTools(copilotMode);
+  const anthropicTools = toolsToUse.map(t => ({
     name: t.function.name,
     description: t.function.description,
     input_schema: t.function.parameters,
@@ -592,14 +622,14 @@ async function streamAnthropic(
           {
             type: 'tool_result',
             tool_use_id: m.toolCallId,
-            content: m.content,
+            content: m.content || '',
           },
         ],
       });
     } else if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
       const contentList: any[] = [];
       if (m.content) contentList.push({ type: 'text', text: m.content });
-      for (const tc of m.toolCalls) {
+      for (const tc of m.toolCalls.slice(0, 1)) {
         contentList.push({
           type: 'tool_use',
           id: tc.id,
@@ -611,7 +641,7 @@ async function streamAnthropic(
     } else {
       formattedMessages.push({
         role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content,
+        content: m.content || '',
       });
     }
   }
@@ -691,6 +721,9 @@ async function streamAnthropic(
           status: 'pending_approval',
         });
       }
+      if (finalToolCalls.length > 1) {
+        finalToolCalls.length = 1;
+      }
       callbacks.onToolCalls(finalToolCalls);
     }
 
@@ -714,15 +747,17 @@ async function streamGemini(
   messages: AiChatMessage[],
   systemPrompt: string,
   callbacks: StreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  copilotMode: AiCopilotMode = 'build'
 ) {
   const root = baseUrl || 'https://generativelanguage.googleapis.com';
   const cleanModel = model.replace(/^models\//, '');
   const endpoint = `${root}/v1beta/models/${cleanModel}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
+  const toolsToUse = getAgentTools(copilotMode);
   const geminiTools = [
     {
-      function_declarations: AGENT_TOOLS.map(t => ({
+      function_declarations: toolsToUse.map(t => ({
         name: t.function.name,
         description: t.function.description,
         parameters: t.function.parameters,
@@ -831,6 +866,10 @@ async function streamGemini(
 
     if (buffer.trim()) {
       handleChunk('\n');
+    }
+
+    if (finalToolCalls.length > 1) {
+      finalToolCalls.length = 1;
     }
 
     if (finalToolCalls.length > 0) {
