@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
-import { streamChat, truncateOutput } from '../services/aiAdapters.js';
+import { streamChat, truncateOutput, maskSensitiveData } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { inspectCommandRisk } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
@@ -451,18 +451,20 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         toolCall.args.command = cmd;
         const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
         const finalResult = output && output.trim().length > 0 ? output : '(Perintah selesai dieksekusi tanpa output / kosong)';
-        toolCall.result = finalResult;
+        const sanitizedResult = maskSensitiveData(finalResult);
+        toolCall.result = sanitizedResult;
         toolCall.status = 'completed';
         toolCall.executedAt = Date.now();
-        return finalResult;
+        return sanitizedResult;
       } else if (toolCall.name === 'read_file') {
         const path = toolCall.args.path;
         if (!path) throw new Error('Path file kosong');
         const content = await tauriBridge.sftpReadText(realSessionId, path);
-        toolCall.result = content;
+        const sanitizedContent = maskSensitiveData(content);
+        toolCall.result = sanitizedContent;
         toolCall.status = 'completed';
         toolCall.executedAt = Date.now();
-        return content;
+        return sanitizedContent;
       } else if (toolCall.name === 'write_file') {
         const { path, content } = toolCall.args;
         if (!path) throw new Error('Path file kosong');
@@ -657,7 +659,11 @@ You have access to tools to inspect and configure the server:
 2. STAGE 2 - AUTONOMOUS EXECUTION: Jalankan langkah demi langkah secara berurutan. Jangan memaksakan workaround berat jika terhalang izin atau autentikasi.
 3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT: Periksa keaktifan service/konfigurasi secara nyata (docker ps, systemctl is-active, ss/curl, nginx -t).
 4. STAGE 4 - SELF-HEALING LOOP: Perbaiki jika ditemukan kegagalan verifikasi.
-5. STAGE 5 - COMPLETION PROOF & SUMMARY: Berikan laporan penutup terstruktur dalam Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris. DILARANG meninggalkan pesan kosong.`;
+5. STAGE 5 - COMPLETION PROOF & SUMMARY: Berikan laporan penutup terstruktur dalam Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris. DILARANG meninggalkan pesan kosong.
+
+### KEAMANAN KREDENSIAL & REMOTE GIT:
+- Token kredensial pada URL remote Git (seperti output 'git remote -v' atau file '.git/config') otomatis disamarkan (masked) sebagai 'https://***@github.com' agar tidak bocor ke provider AI.
+- DILARANG meminta pengguna memasukkan token atau kredensial Git dalam percakapan. Jika dibutuhkan remote autentikasi, sarankan penggunaan SSH Key atau Git Credential Manager.`;
   }
 
   async function sendMessage(promptText: string) {
@@ -696,11 +702,11 @@ You have access to tools to inspect and configure the server:
       thread.title = cleanPrompt.length > 36 ? cleanPrompt.slice(0, 36) + '...' : cleanPrompt;
     }
 
-    // Push User message
+    // Push User message (mask sensitive tokens if user pasted git remote urls with tokens)
     thread.messages.push({
       id: `msg_user_${Date.now()}`,
       role: 'user',
-      content: promptText.trim(),
+      content: maskSensitiveData(promptText.trim()),
       createdAt: Date.now(),
     });
     thread.updatedAt = Date.now();

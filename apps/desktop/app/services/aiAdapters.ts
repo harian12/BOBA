@@ -91,6 +91,26 @@ export function truncateOutput(text: string, _maxLen?: number): string {
   return text || '';
 }
 
+/**
+ * Mask sensitive tokens and credentials from command output, file content, or chat text
+ * so that private credentials (e.g. git remote tokens, PATs, bearer tokens) are never sent
+ * to external AI providers (OpenAI, Anthropic, Gemini, Ollama, etc.).
+ */
+export function maskSensitiveData(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+
+  return text
+    // 1. Mask user:token or token in HTTP/HTTPS URLs (git remote -v, git clone, etc.)
+    .replace(/(https?:\/\/)[^\s\/]+@/gi, (_, proto) => `${proto}***@`)
+    // 2. Mask GitHub Personal Access Tokens (classic, fine-grained, OAuth)
+    .replace(/\b(ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{30,255}\b/g, (_, prefix) => `${prefix}_***`)
+    .replace(/\bgithub_pat_[a-zA-Z0-9_]{50,255}\b/g, 'github_pat_***')
+    // 3. Mask GitLab Personal Access Tokens
+    .replace(/\bglpat-[a-zA-Z0-9\-_]{20,255}\b/g, 'glpat-***')
+    // 4. Mask Authorization headers with Bearer tokens
+    .replace(/(Authorization:\s*Bearer\s+)[a-zA-Z0-9\-_.]{16,}/gi, (_, prefix) => `${prefix}***`);
+}
+
 export async function fetchAvailableModels(provider: Partial<AiProviderConfig>): Promise<string[]> {
   const type = provider.type || 'openai';
   const rawBaseUrl = (provider.baseUrl || '').trim().replace(/\/+$/, '');
@@ -339,7 +359,7 @@ export function sanitizeMessagesForOpenAi(
         role: 'tool',
         tool_call_id: m.toolCallId,
         name: toolName,
-        content: cleanContent,
+        content: maskSensitiveData(cleanContent),
       });
     } else if (m.role === 'assistant') {
       const cleanText = (m.content || '')
@@ -352,20 +372,23 @@ export function sanitizeMessagesForOpenAi(
       if (validToolCalls.length > 0) {
         rawFormatted.push({
           role: 'assistant',
-          content: cleanText || null,
-          tool_calls: validToolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-              name: tc.name,
-              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {}),
-            },
-          })),
+          content: cleanText ? maskSensitiveData(cleanText) : null,
+          tool_calls: validToolCalls.map(tc => {
+            const rawArgs = typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {});
+            return {
+              id: tc.id,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: maskSensitiveData(rawArgs),
+              },
+            };
+          }),
         });
       } else if (cleanText.length > 0) {
         rawFormatted.push({
           role: 'assistant',
-          content: cleanText,
+          content: maskSensitiveData(cleanText),
         });
       }
     } else if (m.role === 'user') {
@@ -373,7 +396,7 @@ export function sanitizeMessagesForOpenAi(
       if (text.length > 0) {
         rawFormatted.push({
           role: 'user',
-          content: text,
+          content: maskSensitiveData(text),
         });
       }
     }
@@ -625,26 +648,38 @@ async function streamAnthropic(
           {
             type: 'tool_result',
             tool_use_id: m.toolCallId,
-            content: m.content || '',
+            content: maskSensitiveData(m.content || ''),
           },
         ],
       });
     } else if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
       const contentList: any[] = [];
-      if (m.content) contentList.push({ type: 'text', text: m.content });
+      if (m.content) contentList.push({ type: 'text', text: maskSensitiveData(m.content) });
       for (const tc of m.toolCalls.slice(0, 1)) {
+        let cleanInput: any = tc.args;
+        if (typeof cleanInput === 'string') {
+          try {
+            cleanInput = JSON.parse(maskSensitiveData(cleanInput));
+          } catch (_) {
+            cleanInput = { raw: maskSensitiveData(cleanInput) };
+          }
+        } else if (cleanInput && typeof cleanInput === 'object') {
+          try {
+            cleanInput = JSON.parse(maskSensitiveData(JSON.stringify(cleanInput)));
+          } catch (_) {}
+        }
         contentList.push({
           type: 'tool_use',
           id: tc.id,
           name: tc.name,
-          input: tc.args,
+          input: cleanInput,
         });
       }
       formattedMessages.push({ role: 'assistant', content: contentList });
     } else {
       formattedMessages.push({
         role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content || '',
+        content: maskSensitiveData(m.content || ''),
       });
     }
   }

@@ -676,8 +676,26 @@
             </div>
           </div>
 
-          <!-- Quick Server Locations Badges (Home ~, Root /, /var/www, /etc) -->
-          <div class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
+          <!-- Quick Drive Badges (when local) OR Server Locations (when remote) -->
+          <div v-if="rightPaneTarget === 'local'" class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
+            <span class="text-slate-500 font-sans text-[10px] shrink-0">Drive:</span>
+            <button
+              v-for="d in localDrives"
+              :key="'r_drive_' + d.path"
+              @click="navigateToRightLocalPath(d.path)"
+              :class="[
+                'px-1.5 py-0.5 rounded border transition shrink-0 font-mono',
+                isRightDriveActive(d.path)
+                  ? 'bg-emerald-950 border-emerald-600 text-emerald-300 font-bold'
+                  : 'bg-[#10141f] border-[#252e42] text-slate-400 hover:text-slate-200 hover:border-slate-500'
+              ]"
+              :title="d.path"
+            >
+              {{ d.name }}
+            </button>
+          </div>
+
+          <div v-else class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 text-[10px]">
             <span class="text-slate-500 font-sans text-[10px] shrink-0">Quick:</span>
             <button
               v-for="loc in serverLocations"
@@ -720,23 +738,23 @@
           <div class="flex items-center space-x-1">
             <!-- Back, Forward, Up Buttons -->
             <button
-              @click="navigateRemoteBack"
-              :disabled="!rightPaneTarget || remoteHistoryIndex <= 0"
+              @click="rightPaneTarget === 'local' ? navigateRightLocalBack() : navigateRemoteBack()"
+              :disabled="rightPaneTarget === 'local' ? rightLocalHistoryIndex <= 0 : (!rightPaneTarget || remoteHistoryIndex <= 0)"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center space-x-1"
               title="Kembali ke folder sebelumnya (Back - Alt+Left)"
             >
               <span>◀</span>
             </button>
             <button
-              @click="navigateRemoteForward"
-              :disabled="!rightPaneTarget || remoteHistoryIndex >= remoteHistory.length - 1"
+              @click="rightPaneTarget === 'local' ? navigateRightLocalForward() : navigateRemoteForward()"
+              :disabled="rightPaneTarget === 'local' ? rightLocalHistoryIndex >= rightLocalHistory.length - 1 : (!rightPaneTarget || remoteHistoryIndex >= remoteHistory.length - 1)"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center space-x-1"
               title="Maju ke folder sesudahnya (Forward - Alt+Right)"
             >
               <span>▶</span>
             </button>
             <button
-              @click="navigateRemoteUp"
+              @click="rightPaneTarget === 'local' ? navigateRightLocalUp() : navigateRemoteUp()"
               :disabled="!rightPaneTarget"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 rounded text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center space-x-1"
               title="Ke folder di atasnya (Up)"
@@ -763,7 +781,7 @@
               @click="promptNewFolder('right')"
               :disabled="!rightPaneTarget"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-emerald-300 hover:text-emerald-200 rounded text-[11px] transition shrink-0 flex items-center space-x-1 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Buat folder baru di remote server"
+              :title="rightPaneTarget === 'local' ? 'Buat folder baru di komputer lokal' : 'Buat folder baru di remote server'"
             >
               <span>📁+</span>
             </button>
@@ -771,7 +789,7 @@
               @click="promptNewFile('right')"
               :disabled="!rightPaneTarget"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-sky-300 hover:text-sky-200 rounded text-[11px] transition shrink-0 flex items-center space-x-1 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Buat file baru di remote server"
+              :title="rightPaneTarget === 'local' ? 'Buat file baru di komputer lokal' : 'Buat file baru di remote server'"
             >
               <span>📄+</span>
             </button>
@@ -802,6 +820,15 @@
             </button>
 
             <input
+              v-if="rightPaneTarget === 'local'"
+              v-model="rightLocalPathInput"
+              @keydown.enter="handleRightLocalEnter"
+              type="text"
+              class="flex-1 bg-[#090b10] border border-[#262f42] focus:border-emerald-500 rounded px-2 py-1 text-[11px] text-slate-100 focus:outline-none font-mono"
+              placeholder="C:\..."
+            />
+            <input
+              v-else
               v-model="remotePathInput"
               @keydown.enter="handleRemoteEnter"
               :disabled="!rightPaneTarget"
@@ -810,17 +837,17 @@
               placeholder="/var/www/..."
             />
             <button
-              @click="handleRemoteEnter"
+              @click="rightPaneTarget === 'local' ? handleRightLocalEnter() : handleRemoteEnter()"
               :disabled="!rightPaneTarget"
               class="px-2.5 py-1 bg-[#202738] hover:bg-[#2c364d] rounded text-[10px] transition font-sans disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Buka
             </button>
             <button
-              @click="refreshRemote"
+              @click="rightPaneTarget === 'local' ? fetchRightLocalFiles(false) : refreshRemote()"
               :disabled="!rightPaneTarget"
               class="px-2 py-1 bg-[#202738] hover:bg-[#2c364d] text-slate-300 hover:text-white rounded text-[11px] transition shrink-0 flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Refresh folder remote saat ini"
+              title="Refresh folder saat ini"
             >
               <span>🔄</span>
             </button>
@@ -834,7 +861,7 @@
                 v-model="rightSearchQuery"
                 :disabled="!rightPaneTarget"
                 type="text"
-                placeholder="Cari file/folder remote..."
+                :placeholder="rightPaneTarget === 'local' ? 'Cari file/folder lokal...' : 'Cari file/folder remote...'"
                 class="bg-[#090b10] border border-[#21293a] focus:border-emerald-500 rounded px-2 py-0.5 text-[10px] text-slate-200 focus:outline-none w-40 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <span v-if="rightSearchQuery" @click="rightSearchQuery = ''" class="cursor-pointer text-slate-500 hover:text-white">✕</span>
@@ -918,11 +945,11 @@
         >
           <!-- Table Header -->
           <div class="grid grid-cols-12 gap-2 px-3 py-1.5 bg-[#121520] border-b border-[#232a3b] text-[10px] text-slate-400 uppercase font-semibold sticky top-0 z-10 items-center select-none">
-            <div class="col-span-6 flex items-center space-x-2">
+            <div :class="rightPaneTarget === 'local' ? 'col-span-7' : 'col-span-6'" class="flex items-center space-x-2">
               <input
                 v-if="rightPaneTarget"
                 type="checkbox"
-                :checked="displayRemoteFiles.length > 0 && selectedRightPaths.size === displayRemoteFiles.length"
+                :checked="(rightPaneTarget === 'local' ? displayRightLocalFiles.length > 0 && selectedRightPaths.size === displayRightLocalFiles.length : displayRemoteFiles.length > 0 && selectedRightPaths.size === displayRemoteFiles.length)"
                 @change="toggleSelectAllRight"
                 class="rounded bg-[#090b10] border-[#2b364e] text-emerald-500 focus:ring-0 h-3 w-3 cursor-pointer"
                 title="Pilih Semua"
@@ -936,8 +963,8 @@
               <span>Size</span>
               <span v-if="rightSortField === 'size'" class="text-emerald-400 font-bold">{{ rightSortOrder === 'asc' ? '▲' : '▼' }}</span>
             </div>
-            <div class="col-span-2 text-center">Perms</div>
-            <div class="col-span-2 text-right">Action</div>
+            <div v-if="rightPaneTarget !== 'local'" class="col-span-2 text-center">Perms</div>
+            <div :class="rightPaneTarget === 'local' ? 'col-span-3' : 'col-span-2'" class="text-right">Action</div>
           </div>
 
           <!-- Drag over drop hint overlay -->
@@ -945,9 +972,9 @@
             v-if="isDraggingOverRemote"
             class="absolute inset-0 bg-sky-900/30 backdrop-blur-[1px] border-2 border-dashed border-sky-400 rounded flex flex-col items-center justify-center z-20 pointer-events-none"
           >
-            <span class="text-2xl">📤</span>
-            <span class="text-xs font-bold text-sky-200 mt-1">Drop file/folder di sini untuk Upload ke Server</span>
-            <span class="text-[10px] text-sky-400">Target: {{ remotePathInput }}</span>
+            <span class="text-2xl">{{ rightPaneTarget === 'local' ? '📥' : '📤' }}</span>
+            <span class="text-xs font-bold text-sky-200 mt-1">{{ rightPaneTarget === 'local' ? 'Drop file/folder di sini untuk Salin ke Lokal' : 'Drop file/folder di sini untuk Upload ke Server' }}</span>
+            <span class="text-[10px] text-sky-400">Target: {{ rightPaneTarget === 'local' ? rightLocalPathInput : remotePathInput }}</span>
           </div>
 
           <!-- State Jika Belum Ada Sesi yang Dipilih di Pane Kanan -->
@@ -965,6 +992,20 @@
 
             <!-- Folders & Sessions Grid View -->
             <div class="w-full max-w-md space-y-3 text-left">
+              <div class="bg-[#121722] border border-[#232d42] rounded-lg p-2.5 space-y-2">
+                <div class="text-[11px] font-bold text-emerald-400 flex items-center space-x-1.5 border-b border-[#1f283d] pb-1">
+                  <span>💻</span>
+                  <span>Komputer Lokal</span>
+                </div>
+                <button
+                  @click="onRightTargetChange('local')"
+                  class="w-full px-2.5 py-1.5 bg-[#171e2c] hover:bg-emerald-900/40 hover:border-emerald-500 border border-[#263147] text-emerald-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1.5 truncate"
+                >
+                  <span>💻</span>
+                  <span class="truncate">Local Machine (File Explorer Lokal)</span>
+                </button>
+              </div>
+
               <div
                 v-for="group in groupedSessions"
                 :key="'center_group_' + group.folderName"
@@ -994,7 +1035,15 @@
           </div>
 
           <!-- Loading State with Spinner Animation -->
-          <div v-else-if="loadingRemote" class="h-48 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs">
+          <div v-else-if="rightPaneTarget === 'local' && loadingRightLocal" class="h-48 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs">
+            <svg class="animate-spin h-6 w-6 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Memuat direktori lokal...</span>
+          </div>
+
+          <div v-else-if="rightPaneTarget !== 'local' && loadingRemote" class="h-48 flex flex-col items-center justify-center space-y-2 text-slate-400 text-xs">
             <svg class="animate-spin h-6 w-6 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -1002,6 +1051,80 @@
             <span>Menghubungkan & memuat direktori remote...</span>
           </div>
 
+          <!-- Local Items (Right Pane) -->
+          <div
+            v-else-if="rightPaneTarget === 'local'"
+            v-for="item in displayRightLocalFiles"
+            :key="item.path"
+            draggable="true"
+            @dragstart="onRightLocalDragStart($event, item)"
+            @dragover="item.is_dir ? onFolderDragOver($event, item.path) : null"
+            @dragleave="item.is_dir ? onFolderDragLeave(item.path) : null"
+            @drop="item.is_dir ? onFolderDrop('right', item) : null"
+            @dblclick="handleRightLocalDblClick(item)"
+            @click="selectedRightLocalPath = item.path"
+            @contextmenu.prevent="openContextMenu($event, 'right', item)"
+            :class="[
+              'grid grid-cols-12 gap-2 px-3 py-1.5 items-center border-b border-[#1b202e] hover:bg-[#1a2030] cursor-pointer transition text-[11px] select-none',
+              dragOverFolderPath === item.path ? 'bg-emerald-900/60 ring-2 ring-emerald-400 font-semibold' : '',
+              isItemCut(item.path) ? 'opacity-40 italic' : '',
+              selectedRightPaths.has(item.path) ? 'bg-emerald-950/60 text-emerald-100' : selectedRightLocalPath === item.path ? 'bg-emerald-950/40 text-emerald-200' : 'text-slate-300'
+            ]"
+          >
+            <div class="col-span-7 flex items-center space-x-2 truncate">
+              <input
+                type="checkbox"
+                :checked="selectedRightPaths.has(item.path)"
+                @click.stop="toggleSelectRight(item.path)"
+                class="rounded bg-[#090b10] border-[#2b364e] text-emerald-500 focus:ring-0 h-3 w-3 cursor-pointer shrink-0"
+              />
+              <span class="shrink-0">{{ item.is_dir ? '📁' : '📄' }}</span>
+              <span class="truncate" :title="item.name">{{ item.name }}</span>
+            </div>
+            <div
+              @click.stop="item.is_dir ? calculateFolderSize('right', item) : null"
+              :class="[
+                'col-span-2 text-right text-[10px] font-mono',
+                item.is_dir ? 'text-emerald-400/80 hover:text-emerald-200 cursor-pointer hover:underline' : 'text-slate-400'
+              ]"
+              :title="item.is_dir ? 'Klik untuk menghitung total ukuran folder' : undefined"
+            >
+              {{ item.is_dir ? (calculatingFolderSizes.has(item.path) ? '⏳...' : (folderSizes[item.path] || '<DIR>')) : formatSize(item.size) }}
+            </div>
+            <div class="col-span-3 text-right flex items-center justify-end space-x-1">
+              <button
+                v-if="!item.is_dir"
+                @click.stop="openInEditor('right', item)"
+                class="p-1 hover:bg-emerald-950/60 text-slate-400 hover:text-emerald-300 rounded text-[10px] transition"
+                title="Buka / Edit di Tab"
+              >
+                👁️
+              </button>
+              <button
+                @click.stop="renameItem('right', item)"
+                class="p-1 hover:bg-[#252f44] text-slate-400 hover:text-white rounded text-[10px] transition"
+                title="Ganti nama"
+              >
+                ✏️
+              </button>
+              <button
+                @click.stop="deleteItem('right', item)"
+                class="p-1 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded text-[10px] transition"
+                title="Hapus"
+              >
+                🗑️
+              </button>
+              <button
+                @click.stop="transferItemRightToLeft(item)"
+                class="px-2 py-0.5 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-100 rounded text-[10px] transition shadow flex items-center space-x-1"
+                :title="leftPaneTarget === 'local' ? (item.is_dir ? 'Salin Folder ke Pane Kiri' : 'Salin File ke Pane Kiri') : (item.is_dir ? 'Upload Folder ke Server Kiri' : 'Upload File ke Server Kiri')"
+              >
+                <span>⬅️</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Remote Items (Right Pane) -->
           <div
             v-else
             v-for="file in displayRemoteFiles"
@@ -1094,7 +1217,7 @@
 
           <!-- Empty Directory Placeholder (Right) -->
           <div
-            v-if="rightPaneTarget && displayRemoteFiles.length === 0 && !loadingRemote"
+            v-if="rightPaneTarget && (rightPaneTarget === 'local' ? displayRightLocalFiles.length === 0 : displayRemoteFiles.length === 0) && !loadingRemote && !loadingRightLocal"
             @contextmenu.prevent="openContextMenu($event, 'right', null)"
             class="h-40 flex flex-col items-center justify-center space-y-1.5 text-slate-500 text-xs italic select-none"
           >
@@ -1757,7 +1880,7 @@
 
       <button
         v-if="contextMenu.item.is_dir && contextMenuSelectionCount <= 1"
-        @click="contextMenu.side === 'left' ? (leftPaneTarget === 'local' ? navigateToLocalPath(contextMenu.item.path) : navigateToLeftRemotePath(contextMenu.item.path)) : navigateToRemotePath(contextMenu.item.path); closeContextMenu()"
+        @click="contextMenu.side === 'left' ? (leftPaneTarget === 'local' ? navigateToLocalPath(contextMenu.item.path) : navigateToLeftRemotePath(contextMenu.item.path)) : (rightPaneTarget === 'local' ? navigateToRightLocalPath(contextMenu.item.path) : navigateToRemotePath(contextMenu.item.path)); closeContextMenu()"
         class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center space-x-2 transition"
       >
         <span>📁</span>
@@ -1778,12 +1901,12 @@
       </button>
 
       <button
-        @click="contextMenuSelectionCount > 1 ? (contextMenu.side === 'left' ? transferSelectedLeft() : transferSelectedRight()) : (contextMenu.side === 'left' ? transferItemLeftToRight(contextMenu.item!) : transferItemRightToLeft(contextMenu.item! as RemoteFileItem)); closeContextMenu()"
+        @click="contextMenuSelectionCount > 1 ? (contextMenu.side === 'left' ? transferSelectedLeft() : transferSelectedRight()) : (contextMenu.side === 'left' ? transferItemLeftToRight(contextMenu.item!) : transferItemRightToLeft(contextMenu.item! as any)); closeContextMenu()"
         class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center justify-between transition"
       >
         <div class="flex items-center space-x-2">
           <span>{{ contextMenu.side === 'left' ? '➡️' : '⬅️' }}</span>
-          <span>{{ contextMenuSelectionCount > 1 ? `Transfer ${contextMenuSelectionCount} Item` : (contextMenu.side === 'left' ? (rightPaneTarget === 'local' ? 'Download ke Lokal' : 'Transfer ke Pane Kanan') : (leftPaneTarget === 'local' ? 'Download ke Lokal' : 'Transfer ke Server Kiri')) }}</span>
+          <span>{{ contextMenuSelectionCount > 1 ? `Transfer ${contextMenuSelectionCount} Item` : (contextMenu.side === 'left' ? (rightPaneTarget === 'local' ? (leftPaneTarget === 'local' ? 'Salin ke Pane Kanan' : 'Download ke Lokal') : 'Transfer ke Pane Kanan') : (leftPaneTarget === 'local' ? (rightPaneTarget === 'local' ? 'Salin ke Pane Kiri' : 'Download ke Lokal') : 'Transfer ke Server Kiri')) }}</span>
         </div>
       </button>
 
@@ -1941,7 +2064,7 @@
       <div class="h-px bg-[#232b3d] my-1"></div>
 
       <button
-        @click="contextMenu.side === 'left' ? (leftPaneTarget === 'local' ? fetchLocalFiles() : fetchLeftRemoteFiles()) : fetchRemoteFiles(); closeContextMenu()"
+        @click="contextMenu.side === 'left' ? (leftPaneTarget === 'local' ? fetchLocalFiles() : fetchLeftRemoteFiles()) : (rightPaneTarget === 'local' ? fetchRightLocalFiles() : fetchRemoteFiles()); closeContextMenu()"
         class="w-full text-left px-2.5 py-1.5 hover:bg-sky-600/30 hover:text-sky-200 flex items-center justify-between transition"
       >
         <div class="flex items-center space-x-2">
@@ -2166,6 +2289,30 @@ const loadingRemote = ref(false);
 const remoteHistory = ref<string[]>([]);
 const remoteHistoryIndex = ref(-1);
 
+// Right Local Files State & History (When Right Pane is in Local Machine Mode)
+const rightLocalPathInput = ref('');
+const rightLocalFiles = ref<LocalFileItem[]>([]);
+const selectedRightLocalPath = ref<string | null>(null);
+const loadingRightLocal = ref(false);
+const rightLocalHistory = ref<string[]>([]);
+const rightLocalHistoryIndex = ref(-1);
+
+// Filtered right local files
+const displayRightLocalFiles = computed(() => {
+  let list = rightLocalFiles.value;
+  if (!showHiddenFilesRight.value) {
+    list = list.filter(item => !item.name.startsWith('.'));
+  }
+  if (hideLocalSystemFiles.value) {
+    list = list.filter(item => !item.is_hidden && !item.is_system);
+  }
+  if (rightSearchQuery.value.trim()) {
+    const q = rightSearchQuery.value.trim().toLowerCase();
+    list = list.filter(item => item.name.toLowerCase().includes(q));
+  }
+  return sortItems(list, rightSortField.value, rightSortOrder.value);
+});
+
 // Left Remote Files State & History (When Left Pane is in Remote Session Mode)
 const leftRemotePathInput = ref('.');
 const leftRemoteFiles = ref<RemoteFileItem[]>([]);
@@ -2226,7 +2373,7 @@ const leftFolderSummary = computed(() => {
 const rightSelectionSummary = computed(() => {
   const selected = selectedRightPaths.value;
   if (selected.size === 0) return null;
-  const items = remoteFiles.value.filter(i => selected.has(i.path));
+  const items = (rightPaneTarget.value === 'local' ? rightLocalFiles.value : remoteFiles.value).filter(i => selected.has(i.path));
   const totalSize = items.reduce((acc, i) => acc + (i.size || 0), 0);
   return {
     count: items.length,
@@ -2235,7 +2382,7 @@ const rightSelectionSummary = computed(() => {
 });
 
 const rightFolderSummary = computed(() => {
-  const items = displayRemoteFiles.value;
+  const items = rightPaneTarget.value === 'local' ? displayRightLocalFiles.value : displayRemoteFiles.value;
   const totalSize = items.reduce((acc, i) => acc + (i.size || 0), 0);
   return {
     count: items.length,
@@ -2296,7 +2443,8 @@ function handleSftpKeydown(e: KeyboardEvent) {
       if (leftPaneTarget.value === 'local') navigateLocalForward();
       else navigateLeftRemoteForward();
     } else {
-      navigateRemoteForward();
+      if (rightPaneTarget.value === 'local') navigateRightLocalForward();
+      else navigateRemoteForward();
     }
     return;
   }
@@ -2338,12 +2486,13 @@ function handleSftpKeydown(e: KeyboardEvent) {
         }
       }
     } else {
-      const items = displayRemoteFiles.value;
-      const activePath = selectedRemotePath.value || Array.from(selectedRightPaths.value)[0];
+      const items = rightPaneTarget.value === 'local' ? displayRightLocalFiles.value : displayRemoteFiles.value;
+      const activePath = selectedRightLocalPath.value || selectedRemotePath.value || Array.from(selectedRightPaths.value)[0];
       const item = items.find(i => i.path === activePath);
       if (item) {
         if (item.is_dir) {
-          navigateToRemotePath(item.path);
+          if (rightPaneTarget.value === 'local') navigateToRightLocalPath(item.path);
+          else navigateToRemotePath(item.path);
         } else {
           openInEditor('right', item);
         }
@@ -2359,7 +2508,8 @@ function handleSftpKeydown(e: KeyboardEvent) {
       if (leftPaneTarget.value === 'local') navigateLocalUp();
       else navigateLeftRemoteUp();
     } else {
-      navigateRemoteUp();
+      if (rightPaneTarget.value === 'local') navigateRightLocalUp();
+      else navigateRemoteUp();
     }
     return;
   }
@@ -2369,12 +2519,12 @@ function handleSftpKeydown(e: KeyboardEvent) {
     e.preventDefault();
     const items = side === 'left'
       ? (leftPaneTarget.value === 'local' ? displayLocalFiles.value : displayLeftRemoteFiles.value)
-      : displayRemoteFiles.value;
+      : (rightPaneTarget.value === 'local' ? displayRightLocalFiles.value : displayRemoteFiles.value);
     if (items.length === 0) return;
 
     const currentPath = side === 'left'
       ? (selectedLocalPath.value || selectedLeftRemotePath.value || Array.from(selectedLeftPaths.value)[0])
-      : (selectedRemotePath.value || Array.from(selectedRightPaths.value)[0]);
+      : (selectedRightLocalPath.value || selectedRemotePath.value || Array.from(selectedRightPaths.value)[0]);
 
     const curIdx = items.findIndex(i => i.path === currentPath);
     let nextIdx = curIdx;
@@ -2392,7 +2542,8 @@ function handleSftpKeydown(e: KeyboardEvent) {
         selectedLeftPaths.value.clear();
         selectedLeftPaths.value.add(nextItem.path);
       } else {
-        selectedRemotePath.value = nextItem.path;
+        if (rightPaneTarget.value === 'local') selectedRightLocalPath.value = nextItem.path;
+        else selectedRemotePath.value = nextItem.path;
         selectedRightPaths.value.clear();
         selectedRightPaths.value.add(nextItem.path);
       }
@@ -3137,6 +3288,9 @@ function onLeftTargetChange(newTarget: string) {
 function onRightTargetChange(newTarget: string) {
   rightPaneTarget.value = newTarget;
   if (newTarget === 'local') {
+    if (!rightLocalPathInput.value) {
+      rightLocalPathInput.value = localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\';
+    }
     fetchRightLocalFiles(true);
   } else {
     remotePathInput.value = '.';
@@ -3363,6 +3517,9 @@ onMounted(async () => {
   if (!localPathInput.value) {
     localPathInput.value = 'C:\\';
   }
+  if (!rightLocalPathInput.value) {
+    rightLocalPathInput.value = localPathInput.value;
+  }
 
   // Muat file lokal untuk pane kiri
   await fetchLocalFiles();
@@ -3376,6 +3533,8 @@ onMounted(async () => {
   } else if (props.tab.parentSessionId) {
     rightPaneTarget.value = props.tab.parentSessionId;
     await fetchRemoteFiles();
+  } else if (rightPaneTarget.value === 'local') {
+    await fetchRightLocalFiles();
   } else {
     // Dibuka mandiri dari menu Sidebar "SFTP Manager"
     rightPaneTarget.value = '';
@@ -3416,7 +3575,9 @@ function setRemoteLocation(path: string) {
 }
 
 async function refreshBoth() {
-  await Promise.all([fetchLocalFiles(false), fetchRemoteFiles(false)]);
+  const leftFetch = leftPaneTarget.value === 'local' ? fetchLocalFiles(false) : fetchLeftRemoteFiles(false);
+  const rightFetch = rightPaneTarget.value === 'local' ? fetchRightLocalFiles(false) : fetchRemoteFiles(false);
+  await Promise.all([leftFetch, rightFetch]);
 }
 
 async function refreshLocal() {
@@ -3495,6 +3656,113 @@ function navigateLocalUp() {
   }
   if (target) {
     navigateToLocalPath(target);
+  }
+}
+
+// Right Local File Operations
+async function fetchRightLocalFiles(recordHistory = true) {
+  loadingRightLocal.value = true;
+  try {
+    let target = rightLocalPathInput.value?.trim();
+    if (!target) {
+      target = localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\';
+      rightLocalPathInput.value = target;
+    }
+    const items = await tauriBridge.fsListLocalDir(target);
+    rightLocalFiles.value = items;
+    if (recordHistory) {
+      if (rightLocalHistoryIndex.value === -1 || rightLocalHistory.value[rightLocalHistoryIndex.value] !== target) {
+        rightLocalHistory.value = rightLocalHistory.value.slice(0, rightLocalHistoryIndex.value + 1);
+        rightLocalHistory.value.push(target);
+        rightLocalHistoryIndex.value = rightLocalHistory.value.length - 1;
+      }
+    }
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Local Path Error (Right)',
+      description: String(err),
+      variant: 'error',
+    });
+  } finally {
+    loadingRightLocal.value = false;
+  }
+}
+
+function navigateToRightLocalPath(path: string) {
+  rightLocalPathInput.value = path;
+  fetchRightLocalFiles(true);
+}
+
+function handleRightLocalEnter() {
+  fetchRightLocalFiles(true);
+}
+
+function navigateRightLocalBack() {
+  if (rightLocalHistoryIndex.value > 0) {
+    rightLocalHistoryIndex.value--;
+    rightLocalPathInput.value = rightLocalHistory.value[rightLocalHistoryIndex.value];
+    fetchRightLocalFiles(false);
+  }
+}
+
+function navigateRightLocalForward() {
+  if (rightLocalHistoryIndex.value < rightLocalHistory.value.length - 1) {
+    rightLocalHistoryIndex.value++;
+    rightLocalPathInput.value = rightLocalHistory.value[rightLocalHistoryIndex.value];
+    fetchRightLocalFiles(false);
+  }
+}
+
+function navigateRightLocalUp() {
+  const current = rightLocalPathInput.value.replace(/\\+$/, '');
+  const lastSlash = Math.max(current.lastIndexOf('\\'), current.lastIndexOf('/'));
+  let target = '';
+  if (lastSlash > 0) {
+    target = current.substring(0, lastSlash);
+  } else if (lastSlash === 0) {
+    target = current.substring(0, 1) + '\\';
+  } else if (current.endsWith(':')) {
+    target = current + '\\';
+  }
+  if (target) {
+    navigateToRightLocalPath(target);
+  }
+}
+
+function handleRightLocalDblClick(item: LocalFileItem) {
+  if (item.is_dir) {
+    navigateToRightLocalPath(item.path);
+  } else {
+    openInEditor('right', item);
+  }
+}
+
+function isRightDriveActive(drivePath: string): boolean {
+  const current = rightLocalPathInput.value.toLowerCase().replace(/\\+$/, '');
+  const drive = drivePath.toLowerCase().replace(/\\+$/, '');
+
+  if (drive.length > 3) {
+    return current === drive || current.startsWith(drive + '\\');
+  }
+
+  const userHomeDrive = localDrives.value.find(d => d.path.length > 3);
+  if (userHomeDrive) {
+    const home = userHomeDrive.path.toLowerCase().replace(/\\+$/, '');
+    if (current === home || current.startsWith(home + '\\')) {
+      return false;
+    }
+  }
+
+  return current.startsWith(drive);
+}
+
+function onRightLocalDragStart(event: DragEvent, item: LocalFileItem) {
+  draggedLocalItem = item;
+  draggedRemoteItem = null;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'copyMove';
+    event.dataTransfer.setData('text/plain', JSON.stringify({ type: 'local', item }));
+    event.dataTransfer.setData('application/json', JSON.stringify({ type: 'local', item }));
   }
 }
 
@@ -3866,7 +4134,7 @@ async function promptNewFolder(side: 'left' | 'right') {
   const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
   const currentPath = isLeft
     ? (isLocal ? localPathInput.value : leftRemotePathInput.value)
-    : (isLocal ? localPathInput.value : remotePathInput.value);
+    : (isLocal ? rightLocalPathInput.value : remotePathInput.value);
 
   const folderName = await dialogStore.prompt({
     title: `New Folder (${isLocal ? 'Local' : 'Remote'})`,
@@ -3880,7 +4148,8 @@ async function promptNewFolder(side: 'left' | 'right') {
     if (isLocal) {
       const sep = currentPath.endsWith('\\') || currentPath.endsWith('/') ? '' : '\\';
       await tauriBridge.fsCreateDir(`${currentPath}${sep}${folderName.trim()}`);
-      await fetchLocalFiles();
+      if (isLeft) await fetchLocalFiles();
+      else await fetchRightLocalFiles();
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
       const sep = currentPath.endsWith('/') ? '' : '/';
@@ -3906,7 +4175,7 @@ async function promptNewFile(side: 'left' | 'right') {
   const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
   const currentPath = isLeft
     ? (isLocal ? localPathInput.value : leftRemotePathInput.value)
-    : (isLocal ? localPathInput.value : remotePathInput.value);
+    : (isLocal ? rightLocalPathInput.value : remotePathInput.value);
 
   const fileName = await dialogStore.prompt({
     title: `New File (${isLocal ? 'Local' : 'Remote'})`,
@@ -3920,7 +4189,8 @@ async function promptNewFile(side: 'left' | 'right') {
     if (isLocal) {
       const sep = currentPath.endsWith('\\') || currentPath.endsWith('/') ? '' : '\\';
       await tauriBridge.fsCreateFile(`${currentPath}${sep}${fileName.trim()}`);
-      await fetchLocalFiles();
+      if (isLeft) await fetchLocalFiles();
+      else await fetchRightLocalFiles();
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
       const sep = currentPath.endsWith('/') ? '' : '/';
@@ -3959,7 +4229,8 @@ async function renameItem(side: 'left' | 'right', item: LocalFileItem | RemoteFi
       const sep = item.path.includes('/') ? '/' : '\\';
       const newPath = `${parent}${sep}${newName.trim()}`;
       await tauriBridge.fsRenamePath(item.path, newPath);
-      await fetchLocalFiles();
+      if (isLeft) await fetchLocalFiles();
+      else await fetchRightLocalFiles();
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
       const parent = item.path.substring(0, item.path.lastIndexOf('/'));
@@ -4016,7 +4287,8 @@ async function duplicateItem(side: 'left' | 'right', item: LocalFileItem | Remot
       const newPath = `${parent}${sep}${newName.trim()}`;
       await tauriBridge.fsDuplicatePath(item.path, newPath, item.is_dir);
       dialogStore.showToast(`Duplikasi berhasil: ${newName.trim()}`, 'success');
-      await fetchLocalFiles();
+      if (isLeft) await fetchLocalFiles();
+      else await fetchRightLocalFiles();
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
       const parent = item.path.substring(0, item.path.lastIndexOf('/'));
@@ -4058,8 +4330,13 @@ async function deleteItem(side: 'left' | 'right', item: LocalFileItem | RemoteFi
   try {
     if (isLocal) {
       await tauriBridge.fsDeletePath(item.path, item.is_dir);
-      selectedLeftPaths.value.delete(item.path);
-      await fetchLocalFiles();
+      if (isLeft) {
+        selectedLeftPaths.value.delete(item.path);
+        await fetchLocalFiles();
+      } else {
+        selectedRightPaths.value.delete(item.path);
+        await fetchRightLocalFiles();
+      }
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
       await tauriBridge.sftpDelete(activeId, item.path, item.is_dir);
@@ -4107,7 +4384,7 @@ function toggleSelectRight(path: string) {
 }
 
 function toggleSelectAllRight() {
-  const items = displayRemoteFiles.value;
+  const items = rightPaneTarget.value === 'local' ? displayRightLocalFiles.value : displayRemoteFiles.value;
   if (selectedRightPaths.value.size === items.length && items.length > 0) {
     selectedRightPaths.value.clear();
   } else {
@@ -4132,12 +4409,17 @@ async function deleteSelectedItems(side: 'left' | 'right') {
   const isLocal = isLeft ? leftPaneTarget.value === 'local' : rightPaneTarget.value === 'local';
   try {
     if (isLocal) {
-      const items = localFiles.value.filter(i => selected.has(i.path));
+      const items = (isLeft ? localFiles.value : rightLocalFiles.value).filter(i => selected.has(i.path));
       for (const it of items) {
         await tauriBridge.fsDeletePath(it.path, it.is_dir);
       }
-      selectedLeftPaths.value.clear();
-      await fetchLocalFiles();
+      if (isLeft) {
+        selectedLeftPaths.value.clear();
+        await fetchLocalFiles();
+      } else {
+        selectedRightPaths.value.clear();
+        await fetchRightLocalFiles();
+      }
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
       const items = leftRemoteFiles.value.filter(i => selected.has(i.path));
@@ -4183,7 +4465,7 @@ async function transferSelectedLeft() {
 async function transferSelectedRight() {
   const selected = selectedRightPaths.value;
   if (selected.size === 0) return;
-  const items = remoteFiles.value.filter(i => selected.has(i.path));
+  const items = (rightPaneTarget.value === 'local' ? rightLocalFiles.value : remoteFiles.value).filter(i => selected.has(i.path));
   selectedRightPaths.value.clear();
   const executing = new Set<Promise<void>>();
   for (const it of items) {
@@ -4199,12 +4481,16 @@ async function transferSelectedRight() {
 // Transfer Operations (Upload & Download Stream for File & Folder, plus Server-to-Server)
 async function transferItemLeftToRight(item: LocalFileItem | RemoteFileItem) {
   if (leftPaneTarget.value === 'local') {
-    // Local to Right Pane
-    await uploadLocalItem(item as LocalFileItem);
+    if (rightPaneTarget.value === 'local') {
+      await copyLocalToLocal(item as LocalFileItem, rightLocalPathInput.value, false);
+    } else {
+      // Local to Right Pane
+      await uploadLocalItem(item as LocalFileItem);
+    }
   } else {
     // Left Pane is Remote Session
     if (rightPaneTarget.value === 'local') {
-      await downloadRemoteItem(item as RemoteFileItem);
+      await downloadLeftRemoteToRightLocal(item as RemoteFileItem);
     } else {
       // Remote Session -> Remote Session (Server to Server Pipe)
       await transferRemoteToRemote(item as RemoteFileItem);
@@ -4212,13 +4498,194 @@ async function transferItemLeftToRight(item: LocalFileItem | RemoteFileItem) {
   }
 }
 
-async function transferItemRightToLeft(item: RemoteFileItem) {
-  if (leftPaneTarget.value === 'local') {
-    // Right Pane Remote -> Local Machine
-    await downloadRemoteItem(item);
+async function transferItemRightToLeft(item: LocalFileItem | RemoteFileItem) {
+  if (rightPaneTarget.value === 'local') {
+    if (leftPaneTarget.value === 'local') {
+      await copyLocalToLocal(item as LocalFileItem, localPathInput.value, true);
+    } else {
+      await uploadRightLocalToLeftRemote(item as LocalFileItem);
+    }
   } else {
-    // Right Pane Remote -> Left Pane Remote (Inter-Server Pipe)
-    await transferRemoteRightToLeft(item);
+    if (leftPaneTarget.value === 'local') {
+      // Right Pane Remote -> Local Machine
+      await downloadRemoteItem(item as RemoteFileItem);
+    } else {
+      // Right Pane Remote -> Left Pane Remote (Inter-Server Pipe)
+      await transferRemoteRightToLeft(item as RemoteFileItem);
+    }
+  }
+}
+
+async function copyLocalToLocal(srcItem: LocalFileItem, destDir: string, isDestLeft: boolean) {
+  const targetDir = destDir || (localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\');
+  const sep = targetDir.endsWith('\\') || targetDir.endsWith('/') ? '' : '\\';
+  const targetPath = `${targetDir}${sep}${srcItem.name}`;
+  try {
+    await tauriBridge.fsDuplicatePath(srcItem.path, targetPath, srcItem.is_dir);
+    dialogStore.showToast(`Berhasil disalin: ${srcItem.name}`, 'success');
+    if (isDestLeft) await fetchLocalFiles();
+    else await fetchRightLocalFiles();
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Salin Gagal',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+async function downloadLeftRemoteToRightLocal(file: RemoteFileItem) {
+  const destDir = rightLocalPathInput.value || (localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\');
+  const sep = destDir.endsWith('\\') || destDir.endsWith('/') ? '' : '\\';
+  const targetLocalPath = `${destDir}${sep}${file.name}`;
+
+  if (!file.is_dir) {
+    const existing = rightLocalFiles.value.find(f => f.name.toLowerCase() === file.name.toLowerCase());
+    if (existing) {
+      const confirm = await dialogStore.confirm({
+        title: 'Timpa File Lokal?',
+        description: `File "${file.name}" sudah ada di komputer Anda (${formatSize(existing.size)}). Apakah Anda ingin menimpanya?`,
+        confirmText: 'Timpa File',
+        isDestructive: true,
+      });
+      if (!confirm) return;
+    }
+  }
+
+  try {
+    const activeId = await ensureLeftConnected();
+    if (file.is_dir) {
+      const folderTransferId = queueStore.addDownload(
+        activeId,
+        file.path,
+        `📁 ${file.name}`,
+        0,
+        targetLocalPath,
+        leftServerName.value,
+        'Local Machine'
+      );
+      try {
+        queueStore.updateStatus(folderTransferId, 'transferring');
+        await tauriBridge.sftpDownloadFolder(activeId, file.path, destDir, queueStore.maxConcurrent, folderTransferId);
+        queueStore.updateStatus(folderTransferId, 'completed');
+      } catch (e) {
+        queueStore.updateStatus(folderTransferId, 'error', String(e));
+        throw e;
+      }
+    } else {
+      const transferId = queueStore.addDownload(
+        activeId,
+        file.path,
+        file.name,
+        file.size,
+        targetLocalPath,
+        leftServerName.value,
+        'Local Machine'
+      );
+      try {
+        queueStore.updateStatus(transferId, 'transferring');
+        await tauriBridge.sftpDownloadStream(
+          activeId,
+          transferId,
+          file.path,
+          targetLocalPath,
+          0
+        );
+        queueStore.updateStatus(transferId, 'completed');
+      } catch (e) {
+        queueStore.updateStatus(transferId, 'error', String(e));
+        throw e;
+      }
+    }
+    await fetchRightLocalFiles();
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Download Failed',
+      description: String(err),
+      variant: 'error',
+    });
+  }
+}
+
+async function uploadRightLocalToLeftRemote(item: LocalFileItem) {
+  const sep = leftRemotePathInput.value.endsWith('/') ? '' : '/';
+  const targetRemotePath = `${leftRemotePathInput.value === '.' ? '' : leftRemotePathInput.value}${sep}${item.name}`;
+
+  if (!item.is_dir) {
+    const existing = leftRemoteFiles.value.find(f => f.name.toLowerCase() === item.name.toLowerCase());
+    if (existing) {
+      const confirm = await dialogStore.confirm({
+        title: 'Timpa File Remote?',
+        description: `File "${item.name}" sudah ada di server tujuan (${formatSize(existing.size)}). Apakah Anda ingin menimpanya?`,
+        confirmText: 'Timpa File',
+        isDestructive: true,
+      });
+      if (!confirm) return;
+    }
+  }
+
+  try {
+    const activeId = await ensureLeftConnected();
+    let isDirectory = item.is_dir;
+    if (!isDirectory) {
+      try {
+        const checkLocal = await tauriBridge.fsListLocalDir(item.path);
+        if (Array.isArray(checkLocal)) isDirectory = true;
+      } catch (_) {
+        isDirectory = false;
+      }
+    }
+
+    if (isDirectory) {
+      const folderTransferId = queueStore.addUpload(
+        activeId,
+        targetRemotePath,
+        `📁 ${item.name}`,
+        0,
+        item.path,
+        'Local Machine',
+        leftServerName.value
+      );
+      try {
+        queueStore.updateStatus(folderTransferId, 'transferring');
+        await tauriBridge.sftpUploadFolder(activeId, item.path, leftRemotePathInput.value, queueStore.maxConcurrent, folderTransferId);
+        queueStore.updateStatus(folderTransferId, 'completed');
+      } catch (e) {
+        queueStore.updateStatus(folderTransferId, 'error', String(e));
+        throw e;
+      }
+    } else {
+      const transferId = queueStore.addUpload(
+        activeId,
+        targetRemotePath,
+        item.name,
+        item.size,
+        item.path,
+        'Local Machine',
+        leftServerName.value
+      );
+      try {
+        queueStore.updateStatus(transferId, 'transferring');
+        await tauriBridge.sftpUploadStream(
+          activeId,
+          transferId,
+          item.path,
+          targetRemotePath,
+          0
+        );
+        queueStore.updateStatus(transferId, 'completed');
+      } catch (uploadErr: any) {
+        queueStore.updateStatus(transferId, 'error', String(uploadErr));
+        throw uploadErr;
+      }
+    }
+    await fetchLeftRemoteFiles();
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Upload Failed',
+      description: String(err),
+      variant: 'error',
+    });
   }
 }
 

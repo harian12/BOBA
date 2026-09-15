@@ -57,6 +57,7 @@ const READONLY_PATTERNS = [
   /\bufw\s+status\b/i,
   /\bnginx\s+-t\b/i,
   /\bapache2ctl\s+configtest\b/i,
+  /\b(sudo\s+)?git\s+(remote|status|log|diff|branch|show)\b/i,
 ];
 
 export function inspectCommandRisk(cmd: string): CommandRiskLevel {
@@ -105,6 +106,7 @@ function generateFallbackDescription(cmd: string): string {
   }
 
   // Git
+  if (lower.includes('git remote')) return 'Melihat konfigurasi remote repository Git (kredensial token disamarkan otomatis)';
   if (lower.startsWith('git pull')) return 'Mengambil dan memperbarui kode dari repositori Git';
   if (lower.startsWith('git clone')) return 'Mengkloning repositori kode baru ke direktori server';
   if (lower.startsWith('git checkout') || lower.startsWith('git switch')) return 'Berpindah branch atau mengembalikan versi kode';
