@@ -315,7 +315,7 @@
             ]"
           >
             <!-- Markdown / Pre-formatted Text -->
-            <div v-if="msg.content" class="whitespace-pre-wrap font-sans">{{ msg.content }}</div>
+            <div v-if="msg.content" class="whitespace-pre-wrap font-sans">{{ formatMessageText(msg.content) }}</div>
 
             <!-- Connection Error Retry Button -->
             <div
@@ -744,13 +744,26 @@ const currentMessages = computed(() => {
   return [...msgs].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 });
 
+function formatMessageText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/^[\s\S]*?<\/think>\s*/i, '') // Bersihkan blok reasoning DeepSeek jika ada di awal
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\/think>/gi, '')
+    .trim();
+}
+
 const canContinueAnalysis = computed(() => {
   if (currentMessages.value.length === 0) return false;
   const last = currentMessages.value[currentMessages.value.length - 1];
-  if (last.role === 'user') return false;
-  if (last.toolCalls && last.toolCalls.length > 0) return true;
-  if (last.content && (last.content.includes('⚠️') || last.content.includes('selesai dieksekusi') || last.content.includes('kendala'))) return true;
-  return false;
+  if (last.role !== 'assistant') return false;
+
+  // Hanya tampilkan jika perintah sebelumnya gagal/error ATAU asisten sama sekali belum memberikan respon teks
+  const hasFailedTool = Boolean(last.toolCalls?.some(tc => tc.status === 'failed'));
+  const hasWarningNotice = Boolean(last.content?.includes('⚠️ Perintah terminal sebelumnya menghasilkan kendala'));
+  const hasNoContent = !last.content || last.content.trim().length === 0;
+
+  return hasFailedTool || hasWarningNotice || hasNoContent;
 });
 
 function handleContinueAnalysis() {
