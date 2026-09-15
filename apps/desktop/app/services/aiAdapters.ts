@@ -503,9 +503,12 @@ async function streamOpenAiCompatible(
           const choice = json.choices?.[0];
           if (!choice) continue;
 
-          // Content delta
-          if (choice.delta?.content) {
-            callbacks.onToken(choice.delta.content);
+          // Content delta (termasuk text delta & reasoning_content untuk DeepSeek R1 / Qwen)
+          const token = choice.delta?.content ?? choice.delta?.text ?? choice.text;
+          if (token) {
+            callbacks.onToken(token);
+          } else if (choice.delta?.reasoning_content) {
+            callbacks.onToken(choice.delta.reasoning_content);
           }
 
           // Tool calls delta

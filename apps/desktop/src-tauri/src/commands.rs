@@ -753,7 +753,7 @@ pub async fn ai_http_stream(
     while let Ok(Some(chunk)) = res.chunk().await {
         let text = String::from_utf8_lossy(&chunk).to_string();
         let is_done_signal = text.contains("data: [DONE]")
-            || text.contains("\"finishReason\":")
+            || text.contains("\"finishReason\":\"STOP\"")
             || text.contains("\"finish_reason\":\"stop\"")
             || text.contains("\"finish_reason\":\"tool_calls\"")
             || text.contains("\"type\":\"message_stop\"");

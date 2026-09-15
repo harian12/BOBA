@@ -639,6 +639,13 @@ ${modeDirective}
   * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan perintah ini.
   * 'impact': Penjelasan dampak langsung atau efek samping terhadap server (apakah aman/read-only, restart service, memodifikasi konfigurasi, atau berpotensi downtime).
 
+### DISIPLIN MERESPON HASIL EKSEKUSI TOOL (SANGAT PENTING):
+- Jika perintah menghasilkan ERROR, Access Denied, Permission Denied, atau sintaks salah: JANGAN PERNAH BERHENTI atau menganggap tugas selesai!
+- Analisis error tersebut dan ambil langkah pemulihan (Self-Healing):
+  * Jika MySQL Access Denied: Cari password database (misal baca wp-config.php atau .env), atau gunakan sudo / autentikasi yang tepat.
+  * Jika service gagal/crash: Periksa log detail atau perbaiki konfigurasi.
+- Selalu berikan penjelasan teks analisis yang informatif sebelum memanggil perintah berikutnya. DILARANG menghasilkan pesan kosong!
+
 You have access to tools to inspect and configure the server:
 - exec_command: execute bash commands to inspect status, logs, packages, services, network, or perform configuration.
 - read_file: read full text of configuration files or logs.
@@ -709,15 +716,14 @@ You have access to tools to inspect and configure the server:
     const thread = getOrCreateActiveThread(sid);
     const chatList = thread.messages;
 
-    // Guard: Pastikan tidak ada tool call yang masih menggantung (pending_approval atau running)
-    const hasUnfinishedToolCall = chatList.some(m =>
-      m.role === 'assistant' &&
-      m.toolCalls &&
-      m.toolCalls.some(tc => tc.status === 'pending_approval' || tc.status === 'running')
-    );
-    if (hasUnfinishedToolCall) {
-      dialogStore.showToast('Selesaikan atau setujui perintah terminal yang aktif terlebih dahulu.', 'warning', 3000);
-      return;
+    // Guard: Pastikan tidak ada tool call yang masih menunggu izin pada giliran terbaru
+    const lastAssistantWithTools = [...chatList].reverse().find(m => m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0);
+    if (lastAssistantWithTools && lastAssistantWithTools.toolCalls) {
+      const pendingTc = lastAssistantWithTools.toolCalls.find(tc => tc.status === 'pending_approval');
+      if (pendingTc) {
+        dialogStore.showToast('Setujui atau tolak perintah terminal yang sedang menunggu izin terlebih dahulu.', 'warning', 3000);
+        return;
+      }
     }
 
     isThinking.value = true;
@@ -806,14 +812,20 @@ You have access to tools to inspect and configure the server:
                 }
               }
             } else {
-              // Jika TIDAK ADA tool calls lanjutan (tugas telah selesai)
-              // Cek apakah giliran ini merespons hasil tool call sebelumnya
+              // Jika TIDAK ADA tool calls lanjutan yang dipanggil AI pada giliran ini
               const prevMsg = chatList[chatList.length - 2];
               if (prevMsg && prevMsg.role === 'tool') {
                 if (!assistantMsg.content || assistantMsg.content.trim().length === 0) {
-                  assistantMsg.content = '✅ Seluruh perintah telah berhasil dieksekusi di server.';
+                  const contentStr = typeof prevMsg.content === 'string' ? prevMsg.content : JSON.stringify(prevMsg.content || '');
+                  const hasError = /\b(error|failed|fatal|denied|cannot|not found|refused|rejected)\b/i.test(contentStr);
+
+                  if (hasError) {
+                    assistantMsg.content = `⚠️ Perintah terminal sebelumnya menghasilkan kendala atau error:\n\`\`\`\n${contentStr.slice(0, 400)}\n\`\`\`\nAI belum melanjutkan eksekusi. Silakan klik tombol **✨ Lanjutkan Analisis Masalah** di bawah atau berikan instruksi tambahan.`;
+                  } else {
+                    assistantMsg.content = '✅ Perintah di server telah selesai dieksekusi.';
+                  }
                 }
-                dialogStore.showToast('Tugas AI Copilot selesai dieksekusi', 'success', 3000);
+                dialogStore.showToast('Respon AI Copilot selesai', 'info', 2000);
               }
             }
 

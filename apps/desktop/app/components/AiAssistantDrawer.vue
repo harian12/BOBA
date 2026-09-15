@@ -503,18 +503,29 @@
         </div>
       </template>
 
-      <!-- Tombol Generate Balasan jika pesan user belum dijawab / terputus -->
+      <!-- Tombol Generate Balasan / Lanjutkan Analisis jika AI berhenti -->
       <div
-        v-if="!aiStore.isThinking && currentMessages.length > 0 && currentMessages[currentMessages.length - 1].role === 'user'"
+        v-if="!aiStore.isThinking && currentMessages.length > 0"
         class="flex items-center justify-end pt-1"
       >
         <button
+          v-if="currentMessages[currentMessages.length - 1].role === 'user'"
           @click="aiStore.continueAgentLoop(aiStore.selectedSessionId)"
           type="button"
           class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/50 rounded-lg text-[10.5px] font-semibold transition flex items-center space-x-1.5 shadow"
         >
           <span>✨</span>
           <span>Dapatkan Balasan AI</span>
+        </button>
+
+        <button
+          v-else-if="canContinueAnalysis"
+          @click="handleContinueAnalysis"
+          type="button"
+          class="px-3 py-1 bg-sky-600/25 hover:bg-sky-600/45 text-sky-200 border border-sky-500/50 rounded-lg text-[10.5px] font-semibold transition flex items-center space-x-1.5 shadow"
+        >
+          <span>✨</span>
+          <span>Lanjutkan Analisis & Cari Solusi</span>
         </button>
       </div>
 
@@ -732,6 +743,20 @@ const currentMessages = computed(() => {
   // Pastikan urutan selalu terurut secara kronologis dari waktu paling awal ke paling akhir
   return [...msgs].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 });
+
+const canContinueAnalysis = computed(() => {
+  if (currentMessages.value.length === 0) return false;
+  const last = currentMessages.value[currentMessages.value.length - 1];
+  if (last.role === 'user') return false;
+  if (last.toolCalls && last.toolCalls.length > 0) return true;
+  if (last.content && (last.content.includes('⚠️') || last.content.includes('selesai dieksekusi') || last.content.includes('kendala'))) return true;
+  return false;
+});
+
+function handleContinueAnalysis() {
+  if (aiStore.isThinking || !aiStore.selectedSessionId) return;
+  aiStore.sendMessage('Lanjutkan analisis kendala di atas, cari akar penyebab dari output perintah tadi dan temukan solusi perbaikan di server.');
+}
 
 function handleNewChat() {
   if (!aiStore.selectedSessionId) {
