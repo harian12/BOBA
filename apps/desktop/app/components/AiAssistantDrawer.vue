@@ -755,8 +755,13 @@ function formatMessageText(text: string): string {
 
 const canContinueAnalysis = computed(() => {
   if (currentMessages.value.length === 0) return false;
+  if (aiStore.isThinking) return false;
   const last = currentMessages.value[currentMessages.value.length - 1];
   if (last.role !== 'assistant') return false;
+
+  // Jangan tampilkan jika masih ada tool yang sedang dieksekusi
+  const hasRunningTool = Boolean(last.toolCalls?.some(tc => tc.status === 'running' || tc.status === 'pending'));
+  if (hasRunningTool) return false;
 
   // Hanya tampilkan jika perintah sebelumnya gagal/error ATAU asisten sama sekali belum memberikan respon teks
   const hasFailedTool = Boolean(last.toolCalls?.some(tc => tc.status === 'failed'));
