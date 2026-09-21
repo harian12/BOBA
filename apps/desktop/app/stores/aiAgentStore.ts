@@ -277,6 +277,12 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     saveState();
   }
 
+  function setActiveModel(modelName: string) {
+    if (!activeProvider.value) return;
+    activeProvider.value.model = modelName;
+    saveProvider(activeProvider.value);
+  }
+
   function setExecutionMode(mode: 'confirm' | 'auto') {
     executionMode.value = mode;
     saveState();
@@ -957,6 +963,7 @@ You have access to tools to inspect and configure the server:
     saveProvider,
     deleteProvider,
     setActiveProvider,
+    setActiveModel,
     setExecutionMode,
     setCopilotMode,
     saveState,

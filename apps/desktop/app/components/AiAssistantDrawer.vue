@@ -542,15 +542,30 @@
           <div class="flex items-center space-x-1.5 text-[10px] min-w-0">
             <!-- Model Selector Dropdown -->
             <select
-              :value="aiStore.activeProviderId"
-              @change="(e: any) => aiStore.setActiveProvider(e.target.value)"
-              class="bg-boba-950 border border-boba-750 text-sky-300 rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer focus:outline-none focus:border-boba-accent max-w-[130px] sm:max-w-[150px] truncate"
-              title="Pilih Model AI"
+              :value="currentSelectedModel"
+              @change="handleModelChange"
+              class="bg-boba-950 border border-boba-750 text-sky-300 rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer focus:outline-none focus:border-boba-accent max-w-[130px] sm:max-w-[160px] truncate"
+              title="Pilih Model AI Aktif"
             >
-              <option v-for="p in aiStore.providers" :key="p.id" :value="p.id">
-                {{ p.name || p.model }}
+              <option v-for="m in modelOptions" :key="m" :value="m">
+                {{ m }}
               </option>
             </select>
+
+            <!-- Copilot Mode Switch (Plan vs Build) -->
+            <button
+              @click="toggleCopilotMode"
+              type="button"
+              :class="[
+                'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0',
+                aiStore.copilotMode === 'plan'
+                  ? 'bg-purple-950/80 border-purple-600 text-purple-200 shadow-[0_0_8px_rgba(168,85,247,0.25)]'
+                  : 'bg-emerald-950/80 border-emerald-600 text-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
+              ]"
+              :title="aiStore.copilotMode === 'plan' ? 'Mode Plan: Diagnosa & Analisis rencana (Read-Only)' : 'Mode Build: Eksekusi perubahan & perbaikan server'"
+            >
+              <span>{{ aiStore.copilotMode === 'plan' ? '📋 Plan' : '🔨 Build' }}</span>
+            </button>
 
             <!-- Execution Mode Switch (Confirm vs Auto) -->
             <button
@@ -721,6 +736,29 @@ const starterChips = [
   'Diagnosa port terbuka dan aturan firewall (UFW)',
   'Cek versi Node.js, PHP, Python, dan Docker yang terpasang',
 ];
+
+const currentSelectedModel = computed(() => {
+  return aiStore.activeProvider?.model || '';
+});
+
+const modelOptions = computed(() => {
+  const p = aiStore.activeProvider;
+  if (!p) return [];
+  const list = p.availableModels && p.availableModels.length > 0
+    ? [...p.availableModels]
+    : [p.model].filter(Boolean);
+  if (p.model && !list.includes(p.model)) {
+    list.unshift(p.model);
+  }
+  return list;
+});
+
+function handleModelChange(e: Event) {
+  const target = e.target as HTMLSelectElement;
+  if (target && target.value) {
+    aiStore.setActiveModel(target.value);
+  }
+}
 
 const availableSessions = computed(() => {
   return vaultStore.vault.sessions || [];
