@@ -411,26 +411,29 @@
                 </div>
 
                 <!-- Approval Actions for Pending Tool Calls -->
-                <div v-if="tc.status === 'pending_approval'" class="flex items-center justify-between pt-1 border-t border-boba-800/60 font-sans">
-                  <span class="text-[10px] text-slate-400">
-                    Perlu konfirmasi untuk dijalankan di server
-                  </span>
-                  <div class="flex items-center space-x-2">
+                <div v-if="tc.status === 'pending_approval'" class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-boba-800/60 font-sans">
+                  <div class="flex items-center space-x-1.5 text-[10.5px] text-amber-300 font-medium">
+                    <span>🛡️</span>
+                    <span>Menunggu persetujuan Anda (Langkah 1 demi 1)</span>
+                  </div>
+                  <div class="flex items-center space-x-2 ml-auto">
                     <button
                       @click="aiStore.rejectToolCall(tc.id)"
-                      class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-[10.5px] font-medium transition"
+                      type="button"
+                      class="px-2.5 py-1 bg-boba-850 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-boba-750 hover:border-rose-800/60 rounded-md text-[10.5px] font-medium transition"
                     >
                       Tolak
                     </button>
                     <button
                       @click="aiStore.approveToolCall(tc.id)"
+                      type="button"
                       :class="[
-                        'px-3 py-1 text-white font-semibold rounded text-[10.5px] transition shadow flex items-center space-x-1',
+                        'px-3 py-1 text-white font-semibold rounded-md text-[10.5px] transition shadow flex items-center space-x-1',
                         tc.name === 'exec_command' ? getCommandInsight(tc).buttonClass : 'bg-emerald-600 hover:bg-emerald-500'
                       ]"
                     >
                       <span>✓</span>
-                      <span>Jalankan di Server</span>
+                      <span>Setujui & Jalankan</span>
                     </button>
                   </div>
                 </div>
