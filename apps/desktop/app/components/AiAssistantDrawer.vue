@@ -22,47 +22,9 @@
       <div class="flex items-center space-x-2 truncate">
         <span class="text-sm">✨</span>
         <span class="font-bold text-xs text-sky-300">AI Server Copilot</span>
-
-        <!-- Active Model Pill -->
-        <span
-          v-if="aiStore.activeProvider"
-          @click="aiStore.isProviderModalOpen = true"
-          class="px-2 py-0.5 rounded bg-boba-850 border border-boba-700 text-[10px] text-sky-300 truncate max-w-[120px] font-mono cursor-pointer hover:border-boba-accent hover:text-white transition"
-          :title="`Klik untuk ganti model (${aiStore.activeProvider.model})`"
-        >
-          {{ aiStore.activeProvider.model }}
-        </span>
       </div>
 
       <div class="flex items-center space-x-1">
-        <!-- Copilot Mode Switch (Plan vs Build) -->
-        <button
-          @click="toggleCopilotMode"
-          :class="[
-            'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border',
-            aiStore.copilotMode === 'plan'
-              ? 'bg-purple-950/80 border-purple-600 text-purple-200 shadow-[0_0_8px_rgba(168,85,247,0.25)]'
-              : 'bg-emerald-950/80 border-emerald-600 text-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
-          ]"
-          :title="aiStore.copilotMode === 'plan' ? 'Mode Plan: Diagnosa & Analisis rencana (Read-Only)' : 'Mode Build: Eksekusi perubahan & perbaikan server'"
-        >
-          <span>{{ aiStore.copilotMode === 'plan' ? '📋 Plan' : '🔨 Build' }}</span>
-        </button>
-
-        <!-- Execution Mode Switch (Confirm vs Auto) -->
-        <button
-          @click="toggleExecutionMode"
-          :class="[
-            'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border',
-            aiStore.executionMode === 'auto'
-              ? 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-              : 'bg-boba-850 border-boba-700 text-sky-300 hover:border-boba-600'
-          ]"
-          :title="aiStore.executionMode === 'auto' ? 'Mode Otomatis: Perintah non-berbahaya langsung dieksekusi' : 'Mode Konfirmasi: AI meminta persetujuan sebelum mengeksekusi perintah'"
-        >
-          <span>{{ aiStore.executionMode === 'auto' ? '⚡ Auto' : '🛡️ Confirm' }}</span>
-        </button>
-
         <!-- Provider Settings Button -->
         <button
           @click="aiStore.isProviderModalOpen = true"
@@ -577,20 +539,34 @@
 
         <!-- Form Action Bar -->
         <div class="flex items-center justify-between pt-1 border-t border-boba-800/60">
-          <div class="flex items-center space-x-2 text-[10px]">
-            <span
-              @click="toggleCopilotMode"
-              :class="[
-                'px-1.5 py-0.2 rounded font-mono font-medium cursor-pointer transition border',
-                aiStore.copilotMode === 'plan'
-                  ? 'bg-purple-950/80 border-purple-700/60 text-purple-300 hover:bg-purple-900/60'
-                  : 'bg-emerald-950/80 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/60'
-              ]"
-              :title="aiStore.copilotMode === 'plan' ? 'Klik untuk beralih ke Mode Build' : 'Klik untuk beralih ke Mode Plan'"
+          <div class="flex items-center space-x-1.5 text-[10px] min-w-0">
+            <!-- Model Selector Dropdown -->
+            <select
+              :value="aiStore.activeProviderId"
+              @change="(e: any) => aiStore.setActiveProvider(e.target.value)"
+              class="bg-boba-950 border border-boba-750 text-sky-300 rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer focus:outline-none focus:border-boba-accent max-w-[130px] sm:max-w-[150px] truncate"
+              title="Pilih Model AI"
             >
-              {{ aiStore.copilotMode === 'plan' ? '📋 Plan' : '🔨 Build' }}
-            </span>
-            <span class="text-slate-500 hidden sm:inline">Enter ↵ Kirim · Shift+Enter Baris baru</span>
+              <option v-for="p in aiStore.providers" :key="p.id" :value="p.id">
+                {{ p.name || p.model }}
+              </option>
+            </select>
+
+            <!-- Execution Mode Switch (Confirm vs Auto) -->
+            <button
+              @click="toggleExecutionMode"
+              type="button"
+              :class="[
+                'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0',
+                aiStore.executionMode === 'auto'
+                  ? 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                  : 'bg-boba-850 border-boba-700 text-sky-300 hover:border-boba-600'
+              ]"
+              :title="aiStore.executionMode === 'auto' ? 'Mode Otomatis: Perintah non-berbahaya langsung dieksekusi' : 'Mode Konfirmasi: AI meminta persetujuan sebelum mengeksekusi perintah'"
+            >
+              <span>{{ aiStore.executionMode === 'auto' ? '⚡ Auto' : '🛡️ Confirm' }}</span>
+            </button>
+            <span class="text-slate-500 hidden sm:inline truncate">Enter ↵</span>
           </div>
 
           <div class="flex items-center space-x-1.5">
