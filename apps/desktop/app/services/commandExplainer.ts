@@ -27,6 +27,8 @@ const DANGEROUS_PATTERNS = [
   /\bchmod\s+-r\s+777\s+\//i,
   /\bkill\s+-9\s+-1\b/i,
   /\biptables\s+-f\b/i,
+  /\bufw\s+(disable|reset)\b/i,
+  /\b(sed|tee|cat|echo|cp|mv)\b.*(\/etc\/ssh\/sshd_config|\/etc\/sudoers)/i,
 ];
 
 const MODERATE_PATTERNS = [

@@ -26,6 +26,16 @@
       </div>
 
       <div class="flex items-center space-x-1 shrink-0">
+        <!-- Ask AI Copilot Button -->
+        <button
+          @click.stop="handleAskCopilot"
+          class="px-2 py-0.5 bg-sky-950/60 hover:bg-sky-900/80 hover:text-sky-200 text-sky-300 border border-sky-700/60 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Tanya AI Copilot tentang kendala atau diagnosa server ini"
+        >
+          <span>✨</span>
+          <span>Copilot</span>
+        </button>
+
         <!-- Quick Commands Toggle -->
         <button
           @click.stop="showCommandsBar = !showCommandsBar"
@@ -146,13 +156,24 @@
       <button
         @click="handleCopy"
         :disabled="!hasTextSelected"
-        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition disabled:opacity-40 disabled:hover:bg-transparent"
       >
         <div class="flex items-center space-x-2">
           <span class="text-xs">📋</span>
           <span>Copy</span>
         </div>
-        <span class="text-[10px] font-mono opacity-60">Ctrl+C</span>
+        <span class="text-[10px] font-mono opacity-60">Ctrl+Shift+C</span>
+      </button>
+
+      <!-- Ask AI Copilot Context -->
+      <button
+        @click="handleAskCopilotSelection"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white text-sky-300 transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">✨</span>
+          <span>{{ hasTextSelected ? 'Ask Copilot (Selection)' : 'Diagnose with Copilot' }}</span>
+        </div>
       </button>
 
       <!-- Ask AI Copilot about selection -->
@@ -486,6 +507,21 @@ function handleCopy() {
     if (sel) {
       navigator.clipboard.writeText(sel);
     }
+  }
+}
+
+function handleAskCopilot() {
+  const sessionId = props.tab.sessionConfig?.id || props.tab.id;
+  aiStore.selectedSessionId = sessionId;
+  aiStore.openDrawer();
+}
+
+function handleAskCopilotSelection() {
+  closeContextMenu();
+  if (term && term.hasSelection()) {
+    handleAskAiAboutSelection();
+  } else {
+    handleAskCopilot();
   }
 }
 

@@ -76,6 +76,101 @@ export const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_dir',
+      description: 'List contents of a directory on the remote server with metadata (files, folders, sizes, permissions).',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Directory path to list on the remote server (e.g. "/var/log", "/etc/nginx", "/home")',
+          },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'inspect_service',
+      description: 'Inspect systemd service status and recent journalctl log lines on the remote server.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: {
+            type: 'string',
+            description: 'Name of the service (e.g. "nginx", "docker", "mariadb", "pm2")',
+          },
+          lines: {
+            type: 'number',
+            description: 'Number of recent log lines to retrieve (default 30)',
+          },
+        },
+        required: ['service_name'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'run_security_audit',
+      description: 'Run an automated, read-only Linux security audit (SSH hardening, firewall/open ports, failed logins, SUID binaries, cron persistence, sudo permissions).',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: {
+            type: 'string',
+            enum: ['full', 'ssh', 'network', 'auth', 'permissions'],
+            description: 'Audit scope: "full" for complete audit, "ssh" for SSH config, "network" for ports & firewall, "auth" for failed logins, "permissions" for SUID & sudoers.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'check_auth_failures',
+      description: 'Analyze authentication logs (/var/log/auth.log or journalctl) to identify top attacker IPs performing brute-force SSH attempts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Maximum number of attacker IPs to report (default 10)',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'setup_security_hardening',
+      description: 'Safely apply baseline Linux security hardening with SSH lockout protection (UFW firewall, SSH key enforcement, fail2ban setup).',
+      parameters: {
+        type: 'object',
+        properties: {
+          enable_ufw: {
+            type: 'boolean',
+            description: 'Enable UFW firewall and allow current SSH port first (default true)',
+          },
+          ssh_port: {
+            type: 'number',
+            description: 'The SSH port to keep open to prevent lockout (default 22)',
+          },
+          install_fail2ban: {
+            type: 'boolean',
+            description: 'Install and enable fail2ban service for SSH intrusion prevention',
+          },
+        },
+      },
+    },
+  },
 ];
 
 export function getAgentTools(mode: AiCopilotMode = 'build') {

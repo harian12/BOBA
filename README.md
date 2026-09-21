@@ -6,24 +6,32 @@ BOBA adalah aplikasi remote terminal & SFTP manager modern untuk Windows dengan 
 
 ## Daftar Fitur Utama
 
-### 1. BOBA AI Server Copilot & Autonomous Agent (Baru di v0.1.1)
+### 1. BOBA AI Server Copilot & Autonomous Agent (v0.1.4)
 - **Multi-Provider AI Terbuka:**
   - Integrasi dengan provider cloud: **OpenAI** (GPT-4o), **Anthropic Claude** (Claude 3.7 / 3.5 Sonnet), **Google Gemini** (Gemini 2.5 Flash), serta **Custom OpenAI-Compatible** (DeepSeek, OpenRouter, Groq, vLLM).
   - Dukungan AI Lokal / Self-Hosted: **Ollama** (`qwen2.5-coder`, `deepseek-r1`, `llama3`).
 - **Auto-Fetch Model Dinamis:**
   - Tombol `🔄 Tarik Model` di pengaturan provider otomatis menarik dan menampilkan semua model yang tersedia langsung dari `baseUrl` endpoint.
-- **Server Tool-Calling Engine:**
+- **Server Tool-Calling & Security Engine:**
   - `exec_command`: Menjalankan perintah bash di server remote secara aman melalui channel SSH.
   - `read_file`: Membaca konten teks file konfigurasi atau file log server.
-  - `write_file`: Menulis / mengubah file konfigurasi dengan otomatis membuat backup cadangan `<path>.boba.bak` sebelum ditimpa.
-  - `get_system_metrics`: Menarik metrik real-time CPU, RAM, Disk, dan Uptime server.
-- **Dual Execution Mode:**
+  - `write_file`: Menulis / mengubah file konfigurasi dengan preview diff konten & otomatis membuat backup cadangan `<path>.boba.bak`.
+  - `list_dir`: Memindai dan menampilkan daftar direktori remote secara terstruktur via SFTP.
+  - `inspect_service`: Diagnosa status systemd service & cuplikan journalctl logs secara langsung.
+  - `run_security_audit`: Menjalankan audit menyeluruh (konfigurasi SSH, port terbuka, status firewall UFW, cron job persistensi, SUID binaries, dan hak sudoers).
+  - `check_auth_failures`: Memindai log otentikasi untuk mendeteksi IP penyerang yang melakukan brute-force SSH.
+  - `setup_security_hardening`: Menerapkan baseline keamanan server dengan proteksi anti-lockout SSH, aktivasi firewall UFW, dan fail2ban.
+- **Dual Execution & Copilot Mode:**
+  - `📋 Mode Plan`: Analisis dan diagnosa read-only (perintah berisiko tinggi dan modifikasi file diblokir).
+  - `🔨 Mode Build`: Eksekusi perbaikan, hardening, dan perubahan konfigurasi server.
   - `🛡️ Mode Konfirmasi (Confirm)`: AI meminta persetujuan manual pengguna (`[✓ Jalankan]` / `[✕ Tolak]`) untuk setiap perintah.
-  - `⚡ Mode Otomatis (Auto)`: Menjalankan tindakan otomatis dengan guardrail proteksi yang otomatis menahan perintah berbahaya (`rm -rf /`, `mkfs`, `fdisk`, `dd`, `reboot`, `shutdown`, `passwd`).
+  - `⚡ Mode Otomatis (Auto)`: Menjalankan tindakan perbaikan secara otonom (autonomous multi-step loop) dengan SSH lockout safeguard.
+- **Runbook Generator (Markdown & Shell Script):**
+  - Tombol `📄` pada drawer untuk mengunduh SOP Runbook Markdown (`.md`) dan rangkaian skrip bash yang telah dieksekusi.
 - **Background SSH Auto-Connect:**
   - AI dapat mengakses server manapun dari Vault secara otomatis di latar belakang tanpa harus membuka tab terminal terlebih dahulu.
 - **Integrasi Konteks & Pintasan:**
-  - **Terminal:** Blok teks pesan error/log lalu klik kanan: `✨ Analisis Error dengan AI`.
+  - **Terminal:** Tombol toolbar `✨ Copilot` dan klik kanan context menu: `✨ Ask Copilot (Selection)` / `Diagnose with Copilot`.
   - **SFTP:** Klik kanan file konfigurasi/log: `✨ Analisis dengan AI Copilot`.
   - **Pintasan Global:** Tekan `Ctrl+Shift+A` untuk membuka/menutup drawer samping AI Copilot.
 

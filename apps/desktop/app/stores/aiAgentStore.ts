@@ -487,6 +487,87 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         toolCall.status = 'completed';
         toolCall.executedAt = Date.now();
         return metrics;
+      } else if (toolCall.name === 'list_dir') {
+        const dirPath = (toolCall.args?.path || '/').trim();
+        try {
+          const files = await tauriBridge.sftpList(realSessionId, dirPath);
+          const formatted = Array.isArray(files)
+            ? files.map((f: any) => `${f.is_dir ? '📁 [DIR]' : '📄 [FILE]'} ${f.name} (${f.size} B) [${f.permissions || 'default'}]`).join('\n')
+            : 'Direktori kosong atau tidak ditemukan';
+          toolCall.result = formatted;
+          toolCall.status = 'completed';
+          toolCall.executedAt = Date.now();
+          return formatted;
+        } catch {
+          // Fallback via shell command
+          const output = await tauriBridge.sshExecCommand(realSessionId, `ls -la "${dirPath}"`);
+          toolCall.result = output;
+          toolCall.status = 'completed';
+          toolCall.executedAt = Date.now();
+          return output;
+        }
+      } else if (toolCall.name === 'inspect_service') {
+        const svc = (toolCall.args?.service_name || '').trim();
+        const lines = Number(toolCall.args?.lines) || 30;
+        if (!svc) throw new Error('Nama service kosong');
+        const cmd = `systemctl status ${svc} --no-pager -l && echo "--- RECENT LOGS ---" && journalctl -u ${svc} -n ${lines} --no-pager`;
+        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const sanitized = maskSensitiveData(output);
+        toolCall.result = sanitized;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return sanitized;
+      } else if (toolCall.name === 'run_security_audit') {
+        const scope = (toolCall.args?.scope || 'full').toLowerCase();
+        let cmd = '';
+        if (scope === 'ssh') {
+          cmd = `echo "=== SSH CONFIG AUDIT ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication|X11Forwarding)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "No custom sshd_config lines")`;
+        } else if (scope === 'network') {
+          cmd = `echo "=== LISTENING PORTS ===" && (ss -tulpn 2>/dev/null || netstat -tulpn 2>/dev/null) && echo "=== FIREWALL STATUS ===" && (ufw status verbose 2>/dev/null || iptables -L -n -v 2>/dev/null || echo "No UFW/iptables info")`;
+        } else if (scope === 'auth') {
+          cmd = `echo "=== FAILED LOGIN AUDIT ===" && (grep "Failed password" /var/log/auth.log 2>/dev/null | tail -n 20 || journalctl -u ssh -u sshd -n 20 --no-pager 2>/dev/null || echo "No auth logs accessible")`;
+        } else if (scope === 'permissions') {
+          cmd = `echo "=== SUID BINARIES (TOP 15) ===" && find / -perm -4000 -type f 2>/dev/null | head -n 15 && echo "=== SUDOERS WITH NOPASSWD ===" && grep -rn "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo "None"`;
+        } else {
+          // Full scope composite read-only script
+          cmd = `echo "=== 1. SSH CONFIG ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "Default") && echo "=== 2. OPEN PORTS ===" && (ss -tulpn 2>/dev/null | grep LISTEN || netstat -tulpn 2>/dev/null | grep LISTEN) && echo "=== 3. FIREWALL ===" && (ufw status 2>/dev/null || echo "UFW not active") && echo "=== 4. CRON JOBS ===" && (ls -la /etc/cron* /var/spool/cron/crontabs 2>/dev/null | head -n 15) && echo "=== 5. USERS WITH SHELL ===" && (grep -v "/nologin\\|/false" /etc/passwd | cut -d: -f1,3,7)`;
+        }
+        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const sanitized = maskSensitiveData(output);
+        toolCall.result = sanitized;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return sanitized;
+      } else if (toolCall.name === 'check_auth_failures') {
+        const limit = Number(toolCall.args?.limit) || 10;
+        const cmd = `(grep "Failed password" /var/log/auth.log 2>/dev/null || journalctl -u ssh -u sshd --no-pager 2>/dev/null | grep "Failed password") | awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}' | sort | uniq -c | sort -nr | head -n ${limit}`;
+        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const formatted = output && output.trim().length > 0
+          ? `Top Brute-force Attacker IPs (Attempts Count | IP):\n${output}`
+          : 'Tidak ditemukan aktivitas failed login password yang mencurigakan di log.';
+        toolCall.result = formatted;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return formatted;
+      } else if (toolCall.name === 'setup_security_hardening') {
+        const port = Number(toolCall.args?.ssh_port) || 22;
+        const enableUfw = toolCall.args?.enable_ufw !== false;
+        const installFail2ban = !!toolCall.args?.install_fail2ban;
+
+        // Anti-lockout sequence: selalu allow SSH port sebelum enable firewall
+        let script = `echo "=== 1. SSH SAFEGUARD ===" && ufw allow ${port}/tcp && echo "SSH Port ${port} allowed in firewall."`;
+        if (enableUfw) {
+          script += ` && echo "y" | ufw enable && echo "UFW firewall enabled."`;
+        }
+        if (installFail2ban) {
+          script += ` && (which fail2ban-client >/dev/null 2>&1 || (apt-get update -y && apt-get install -y fail2ban) || yum install -y fail2ban || true) && systemctl enable --now fail2ban && echo "Fail2ban enabled."`;
+        }
+        const output = await tauriBridge.sshExecCommand(realSessionId, script);
+        const sanitized = maskSensitiveData(output);
+        toolCall.result = sanitized;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return sanitized;
       } else {
         throw new Error(`Tool "${toolCall.name}" tidak dikenali`);
       }
