@@ -538,26 +538,30 @@
         ></textarea>
 
         <!-- Form Action Bar -->
-        <div class="flex items-center justify-between pt-1 border-t border-boba-800/60">
-          <div class="flex items-center space-x-1.5 text-[10px] min-w-0">
+        <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-boba-800/60">
+          <!-- Left Controls: Model Selector, Plan/Build, Confirm/Auto -->
+          <div class="flex flex-wrap items-center gap-1.5 text-[10px] min-w-0">
             <!-- Model Selector Dropdown -->
-            <select
-              :value="currentSelectedModel"
-              @change="handleModelChange"
-              class="bg-boba-950 border border-boba-750 text-sky-300 rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer focus:outline-none focus:border-boba-accent max-w-[130px] sm:max-w-[160px] truncate"
-              title="Pilih Model AI Aktif"
-            >
-              <option v-for="m in modelOptions" :key="m" :value="m">
-                {{ m }}
-              </option>
-            </select>
+            <div class="relative flex items-center">
+              <select
+                :value="currentSelectedModel"
+                @change="handleModelChange"
+                class="bg-boba-950 border border-boba-750 text-sky-300 rounded-md pl-2 pr-5 py-1 text-[10px] font-mono cursor-pointer focus:outline-none focus:border-boba-accent max-w-[130px] sm:max-w-[170px] truncate appearance-none transition"
+                title="Pilih Model AI Aktif"
+              >
+                <option v-for="m in modelOptions" :key="m" :value="m">
+                  {{ m }}
+                </option>
+              </select>
+              <span class="absolute right-1.5 pointer-events-none text-[8px] text-slate-400">▼</span>
+            </div>
 
             <!-- Copilot Mode Switch (Plan vs Build) -->
             <button
               @click="toggleCopilotMode"
               type="button"
               :class="[
-                'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0',
+                'px-2 py-1 rounded-md text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0',
                 aiStore.copilotMode === 'plan'
                   ? 'bg-purple-950/80 border-purple-600 text-purple-200 shadow-[0_0_8px_rgba(168,85,247,0.25)]'
                   : 'bg-emerald-950/80 border-emerald-600 text-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
@@ -572,7 +576,7 @@
               @click="toggleExecutionMode"
               type="button"
               :class="[
-                'px-2 py-0.5 rounded text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0',
+                'px-2 py-1 rounded-md text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0',
                 aiStore.executionMode === 'auto'
                   ? 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
                   : 'bg-boba-850 border-boba-700 text-sky-300 hover:border-boba-600'
@@ -581,10 +585,10 @@
             >
               <span>{{ aiStore.executionMode === 'auto' ? '⚡ Auto' : '🛡️ Confirm' }}</span>
             </button>
-            <span class="text-slate-500 hidden sm:inline truncate">Enter ↵</span>
           </div>
 
-          <div class="flex items-center space-x-1.5">
+          <!-- Right Controls: Clear & Send / Stop Button -->
+          <div class="flex items-center space-x-1.5 ml-auto shrink-0">
             <!-- Clear input button if typed -->
             <button
               v-if="promptInput.trim()"
@@ -600,7 +604,7 @@
             <button
               v-if="aiStore.isThinking"
               @click="aiStore.stopThinking"
-              class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold transition shadow flex items-center space-x-1.5 animate-pulse"
+              class="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold transition shadow flex items-center space-x-1.5 animate-pulse"
             >
               <span>⏹</span>
               <span>Stop</span>
@@ -609,7 +613,7 @@
               v-else
               @click="handleSend"
               :disabled="!promptInput.trim()"
-              class="px-3.5 py-1.5 bg-boba-accent hover:bg-boba-accent-hover disabled:opacity-40 disabled:hover:bg-boba-accent text-white rounded-lg text-xs font-semibold transition shadow flex items-center space-x-1.5"
+              class="px-3 py-1 bg-boba-accent hover:bg-boba-accent-hover disabled:opacity-40 disabled:hover:bg-boba-accent text-white rounded-lg text-xs font-semibold transition shadow flex items-center space-x-1.5"
             >
               <span>Kirim</span>
               <span>➔</span>
