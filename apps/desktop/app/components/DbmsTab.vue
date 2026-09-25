@@ -430,6 +430,22 @@
               <Icon icon="lucide:network" class="w-3.5 h-3.5" />
               <span>ERD Diagram</span>
             </button>
+
+            <!-- Instant Live Data Filter Search Box -->
+            <div v-if="activeViewTab === 'data' && queryResult?.rows && queryResult.rows.length > 0" class="flex items-center space-x-1.5 ml-2">
+              <div class="relative flex items-center">
+                <Icon icon="lucide:search" class="w-3 h-3 text-slate-500 absolute left-2 pointer-events-none" />
+                <input
+                  v-model="gridSearchQuery"
+                  type="text"
+                  placeholder="Filter instan di tabel..."
+                  class="bg-boba-950 border border-boba-700 focus:border-sky-500 rounded pl-6 pr-2 py-0.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-44 font-mono transition"
+                />
+              </div>
+              <span v-if="gridSearchQuery.trim()" class="text-[10px] text-sky-400 font-mono">
+                ({{ displayRows.length }}/{{ queryResult.rows.length }})
+              </span>
+            </div>
           </div>
 
           <!-- Actions: Insert Row & Export Tools -->
@@ -693,7 +709,7 @@
               <tbody class="divide-y divide-boba-850">
                 <!-- Existing Saved Rows -->
                 <tr
-                  v-for="(row, rIdx) in (queryResult?.rows ?? [])"
+                  v-for="(row, rIdx) in displayRows"
                   :key="rIdx"
                   class="hover:bg-boba-800/40 transition group"
                 >
@@ -1269,6 +1285,20 @@
         <span>Salin Nilai Sel</span>
       </button>
       <button
+        @click="handleCellContextAction('copy_row_markdown')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <Icon icon="lucide:table" class="w-3.5 h-3.5 text-slate-400" />
+        <span>Salin Baris (Markdown)</span>
+      </button>
+      <button
+        @click="handleCellContextAction('copy_row_csv')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <Icon icon="lucide:file-text" class="w-3.5 h-3.5 text-slate-400" />
+        <span>Salin Baris (CSV)</span>
+      </button>
+      <button
         @click="handleCellContextAction('copy_row_json')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
@@ -1629,6 +1659,16 @@ const queryResult = computed({
       }
     }
   },
+});
+
+const gridSearchQuery = ref('');
+
+const displayRows = computed(() => {
+  if (!queryResult.value || !queryResult.value.rows) return [];
+  const rows = queryResult.value.rows;
+  const q = gridSearchQuery.value.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(r => r.some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
 });
 
 const lastExecutionTime = computed({
@@ -2090,7 +2130,22 @@ function resetMultiFilter() {
 
 async function executeQuery(customQuery?: string) {
   if (!props.tab.dbConnection) return;
-  const q = customQuery || currentQueryText.value;
+
+  let q = customQuery;
+  if (!q) {
+    const textarea = sqlEditorTextareaRef.value;
+    if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
+      const selected = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim();
+      if (selected) {
+        q = selected;
+      }
+    }
+  }
+
+  if (!q) {
+    q = currentQueryText.value;
+  }
+
   if (!q.trim()) return;
 
   executing.value = true;
@@ -2439,6 +2494,27 @@ function closeAllContextMenus() {
   closeCellContextMenu();
 }
 
+async function copyRowAsMarkdown(row: any[]) {
+  if (!queryResult.value?.columns) return;
+  const cols = queryResult.value.columns;
+  const header = '| ' + cols.join(' | ') + ' |';
+  const separator = '| ' + cols.map(() => '---').join(' | ') + ' |';
+  const rowStr = '| ' + row.map(v => v === null ? 'NULL' : String(v).replace(/\|/g, '\\|')).join(' | ') + ' |';
+  const md = `${header}\n${separator}\n${rowStr}`;
+  await navigator.clipboard.writeText(md);
+  dialogStore.showToast('1 Baris (Markdown Table) disalin ke clipboard!', 'success', 2000);
+}
+
+async function copyRowAsCsv(row: any[]) {
+  if (!queryResult.value?.columns) return;
+  const cols = queryResult.value.columns;
+  const header = cols.map(c => `"${c}"`).join(',');
+  const rowStr = row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+  const csv = `${header}\n${rowStr}`;
+  await navigator.clipboard.writeText(csv);
+  dialogStore.showToast('1 Baris (CSV) disalin ke clipboard!', 'success', 2000);
+}
+
 async function copyRowAsJson(row: any[]) {
   if (!queryResult.value?.columns) return;
   const obj: Record<string, any> = {};
@@ -2449,7 +2525,7 @@ async function copyRowAsJson(row: any[]) {
   dialogStore.showToast('1 Baris (JSON) berhasil disalin ke clipboard!', 'success', 2000);
 }
 
-async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clone' | 'copy_cell' | 'copy_row_json' | 'copy_row_sql' | 'detail' | 'delete') {
+async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clone' | 'copy_cell' | 'copy_row_markdown' | 'copy_row_csv' | 'copy_row_json' | 'copy_row_sql' | 'detail' | 'delete') {
   const { rIdx, cIdx, row, value, column } = cellContextMenu.value;
   closeCellContextMenu();
 
@@ -2463,6 +2539,10 @@ async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clo
     const textToCopy = value === null ? 'NULL' : (typeof value === 'object' ? JSON.stringify(value) : String(value));
     await navigator.clipboard.writeText(textToCopy);
     dialogStore.showToast('Nilai sel berhasil disalin', 'success', 1500);
+  } else if (action === 'copy_row_markdown') {
+    await copyRowAsMarkdown(row);
+  } else if (action === 'copy_row_csv') {
+    await copyRowAsCsv(row);
   } else if (action === 'copy_row_json') {
     await copyRowAsJson(row);
   } else if (action === 'copy_row_sql') {
