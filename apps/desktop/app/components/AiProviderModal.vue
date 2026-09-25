@@ -8,7 +8,7 @@
       <!-- Modal Header -->
       <div class="px-5 py-3 bg-boba-900 border-b border-boba-800 flex items-center justify-between">
         <div class="flex items-center space-x-2">
-          <span class="text-base">⚙️</span>
+          <Icon icon="lucide:settings-2" class="w-4 h-4 text-purple-400" />
           <span class="font-bold text-slate-100 text-sm">Pengaturan Provider & AI Copilot</span>
         </div>
         <button
@@ -288,7 +288,7 @@
                   class="text-[10px] px-2.5 py-1 rounded bg-boba-850 border border-boba-700 text-sky-300 hover:text-white hover:border-boba-accent hover:bg-boba-800 transition flex items-center space-x-1.5 disabled:opacity-50 shadow-sm"
                   title="Ambil daftar model yang tersedia langsung dari Base URL provider"
                 >
-                  <span>{{ isFetchingModels ? '⏳' : '🔄' }}</span>
+                  <Icon icon="lucide:refresh-cw" :class="['w-3 h-3', isFetchingModels ? 'animate-spin' : '']" />
                   <span>{{ isFetchingModels ? 'Menarik Model...' : 'Tarik Daftar Model' }}</span>
                 </button>
               </div>
@@ -350,6 +350,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { Icon } from '@iconify/vue';
 import type { AiProviderConfig, AiProviderType } from '../types/index.js';
 import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';

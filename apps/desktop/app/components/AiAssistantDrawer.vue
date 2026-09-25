@@ -20,7 +20,7 @@
     <!-- Drawer Header -->
     <div class="h-11 px-3 bg-boba-900 border-b border-boba-800 flex items-center justify-between shrink-0">
       <div class="flex items-center space-x-2 truncate">
-        <span class="text-sm">✨</span>
+        <Icon icon="lucide:sparkles" class="w-4 h-4 text-purple-400" />
         <span class="font-bold text-xs text-sky-300">AI Server Copilot</span>
       </div>
 
@@ -31,7 +31,7 @@
           class="p-1 rounded text-slate-400 hover:text-white hover:bg-boba-800 text-xs transition"
           title="Pengaturan Provider & Model AI"
         >
-          ⚙️
+          <Icon icon="lucide:settings" class="w-3.5 h-3.5" />
         </button>
 
         <!-- Export Runbook Dropdown / Button -->
@@ -40,7 +40,7 @@
           class="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-boba-800 text-xs transition"
           title="Ekspor Percakapan / Runbook (Markdown & Script)"
         >
-          📄
+          <Icon icon="lucide:file-text" class="w-3.5 h-3.5" />
         </button>
 
         <!-- Clear Chat History -->
@@ -49,7 +49,7 @@
           class="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-boba-800 text-xs transition"
           title="Bersihkan riwayat chat sesi ini"
         >
-          🗑️
+          <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
         </button>
 
         <!-- Toggle Expand / Shrink Width -->
@@ -58,7 +58,7 @@
           class="p-1 rounded text-slate-400 hover:text-white hover:bg-boba-800 text-xs transition font-mono"
           :title="drawerWidth > 550 ? 'Kembalikan ukuran normal' : 'Perlebar room chat'"
         >
-          {{ drawerWidth > 550 ? '⤡' : '⤢' }}
+          <Icon :icon="drawerWidth > 550 ? 'lucide:minimize-2' : 'lucide:maximize-2'" class="w-3.5 h-3.5" />
         </button>
 
         <!-- Close Drawer Button -->
@@ -260,7 +260,7 @@
             @click="handleSendChip(chip)"
             class="w-full text-left p-2.5 rounded-lg bg-boba-900 border border-boba-800 hover:border-boba-accent/60 hover:bg-boba-850 text-slate-300 hover:text-white text-[11px] transition flex items-center space-x-2.5 shadow-sm group"
           >
-            <span class="text-boba-accent group-hover:scale-110 transition-transform shrink-0">💡</span>
+            <Icon icon="lucide:lightbulb" class="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
             <span class="truncate">{{ chip }}</span>
           </button>
         </div>
@@ -571,7 +571,8 @@
               ]"
               :title="aiStore.copilotMode === 'plan' ? 'Mode Plan: Diagnosa & Analisis rencana (Read-Only)' : 'Mode Build: Eksekusi perubahan & perbaikan server'"
             >
-              <span>{{ aiStore.copilotMode === 'plan' ? '📋 Plan' : '🔨 Build' }}</span>
+              <Icon :icon="aiStore.copilotMode === 'plan' ? 'lucide:clipboard-list' : 'lucide:wrench'" class="w-3 h-3" />
+              <span>{{ aiStore.copilotMode === 'plan' ? 'Plan' : 'Build' }}</span>
             </button>
 
             <!-- Execution Mode Switch (Confirm vs Auto) -->
@@ -586,7 +587,8 @@
               ]"
               :title="aiStore.executionMode === 'auto' ? 'Mode Otomatis: Perintah non-berbahaya langsung dieksekusi' : 'Mode Konfirmasi: AI meminta persetujuan sebelum mengeksekusi perintah'"
             >
-              <span>{{ aiStore.executionMode === 'auto' ? '⚡ Auto' : '🛡️ Confirm' }}</span>
+              <Icon :icon="aiStore.executionMode === 'auto' ? 'lucide:zap' : 'lucide:shield-alert'" class="w-3 h-3" />
+              <span>{{ aiStore.executionMode === 'auto' ? 'Auto' : 'Confirm' }}</span>
             </button>
           </div>
 
@@ -630,6 +632,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useVaultStore } from '../stores/vaultStore.js';

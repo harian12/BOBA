@@ -3,17 +3,22 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div>
-          <h3 class="text-base font-bold text-slate-100">Database User & Privileges Manager</h3>
-          <p class="text-[11px] text-slate-400">Kelola akun pengguna database dan hak akses izin (Privileges)</p>
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <Icon icon="lucide:users" class="w-4 h-4" />
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100">Database User & Privileges Manager</h3>
+            <p class="text-[11px] text-slate-400">Kelola akun pengguna database dan hak akses izin (Privileges)</p>
+          </div>
         </div>
         <div class="flex items-center space-x-2">
           <button
             @click="loadUsers"
             :disabled="loading"
-            class="px-3 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs transition flex items-center space-x-1"
+            class="px-3 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs transition flex items-center space-x-1.5"
           >
-            <span :class="[loading ? 'animate-spin inline-block' : '']">⟳</span>
+            <Icon icon="lucide:refresh-cw" :class="['w-3.5 h-3.5', loading ? 'animate-spin' : '']" />
             <span>Refresh</span>
           </button>
           <button
@@ -122,7 +127,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { tauriBridge } from '../services/tauriBridge.js';
+import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { DbConnectionConfig, DbUserItem } from '../types/index.js';
 

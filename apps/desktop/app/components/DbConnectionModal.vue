@@ -3,11 +3,16 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div>
-          <h3 class="text-base font-bold text-slate-100">
-            {{ form.id ? 'Edit Koneksi Database' : 'Koneksi Database Baru' }}
-          </h3>
-          <p class="text-[11px] text-slate-400">Tersimpan aman dengan E2EE Master Key</p>
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+            <Icon icon="lucide:database" class="w-4 h-4" />
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100">
+              {{ form.id ? 'Edit Koneksi Database' : 'Koneksi Database Baru' }}
+            </h3>
+            <p class="text-[11px] text-slate-400">Tersimpan aman dengan E2EE Master Key</p>
+          </div>
         </div>
         <button
           @click="$emit('close')"
@@ -27,13 +32,13 @@
             type="button"
             @click="selectEngine(eng.id)"
             :class="[
-              'p-2 rounded-lg border text-center transition flex flex-col items-center justify-center space-y-1',
+              'p-2 rounded-lg border text-center transition flex flex-col items-center justify-center space-y-1.5',
               form.engine === eng.id
                 ? 'bg-sky-950/80 border-sky-500 text-sky-200 ring-1 ring-sky-500/40 shadow-sm'
                 : 'bg-boba-950 border-boba-800 text-slate-400 hover:bg-boba-850 hover:text-slate-200'
             ]"
           >
-            <span class="text-xs font-mono font-bold tracking-wide">{{ eng.badge }}</span>
+            <Icon :icon="eng.icon" class="w-5 h-5" />
             <span class="text-[10px] font-semibold tracking-tight">{{ eng.label }}</span>
           </button>
         </div>
@@ -73,9 +78,10 @@
           <button
             type="button"
             @click="browseSqliteFile"
-            class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1"
+            class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1.5"
           >
-            <span>📂 Browse</span>
+            <Icon icon="lucide:folder-open" class="w-3.5 h-3.5 text-sky-400" />
+            <span>Browse</span>
           </button>
         </div>
       </div>
@@ -162,7 +168,7 @@
       <!-- Test Connection Result Banner -->
       <div v-if="testResult" class="p-3 rounded-lg text-xs font-mono" :class="testResult.success ? 'bg-emerald-950/60 border border-emerald-800 text-emerald-300' : 'bg-rose-950/60 border border-rose-800 text-rose-300'">
         <div class="flex items-start space-x-2">
-          <span class="font-bold shrink-0">{{ testResult.success ? '[OK]' : '[ERR]' }}</span>
+          <Icon :icon="testResult.success ? 'lucide:check-circle-2' : 'lucide:alert-triangle'" class="w-4 h-4 shrink-0 mt-0.5" />
           <span class="break-all">{{ testResult.message }}</span>
         </div>
       </div>
@@ -175,7 +181,8 @@
           :disabled="testing"
           class="px-3.5 py-1.5 bg-boba-800 hover:bg-boba-700 disabled:opacity-50 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1.5 border border-boba-700"
         >
-          <span v-if="testing" class="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin"></span>
+          <Icon v-if="testing" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin text-sky-400" />
+          <Icon v-else icon="lucide:zap" class="w-3.5 h-3.5 text-amber-400" />
           <span>{{ testing ? 'Menguji...' : 'Test Koneksi' }}</span>
         </button>
 
@@ -202,6 +209,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
@@ -220,11 +228,11 @@ const dbmsStore = useDbmsStore();
 const dialogStore = useDialogStore();
 
 const engines = [
-  { id: 'mysql', label: 'MySQL', badge: 'MY', defaultPort: 3306, defaultUser: 'root' },
-  { id: 'postgres', label: 'PostgreSQL', badge: 'PG', defaultPort: 5432, defaultUser: 'postgres' },
-  { id: 'sqlite', label: 'SQLite', badge: 'LT', defaultPort: 0, defaultUser: '' },
-  { id: 'redis', label: 'Redis', badge: 'RD', defaultPort: 6379, defaultUser: '' },
-  { id: 'mongodb', label: 'MongoDB', badge: 'MG', defaultPort: 27017, defaultUser: '' },
+  { id: 'mysql', label: 'MySQL', icon: 'logos:mysql', defaultPort: 3306, defaultUser: 'root' },
+  { id: 'postgres', label: 'PostgreSQL', icon: 'logos:postgresql', defaultPort: 5432, defaultUser: 'postgres' },
+  { id: 'sqlite', label: 'SQLite', icon: 'logos:sqlite', defaultPort: 0, defaultUser: '' },
+  { id: 'redis', label: 'Redis', icon: 'logos:redis', defaultPort: 6379, defaultUser: '' },
+  { id: 'mongodb', label: 'MongoDB', icon: 'logos:mongodb-icon', defaultPort: 27017, defaultUser: '' },
 ] as const;
 
 const form = ref<DbConnectionConfig>({

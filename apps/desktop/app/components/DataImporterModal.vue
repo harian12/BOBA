@@ -3,9 +3,14 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div>
-          <h3 class="text-base font-bold text-slate-100">Data & Script Importer Wizard</h3>
-          <p class="text-[11px] text-slate-400">Import file SQL Script (.sql) atau File Data CSV (.csv)</p>
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+            <Icon icon="lucide:file-up" class="w-4 h-4" />
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100">Data & Script Importer Wizard</h3>
+            <p class="text-[11px] text-slate-400">Import file SQL Script (.sql) atau File Data CSV (.csv)</p>
+          </div>
         </div>
         <button
           @click="$emit('close')"
@@ -27,6 +32,7 @@
               : 'text-slate-400 hover:text-slate-200 hover:bg-boba-900'
           ]"
         >
+          <Icon icon="lucide:file-code" class="w-4 h-4" />
           <span>Import File SQL (.sql)</span>
         </button>
         <button
@@ -39,6 +45,7 @@
               : 'text-slate-400 hover:text-slate-200 hover:bg-boba-900'
           ]"
         >
+          <Icon icon="lucide:file-spreadsheet" class="w-4 h-4" />
           <span>Import File CSV (.csv)</span>
         </button>
       </div>
@@ -58,9 +65,10 @@
             <button
               type="button"
               @click="browseSqlFile"
-              class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition"
+              class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1.5"
             >
-              📂 Browse
+              <Icon icon="lucide:folder-open" class="w-3.5 h-3.5 text-sky-400" />
+              <span>Browse</span>
             </button>
           </div>
         </div>
@@ -86,9 +94,10 @@
             <button
               type="button"
               @click="browseCsvFile"
-              class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition"
+              class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1.5"
             >
-              📂 Browse
+              <Icon icon="lucide:folder-open" class="w-3.5 h-3.5 text-sky-400" />
+              <span>Browse</span>
             </button>
           </div>
         </div>
@@ -145,8 +154,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { tauriBridge } from '../services/tauriBridge.js';
+import { ref, computed } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { DbConnectionConfig, DbTableMeta } from '../types/index.js';
 

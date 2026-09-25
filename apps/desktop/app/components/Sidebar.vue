@@ -10,14 +10,14 @@
         <span class="font-bold text-sm tracking-wide text-slate-100">BOBA</span>
       </div>
 
-      <div class="flex items-center space-x-1.5">
+      <div class="flex items-center space-x-1">
         <!-- Check Update Button -->
         <button
           @click="$emit('open-update')"
           title="Periksa Update Aplikasi (GitHub)"
           class="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-boba-800 rounded-md transition text-xs relative"
         >
-          <span>🚀</span>
+          <Icon icon="lucide:rocket" class="w-3.5 h-3.5" />
           <span
             v-if="hasUpdateAvailable"
             class="absolute top-1 right-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"
@@ -34,7 +34,7 @@
           title="SSH Key Vault (E2EE)"
           class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-boba-800 rounded-md transition text-xs"
         >
-          🔑
+          <Icon icon="lucide:key" class="w-3.5 h-3.5" />
         </button>
 
         <!-- Change Master Password Button -->
@@ -43,7 +43,7 @@
           title="Ubah Master Password (E2EE)"
           class="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-boba-800 rounded-md transition text-xs"
         >
-          🛡️
+          <Icon icon="lucide:shield-check" class="w-3.5 h-3.5" />
         </button>
 
         <!-- Sync Trigger Button -->
@@ -52,7 +52,7 @@
           :title="syncStore.token ? `Logged in as ${syncStore.userEmail}` : 'Configure Cloud Sync'"
           class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded-md transition"
         >
-          <span :class="['inline-block text-xs', syncStore.token ? 'text-emerald-400' : 'text-slate-400']">☁️</span>
+          <Icon icon="lucide:cloud" :class="['w-3.5 h-3.5', syncStore.token ? 'text-emerald-400' : 'text-slate-400']" />
         </button>
 
         <!-- Lock Vault Button -->
@@ -61,7 +61,7 @@
           title="Lock Vault"
           class="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-boba-800 rounded-md transition text-xs"
         >
-          🔒
+          <Icon icon="lucide:lock" class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -85,7 +85,7 @@
           title="Buka SFTP Manager Dedicated (Dual Pane / Inter-Session)"
           class="px-2 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded text-[11px] font-medium border border-sky-700/50 transition flex items-center space-x-1"
         >
-          <span>⚡</span>
+          <Icon icon="lucide:folder-sync" class="w-3.5 h-3.5 text-sky-400" />
           <span>SFTP</span>
         </button>
         <button
@@ -141,10 +141,14 @@
         >
           <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
             <!-- Chevron Dropdown Indicator -->
-            <span class="text-[10px] text-slate-400 transition-transform duration-150 inline-block w-3 text-center">
-              {{ isFolderCollapsed(folder.id) ? '▶' : '▼' }}
-            </span>
-            <span class="text-amber-400 text-sm">📁</span>
+            <Icon
+              :icon="isFolderCollapsed(folder.id) ? 'lucide:chevron-right' : 'lucide:chevron-down'"
+              class="w-3.5 h-3.5 text-slate-400 shrink-0"
+            />
+            <Icon
+              :icon="isFolderCollapsed(folder.id) ? 'lucide:folder' : 'lucide:folder-open'"
+              class="w-4 h-4 text-amber-400 shrink-0"
+            />
             <span class="font-semibold text-slate-200 truncate text-[13px]">{{ folder.name }}</span>
             <span class="text-[10px] text-slate-500 font-mono">({{ getSessionsInFolder(folder.id).length }})</span>
           </div>
@@ -193,7 +197,7 @@
             title="Drag to move or reorder, double click to connect"
           >
             <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
-              <span class="text-xs text-sky-400 font-mono font-bold">></span>
+              <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
               <span class="text-slate-300 truncate font-mono text-[12px]">{{ session.name || session.host }}</span>
             </div>
             <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
@@ -239,8 +243,8 @@
           ]"
           title="Drag to move or reorder, double click to connect"
         >
-          <div class="flex items-center space-x-2.5 truncate mr-2 pointer-events-none">
-            <span class="text-xs text-sky-400 font-mono font-bold">></span>
+          <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
+            <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
             <span class="text-slate-300 truncate font-mono text-[12px]">{{ session.name || session.host }}</span>
           </div>
           <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
@@ -267,6 +271,7 @@
     <div class="border-t border-boba-800 bg-[#0f131c] flex flex-col max-h-56">
       <div class="px-3.5 py-2 flex items-center justify-between border-b border-boba-800/80 text-xs">
         <div class="flex items-center space-x-1.5">
+          <Icon icon="lucide:database" class="w-3.5 h-3.5 text-sky-400" />
           <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Databases</span>
           <span class="text-[10px] text-slate-500 font-mono">({{ dbmsStore.databases.length }})</span>
         </div>
@@ -275,7 +280,8 @@
           title="Add New Database Connection"
           class="px-2 py-0.5 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-300 hover:text-white rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
         >
-          <span>+ DB</span>
+          <Icon icon="lucide:plus" class="w-3 h-3" />
+          <span>DB</span>
         </button>
       </div>
 
@@ -292,7 +298,7 @@
           :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
         >
           <div class="flex items-center space-x-2 truncate mr-1.5">
-            <span class="text-xs shrink-0">{{ getDbIcon(db.engine) }}</span>
+            <Icon :icon="getDbIcon(db.engine)" class="w-3.5 h-3.5 shrink-0" />
             <span class="text-slate-300 truncate text-[12px] font-medium">{{ db.name }}</span>
           </div>
 
@@ -339,7 +345,7 @@
           @click="handleContextConnect(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>🚀</span>
+          <Icon icon="lucide:terminal" class="w-3.5 h-3.5" />
           <span>Connect Terminal</span>
         </button>
 
@@ -347,7 +353,7 @@
           @click="handleContextOpenSftp(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>📁</span>
+          <Icon icon="lucide:folder-sync" class="w-3.5 h-3.5" />
           <span>Open SFTP Manager</span>
         </button>
 
@@ -355,7 +361,7 @@
           @click="handleContextCut(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>✂️</span>
+          <Icon icon="lucide:scissors" class="w-3.5 h-3.5" />
           <span>Cut (Move)</span>
         </button>
 
@@ -363,7 +369,7 @@
           @click="handleContextCopy(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>📋</span>
+          <Icon icon="lucide:copy" class="w-3.5 h-3.5" />
           <span>Copy (Duplicate)</span>
         </button>
 
@@ -373,7 +379,7 @@
           @click="handleContextEdit(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>✎</span>
+          <Icon icon="lucide:edit-3" class="w-3.5 h-3.5" />
           <span>Edit Session</span>
         </button>
 
@@ -381,7 +387,7 @@
           @click="handleContextDelete(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-300 transition"
         >
-          <span>🗑️</span>
+          <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
           <span>Delete Session</span>
         </button>
       </template>
@@ -393,7 +399,7 @@
           @click="handleContextPasteToFolder(contextMenu.folder.id)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded bg-sky-950/60 hover:bg-sky-600 hover:text-white text-sky-300 transition font-semibold"
         >
-          <span>📥</span>
+          <Icon icon="lucide:clipboard-paste" class="w-3.5 h-3.5" />
           <span>Paste Session Here ({{ clipboardSession.session.name || clipboardSession.session.host }})</span>
         </button>
 
@@ -401,7 +407,7 @@
           @click="handleContextNewSessionInFolder(contextMenu.folder.id)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>➕</span>
+          <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
           <span>New Session Here</span>
         </button>
 
@@ -409,7 +415,7 @@
           @click="handleContextRenameFolder(contextMenu.folder)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <span>🏷️</span>
+          <Icon icon="lucide:tag" class="w-3.5 h-3.5" />
           <span>Rename Folder</span>
         </button>
 
@@ -419,7 +425,7 @@
           @click="handleContextDeleteFolder(contextMenu.folder)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-300 transition"
         >
-          <span>🗑️</span>
+          <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
           <span>Delete Folder</span>
         </button>
       </template>
@@ -429,6 +435,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useSyncStore } from '../stores/syncStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
@@ -452,18 +459,18 @@ function getDbIcon(engine?: string): string {
   switch (engine?.toLowerCase()) {
     case 'mysql':
     case 'mariadb':
-      return '🐬';
+      return 'logos:mysql';
     case 'postgres':
     case 'postgresql':
-      return '🐘';
+      return 'logos:postgresql';
     case 'sqlite':
-      return '🗃️';
+      return 'logos:sqlite';
     case 'redis':
-      return '⚡';
+      return 'logos:redis';
     case 'mongodb':
-      return '🍃';
+      return 'logos:mongodb-icon';
     default:
-      return '🗄️';
+      return 'lucide:database';
   }
 }
 

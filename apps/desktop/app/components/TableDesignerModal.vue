@@ -4,8 +4,8 @@
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
         <div class="flex items-center space-x-2.5">
-          <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 text-base">
-            🏗️
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <Icon icon="lucide:table-properties" class="w-4 h-4" />
           </div>
           <div>
             <h3 class="text-base font-bold text-slate-100">
@@ -40,9 +40,10 @@
           <button
             type="button"
             @click="addColumn"
-            class="px-2.5 py-1 bg-indigo-900/60 hover:bg-indigo-700 text-indigo-200 rounded text-xs font-medium border border-indigo-700/50 transition flex items-center space-x-1"
+            class="px-2.5 py-1 bg-indigo-900/60 hover:bg-indigo-700 text-indigo-200 rounded text-xs font-medium border border-indigo-700/50 transition flex items-center space-x-1.5"
           >
-            <span>+ Tambah Kolom</span>
+            <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+            <span>Tambah Kolom</span>
           </button>
         </div>
 
@@ -150,8 +151,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { tauriBridge } from '../services/tauriBridge.js';
+import { ref, watch } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { DbConnectionConfig, DbTableMeta, DbColumnMeta } from '../types/index.js';
 

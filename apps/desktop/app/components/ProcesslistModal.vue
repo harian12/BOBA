@@ -3,17 +3,22 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div>
-          <h3 class="text-base font-bold text-slate-100">Live Processlist & Query Killer</h3>
-          <p class="text-[11px] text-slate-400">Pantau proses & query aktif secara real-time dan hentikan query macet</p>
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+            <Icon icon="lucide:activity" class="w-4 h-4" />
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100">Live Processlist & Query Killer</h3>
+            <p class="text-[11px] text-slate-400">Pantau proses & query aktif secara real-time dan hentikan query macet</p>
+          </div>
         </div>
         <div class="flex items-center space-x-2">
           <button
             @click="loadProcesslist"
             :disabled="loading"
-            class="px-3 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs transition flex items-center space-x-1"
+            class="px-3 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs transition flex items-center space-x-1.5"
           >
-            <span :class="[loading ? 'animate-spin inline-block' : '']">⟳</span>
+            <Icon icon="lucide:refresh-cw" :class="['w-3.5 h-3.5', loading ? 'animate-spin' : '']" />
             <span>Refresh</span>
           </button>
           <button
@@ -91,7 +96,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { tauriBridge } from '../services/tauriBridge.js';
+import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { DbConnectionConfig, DbProcessItem } from '../types/index.js';
 

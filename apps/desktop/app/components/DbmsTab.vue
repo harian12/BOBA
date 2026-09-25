@@ -37,40 +37,40 @@
             title="Visual Table Designer (Buat Tabel Baru)"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-indigo-500/60 rounded text-slate-300 hover:text-indigo-300 transition"
           >
-            <span class="text-[10px] font-bold">New</span>
-            <span class="text-[9px] text-slate-400 font-sans">Tabel</span>
+            <Icon icon="lucide:table-properties" class="w-3.5 h-3.5 text-indigo-400" />
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Tabel</span>
           </button>
           <button
             @click="isImporterOpen = true"
             title="Import Data & Script (.sql / .csv)"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-emerald-500/60 rounded text-slate-300 hover:text-emerald-300 transition"
           >
-            <span class="text-[10px] font-bold">Imp</span>
-            <span class="text-[9px] text-slate-400 font-sans">Import</span>
+            <Icon icon="lucide:file-up" class="w-3.5 h-3.5 text-emerald-400" />
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Import</span>
           </button>
           <button
             @click="isProcesslistOpen = true"
             title="Live Processlist & Query Killer"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-rose-500/60 rounded text-slate-300 hover:text-rose-300 transition"
           >
-            <span class="text-[10px] font-bold">Proc</span>
-            <span class="text-[9px] text-slate-400 font-sans">Process</span>
+            <Icon icon="lucide:activity" class="w-3.5 h-3.5 text-rose-400" />
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Process</span>
           </button>
           <button
             @click="isUserManagerOpen = true"
             title="Database User & Privileges Manager"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-amber-500/60 rounded text-slate-300 hover:text-amber-300 transition"
           >
-            <span class="text-[10px] font-bold">User</span>
-            <span class="text-[9px] text-slate-400 font-sans">Privs</span>
+            <Icon icon="lucide:users" class="w-3.5 h-3.5 text-amber-400" />
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Users</span>
           </button>
           <button
             @click="openHealthMonitor"
             title="Server Health & Performance Metrics"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-sky-500/60 rounded text-slate-300 hover:text-sky-300 transition"
           >
-            <span class="text-[10px] font-bold">Stat</span>
-            <span class="text-[9px] text-slate-400 font-sans">Health</span>
+            <Icon icon="lucide:heart-pulse" class="w-3.5 h-3.5 text-sky-400" />
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Health</span>
           </button>
         </div>
 
@@ -120,9 +120,13 @@
           ]"
         >
           <div class="flex items-center space-x-2 truncate mr-1.5">
-            <span class="text-[10px] font-mono text-slate-500 shrink-0">
-              {{ tbl.table_type === 'VIEW' ? 'VIEW' : 'TBL' }}
-            </span>
+            <svg v-if="tbl.table_type === 'VIEW'" class="w-3.5 h-3.5 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            <svg v-else class="w-3.5 h-3.5 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
+            </svg>
             <span class="truncate text-[11px]">{{ tbl.name }}</span>
           </div>
 
@@ -149,7 +153,12 @@
                 : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
             ]"
           >
-            <span class="text-[10px] text-slate-500 shrink-0">{{ qTab.tableName ? 'T' : 'Q' }}</span>
+            <svg v-if="qTab.tableName" class="w-3 h-3 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
+            </svg>
+            <svg v-else class="w-3 h-3 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
             <span class="truncate text-[11px]">{{ qTab.title }}</span>
             <button
               v-if="queryTabs.length > 1"
@@ -197,6 +206,9 @@
               class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-medium text-xs shadow transition flex items-center space-x-1.5"
             >
               <span v-if="executing" class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></span>
+              <svg v-else class="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
               <span>{{ executing ? 'Menjalankan...' : 'Jalankan (Ctrl+Enter)' }}</span>
             </button>
 
@@ -204,18 +216,24 @@
             <button
               @click="handleExplainQuery"
               :disabled="executing || !currentQueryText.trim()"
-              class="px-2.5 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded border border-sky-700/50 text-xs font-medium transition flex items-center space-x-1"
+              class="px-2.5 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded border border-sky-700/50 text-xs font-medium transition flex items-center space-x-1.5"
               title="Analisis Rencana Eksekusi Query (EXPLAIN / Bottleneck Detector)"
             >
+              <svg class="w-3 h-3 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
               <span>EXPLAIN</span>
             </button>
 
             <!-- Fitur 3: Saved Queries / Snippets Button -->
             <button
               @click="isSnippetsDrawerOpen = true"
-              class="px-2.5 py-1 bg-amber-950/60 hover:bg-amber-800 text-amber-300 hover:text-white rounded border border-amber-700/50 text-xs font-medium transition flex items-center space-x-1"
+              class="px-2.5 py-1 bg-amber-950/60 hover:bg-amber-800 text-amber-300 hover:text-white rounded border border-amber-700/50 text-xs font-medium transition flex items-center space-x-1.5"
               title="Buka Snippets / Saved Queries (E2EE)"
             >
+              <svg class="w-3 h-3 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
               <span>Snippets</span>
             </button>
 
@@ -245,16 +263,23 @@
             </span>
             <button
               @click="showHistory = !showHistory"
-              :class="['px-2 py-0.5 rounded transition text-[11px]', showHistory ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+              :class="['px-2 py-0.5 rounded transition text-[11px] flex items-center space-x-1', showHistory ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
               title="Lihat Riwayat Query"
             >
-              Riwayat
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              <span>Riwayat</span>
             </button>
           </div>
         </div>
 
         <!-- AI SQL Assistant Bar -->
         <div class="px-3 py-1.5 bg-purple-950/20 border-b border-purple-900/30 flex items-center space-x-2">
+          <svg class="w-3.5 h-3.5 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
           <span class="text-xs text-purple-400 font-mono font-semibold shrink-0">AI SQL:</span>
           <input
             v-model="aiPrompt"
@@ -307,30 +332,34 @@
           <div class="flex items-center space-x-1">
             <button
               @click="activeViewTab = 'data'"
-              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'data' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition flex items-center space-x-1.5', activeViewTab === 'data' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              Data
+              <Icon icon="lucide:table" class="w-3.5 h-3.5" />
+              <span>Data</span>
             </button>
             <button
               v-if="activeTable?.columns && activeTable.columns.length > 0"
               @click="activeViewTab = 'structure'"
-              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'structure' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition flex items-center space-x-1.5', activeViewTab === 'structure' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              Struktur ({{ activeTable.columns.length }} Kolom)
+              <Icon icon="lucide:columns" class="w-3.5 h-3.5" />
+              <span>Struktur ({{ activeTable.columns.length }} Kolom)</span>
             </button>
             <button
               v-if="activeTable?.columns && activeTable.columns.length > 0"
               @click="activeViewTab = 'ddl'"
-              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'ddl' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition flex items-center space-x-1.5', activeViewTab === 'ddl' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              DDL Script
+              <Icon icon="lucide:file-code" class="w-3.5 h-3.5" />
+              <span>DDL Script</span>
             </button>
             <button
               v-if="schemaOverview?.tables && schemaOverview.tables.length > 0"
               @click="activeViewTab = 'erd'"
-              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'erd' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition flex items-center space-x-1.5', activeViewTab === 'erd' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              ERD Diagram
+              <Icon icon="lucide:network" class="w-3.5 h-3.5" />
+              <span>ERD Diagram</span>
             </button>
           </div>
 
@@ -342,30 +371,34 @@
               class="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
               title="Tambah baris baru langsung di tabel (Draft inline)"
             >
-              <span>+ Tambah Baris</span>
+              <Icon icon="lucide:plus" class="w-3 h-3" />
+              <span>Tambah Baris</span>
             </button>
 
             <template v-if="queryResult?.columns && queryResult.columns.length > 0 && activeViewTab === 'data'">
               <button
                 @click="exportData('csv')"
                 title="Ekspor ke CSV"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
               >
-                CSV
+                <Icon icon="lucide:file-text" class="w-3 h-3" />
+                <span>CSV</span>
               </button>
               <button
                 @click="exportData('json')"
                 title="Ekspor ke JSON"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
               >
-                JSON
+                <Icon icon="lucide:file-json" class="w-3 h-3" />
+                <span>JSON</span>
               </button>
               <button
                 @click="exportData('sql')"
                 title="Ekspor sebagai SQL INSERT Statements"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
               >
-                SQL Dump
+                <Icon icon="lucide:database" class="w-3 h-3" />
+                <span>SQL Dump</span>
               </button>
             </template>
           </div>
@@ -407,6 +440,7 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
               <span class="text-slate-300 text-[11px] font-sans font-bold flex items-center space-x-1.5">
+                <Icon icon="lucide:filter" class="w-3.5 h-3.5 text-sky-400" />
                 <span>Multi-Filter Query</span>
                 <span
                   v-if="filterState?.active"
@@ -422,7 +456,8 @@
                 @click="addFilterRule"
                 class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-[11px] transition flex items-center space-x-1 border border-boba-700"
               >
-                <span>+ Kondisi</span>
+                <Icon icon="lucide:plus" class="w-3 h-3" />
+                <span>Kondisi</span>
               </button>
               <button
                 @click="applyMultiFilter"
@@ -536,16 +571,18 @@
           <div class="flex items-center space-x-2">
             <button
               @click="rollbackPendingEdits"
-              class="px-3 py-1 bg-boba-900 hover:bg-boba-800 text-slate-300 hover:text-white rounded border border-boba-700 text-xs font-medium transition flex items-center space-x-1"
+              class="px-3 py-1 bg-boba-900 hover:bg-boba-800 text-slate-300 hover:text-white rounded border border-boba-700 text-xs font-medium transition flex items-center space-x-1.5"
             >
+              <Icon icon="lucide:rotate-ccw" class="w-3.5 h-3.5 text-slate-400" />
               <span>Batalkan</span>
             </button>
             <button
               @click="commitPendingEdits"
               :disabled="committingEdits"
-              class="px-4 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-bold text-xs shadow-lg transition flex items-center space-x-1"
+              class="px-4 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-bold text-xs shadow-lg transition flex items-center space-x-1.5"
             >
               <span v-if="committingEdits" class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></span>
+              <Icon v-else icon="lucide:check" class="w-3.5 h-3.5" />
               <span>{{ committingEdits ? 'Menyimpan...' : 'Simpan Perubahan (Commit)' }}</span>
             </button>
           </div>
@@ -633,34 +670,34 @@
                     </template>
                   </td>
                   <td class="px-2 py-1 text-center select-none whitespace-nowrap">
-                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1 transition">
+                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1.5 transition">
                       <button
                         @click="copyRowAsJson(row)"
                         title="Salin 1 Baris Lengkap ke Clipboard (JSON)"
-                        class="p-1 hover:bg-sky-900/60 rounded text-slate-400 hover:text-sky-300 transition text-[11px] font-mono"
+                        class="p-1 hover:bg-sky-900/60 rounded text-slate-400 hover:text-sky-300 transition text-[11px]"
                       >
-                        JSON
+                        <Icon icon="lucide:file-json" class="w-3.5 h-3.5" />
                       </button>
                       <button
                         @click="cloneRow(row)"
                         title="Clone / Duplikat Baris ke Baris Baru"
                         class="p-1 hover:bg-sky-900/60 rounded text-sky-400 hover:text-sky-200 transition text-xs"
                       >
-                        ⧉
+                        <Icon icon="lucide:copy" class="w-3.5 h-3.5" />
                       </button>
                       <button
                         @click="openEditRowModal(row)"
                         title="Edit baris data (Modal)"
                         class="p-1 hover:bg-amber-900/60 rounded text-amber-400 hover:text-amber-200 transition text-xs"
                       >
-                        ✎
+                        <Icon icon="lucide:edit-3" class="w-3.5 h-3.5" />
                       </button>
                       <button
                         @click="handleDeleteRow(row)"
                         title="Hapus baris data"
                         class="p-1 hover:bg-rose-900/60 rounded text-rose-400 hover:text-rose-200 transition text-xs"
                       >
-                        ✕
+                        <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>
@@ -1024,7 +1061,7 @@
     <div
       v-if="tableContextMenu.visible && tableContextMenu.table"
       :style="{ top: `${tableContextMenu.y}px`, left: `${tableContextMenu.x}px` }"
-      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-52 text-[11px] text-slate-200 select-none font-sans"
+      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-56 text-[11px] text-slate-200 select-none font-sans"
       @click.stop
     >
       <div class="px-2.5 py-1 text-[10px] text-slate-400 font-semibold truncate border-b border-[#232b3d] mb-0.5 font-mono">
@@ -1034,42 +1071,49 @@
         @click="handleContextAction('select')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:table" class="w-3.5 h-3.5 text-sky-400" />
         <span>Lihat Data (100 Baris)</span>
       </button>
       <button
         @click="handleContextAction('structure')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:columns" class="w-3.5 h-3.5 text-sky-400" />
         <span>Lihat Struktur Kolom</span>
       </button>
       <button
         @click="handleContextAction('alter')"
         class="w-full text-left px-2.5 py-1 hover:bg-indigo-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:table-properties" class="w-3.5 h-3.5 text-indigo-400" />
         <span>Modifikasi Desain Tabel</span>
       </button>
       <button
         @click="handleContextAction('copy_name')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-slate-400" />
         <span>Salin Nama Tabel</span>
       </button>
       <button
         @click="handleContextAction('ddl')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1.5 mb-1"
       >
+        <Icon icon="lucide:file-code" class="w-3.5 h-3.5 text-slate-400" />
         <span>Lihat Syntax DDL</span>
       </button>
       <button
         @click="handleContextAction('truncate')"
         class="w-full text-left px-2.5 py-1 hover:bg-amber-950/80 hover:text-amber-300 text-amber-400 flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:eraser" class="w-3.5 h-3.5 text-amber-400" />
         <span>Kosongkan Tabel (TRUNCATE)</span>
       </button>
       <button
         @click="handleContextAction('drop')"
         class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:trash-2" class="w-3.5 h-3.5 text-rose-400" />
         <span>Hapus Tabel (DROP)</span>
       </button>
     </div>
@@ -1078,7 +1122,7 @@
     <div
       v-if="cellContextMenu.visible"
       :style="{ top: `${cellContextMenu.y}px`, left: `${cellContextMenu.x}px` }"
-      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-52 text-[11px] text-slate-200 select-none font-sans"
+      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-56 text-[11px] text-slate-200 select-none font-sans"
       @click.stop
     >
       <div class="px-2.5 py-1 text-[10px] text-slate-400 font-semibold truncate border-b border-[#232b3d] mb-0.5 font-mono">
@@ -1088,18 +1132,21 @@
         @click="handleCellContextAction('edit_inline')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:edit-2" class="w-3.5 h-3.5 text-sky-400" />
         <span>Edit Nilai Sel (Inline)</span>
       </button>
       <button
         @click="handleCellContextAction('edit_row')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:edit-3" class="w-3.5 h-3.5 text-sky-400" />
         <span>Edit Baris (Modal)</span>
       </button>
       <button
         @click="handleCellContextAction('clone')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-sky-400" />
         <span>Duplikat Baris Ini</span>
       </button>
       <div class="h-px bg-[#232b3d] my-0.5"></div>
@@ -1107,30 +1154,35 @@
         @click="handleCellContextAction('copy_cell')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:clipboard" class="w-3.5 h-3.5 text-slate-400" />
         <span>Salin Nilai Sel</span>
       </button>
       <button
         @click="handleCellContextAction('copy_row_json')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:file-json" class="w-3.5 h-3.5 text-slate-400" />
         <span>Salin Baris (JSON)</span>
       </button>
       <button
         @click="handleCellContextAction('copy_row_sql')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:database" class="w-3.5 h-3.5 text-slate-400" />
         <span>Salin Baris (SQL INSERT)</span>
       </button>
       <button
         @click="handleCellContextAction('detail')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1 mb-0.5"
       >
+        <Icon icon="lucide:maximize-2" class="w-3.5 h-3.5 text-slate-400" />
         <span>Lihat Detail Lengkap</span>
       </button>
       <button
         @click="handleCellContextAction('delete')"
         class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
       >
+        <Icon icon="lucide:trash-2" class="w-3.5 h-3.5 text-rose-400" />
         <span>Hapus Baris Ini</span>
       </button>
     </div>
@@ -1248,6 +1300,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';

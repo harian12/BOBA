@@ -8,7 +8,7 @@
     <!-- SFTP Drawer Header -->
     <div class="h-10 bg-[#161922] border-b border-[#232936] flex items-center justify-between px-3 text-xs">
       <div class="flex items-center space-x-2 text-slate-300 font-semibold">
-        <span>📁</span>
+        <Icon icon="lucide:folder-sync" class="w-4 h-4 text-sky-400" />
         <span>SFTP Explorer</span>
       </div>
 
@@ -25,10 +25,10 @@
         <button
           @click="promptNewFolder"
           :disabled="!connected || loading"
-          class="p-1 text-slate-400 hover:text-sky-400 disabled:opacity-30 rounded hover:bg-[#232936] transition"
+          class="p-1 text-slate-400 hover:text-sky-400 disabled:opacity-30 rounded hover:bg-[#232936] transition flex items-center"
           title="New Folder"
         >
-          ➕📁
+          <Icon icon="lucide:folder-plus" class="w-4 h-4" />
         </button>
 
         <!-- Upload File Button -->
@@ -38,7 +38,7 @@
           class="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white rounded text-[11px] font-medium transition flex items-center space-x-1"
           title="Upload file"
         >
-          <span>⬆️</span>
+          <Icon icon="lucide:upload" class="w-3 h-3" />
           <span>File</span>
         </button>
 
@@ -49,7 +49,7 @@
           class="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded text-[11px] font-medium transition flex items-center space-x-1"
           title="Upload entire folder directory"
         >
-          <span>📁⬆️</span>
+          <Icon icon="lucide:folder-up" class="w-3 h-3" />
           <span>Folder</span>
         </button>
 
@@ -348,6 +348,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
+import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';

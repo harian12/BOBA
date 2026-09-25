@@ -32,7 +32,7 @@
           class="px-2 py-0.5 bg-sky-950/60 hover:bg-sky-900/80 hover:text-sky-200 text-sky-300 border border-sky-700/60 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
           title="Tanya AI Copilot tentang kendala atau diagnosa server ini"
         >
-          <span>✨</span>
+          <Icon icon="lucide:sparkles" class="w-3 h-3 text-purple-400" />
           <span>Copilot</span>
         </button>
 
@@ -42,7 +42,7 @@
           :class="['px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1', showCommandsBar ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-[#1a1e29] text-slate-400 hover:text-slate-200']"
           title="Quick Commands"
         >
-          <span>⚡</span>
+          <Icon icon="lucide:terminal" class="w-3 h-3 text-amber-400" />
           <span>Commands ({{ allSnippets.length }})</span>
         </button>
 
@@ -63,7 +63,7 @@
           class="px-2 py-0.5 bg-[#1a1e29] hover:bg-[#232936] text-slate-300 rounded text-[10px] font-medium transition flex items-center space-x-1"
           title="Reconnect SSH"
         >
-          <span>🔄</span>
+          <Icon icon="lucide:refresh-cw" class="w-3 h-3" />
           <span>Reconnect</span>
         </button>
 
@@ -73,7 +73,7 @@
           class="px-2 py-0.5 bg-[#1a1e29] hover:bg-sky-950/60 hover:text-sky-300 text-slate-400 border border-[#2e3748] rounded text-[10px] font-medium transition flex items-center space-x-1"
           title="Open SFTP FileZilla Tab"
         >
-          <span>📁</span>
+          <Icon icon="lucide:folder-sync" class="w-3 h-3 text-sky-400" />
           <span>SFTP</span>
         </button>
       </div>
@@ -85,7 +85,7 @@
       class="h-8 bg-[#161922] border-b border-[#232936] flex items-center px-2 space-x-1.5 overflow-x-auto no-scrollbar shrink-0 text-xs"
     >
       <span class="text-[10px] font-semibold text-amber-400 flex items-center space-x-1 uppercase shrink-0">
-        <span>⚡</span>
+        <Icon icon="lucide:terminal" class="w-3 h-3" />
         <span>Run:</span>
       </span>
 
@@ -429,6 +429,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { Icon } from '@iconify/vue';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';

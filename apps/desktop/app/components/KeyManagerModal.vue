@@ -3,7 +3,7 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-5">
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
         <div class="flex items-center space-x-2">
-          <span class="text-base">🔑</span>
+          <Icon icon="lucide:key" class="w-5 h-5 text-amber-400" />
           <h3 class="text-lg font-bold text-slate-100">SSH Key Vault (E2EE Synced)</h3>
         </div>
         <button @click="$emit('close')" class="text-slate-400 hover:text-slate-200">✕</button>
@@ -34,16 +34,18 @@
             <button
               @click="copyKeyToClipboard(key.private_key)"
               title="Copy Private Key"
-              class="px-2 py-1 bg-boba-800 hover:bg-boba-700 rounded text-xs text-slate-300"
+              class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 rounded text-xs text-slate-300 flex items-center space-x-1"
             >
-              Copy
+              <Icon icon="lucide:copy" class="w-3.5 h-3.5" />
+              <span>Copy</span>
             </button>
             <button
               @click="vaultStore.removeKey(key.id)"
               title="Delete Key"
-              class="px-2 py-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/40 rounded text-xs text-rose-400"
+              class="px-2.5 py-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-900/40 rounded text-xs text-rose-400 flex items-center space-x-1"
             >
-              Delete
+              <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+              <span>Delete</span>
             </button>
           </div>
         </div>
@@ -53,8 +55,9 @@
       <div class="border-t border-boba-800 pt-4 space-y-3">
         <div class="flex items-center justify-between">
           <span class="text-xs font-bold text-slate-200">Import New Key</span>
-          <label class="cursor-pointer px-2.5 py-1 bg-boba-800 hover:bg-boba-700 border border-boba-700 text-slate-200 text-xs rounded transition flex items-center space-x-1">
-            <span>📂 Load from File...</span>
+          <label class="cursor-pointer px-2.5 py-1 bg-boba-800 hover:bg-boba-700 border border-boba-700 text-slate-200 text-xs rounded transition flex items-center space-x-1.5">
+            <Icon icon="lucide:folder-open" class="w-3.5 h-3.5 text-sky-400" />
+            <span>Load from File...</span>
             <input
               type="file"
               @change="handleFileInput"
@@ -106,6 +109,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 

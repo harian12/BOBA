@@ -18,7 +18,8 @@
           @click="activeTab = 'commands'"
           :class="['px-4 py-2 text-xs font-semibold border-b-2 transition flex items-center space-x-1.5', activeTab === 'commands' ? 'border-boba-accent text-boba-accent' : 'border-transparent text-slate-400 hover:text-slate-200']"
         >
-          <span>⚡ Quick Commands</span>
+          <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-amber-400" />
+          <span>Quick Commands</span>
           <span v-if="form.snippets && form.snippets.length > 0" class="px-1.5 py-0.2 bg-boba-800 rounded-full text-[10px]">
             {{ form.snippets.length }}
           </span>
@@ -256,6 +257,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
+import { Icon } from '@iconify/vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { SshSessionConfig, SnippetItem } from '../types/index.js';

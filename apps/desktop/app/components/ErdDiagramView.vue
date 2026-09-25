@@ -3,17 +3,46 @@
     <!-- ERD Toolbar -->
     <div class="h-9 px-3 bg-[#0f1420] border-b border-boba-800 flex items-center justify-between text-xs shrink-0 font-mono">
       <div class="flex items-center space-x-2">
+        <Icon icon="lucide:network" class="w-4 h-4 text-sky-400" />
         <span class="font-bold text-slate-200">Interactive ERD Diagram</span>
         <span class="text-[11px] text-slate-500">({{ filteredTables.length }} Tabel, {{ foreignKeys.length }} Relasi FK)</span>
       </div>
 
       <div class="flex items-center space-x-2">
+        <!-- Zoom Controls & Ctrl+Scroll Indicator -->
+        <div class="flex items-center bg-boba-950 border border-boba-750 rounded p-0.5 space-x-0.5">
+          <button
+            @click="zoomOut"
+            :disabled="zoom <= 0.3"
+            title="Zoom Out (Ctrl + Scroll Down)"
+            class="p-1 hover:bg-boba-800 disabled:opacity-30 rounded text-slate-300 hover:text-white transition"
+          >
+            <Icon icon="lucide:zoom-out" class="w-3.5 h-3.5" />
+          </button>
+          <button
+            @click="resetZoom"
+            title="Reset Zoom 100% (Klik untuk reset)"
+            class="px-1.5 py-0.5 hover:bg-boba-800 text-[10px] text-sky-300 font-bold rounded transition font-mono min-w-[42px] text-center"
+          >
+            {{ Math.round(zoom * 100) }}%
+          </button>
+          <button
+            @click="zoomIn"
+            :disabled="zoom >= 2.0"
+            title="Zoom In (Ctrl + Scroll Up)"
+            class="p-1 hover:bg-boba-800 disabled:opacity-30 rounded text-slate-300 hover:text-white transition"
+          >
+            <Icon icon="lucide:zoom-in" class="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         <!-- Reorganize / Reset Layout -->
         <button
           @click="resetGridLayout"
           title="Tata Ulang Posisi Tabel ke Grid Rapi"
-          class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition flex items-center space-x-1"
+          class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition flex items-center space-x-1.5"
         >
+          <Icon icon="lucide:layout-grid" class="w-3.5 h-3.5" />
           <span>Reset Grid</span>
         </button>
 
@@ -21,11 +50,12 @@
         <button
           @click="showLines = !showLines"
           :class="[
-            'px-2.5 py-1 rounded text-xs transition flex items-center space-x-1 border',
+            'px-2.5 py-1 rounded text-xs transition flex items-center space-x-1.5 border',
             showLines ? 'bg-sky-950 border-sky-600/70 text-sky-300 font-bold' : 'bg-boba-950 border-boba-700 text-slate-400 hover:text-slate-200'
           ]"
           title="Tampilkan / Sembunyikan Garis Konektor Relasi SVG"
         >
+          <Icon icon="lucide:link" class="w-3.5 h-3.5" />
           <span>Garis Relasi: {{ showLines ? 'ON' : 'OFF' }}</span>
         </button>
 
@@ -40,23 +70,28 @@
         <button
           @click="loadForeignKeys"
           :disabled="loading"
-          class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-xs transition flex items-center space-x-1"
+          class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-xs transition flex items-center space-x-1.5"
         >
-          <span :class="[loading ? 'animate-spin inline-block' : '']">⟳</span>
+          <Icon icon="lucide:refresh-cw" :class="['w-3.5 h-3.5', loading ? 'animate-spin' : '']" />
           <span>Refresh</span>
         </button>
       </div>
     </div>
 
-    <!-- Free-Floating Draggable Canvas Area -->
+    <!-- Free-Floating Draggable Canvas Area (Supports Zoom & Ctrl+Scroll) -->
     <div
       ref="canvasRef"
+      @wheel="handleCanvasWheel"
       @scroll="updateRelationLines"
       class="flex-1 overflow-auto bg-[radial-gradient(#1e293b_1.2px,transparent_1.2px)] [background-size:20px_20px] relative cursor-default"
     >
-      <!-- Virtual Infinite Canvas Boundary -->
+      <!-- Scaled Virtual Canvas Container -->
       <div
-        class="relative min-w-[2600px] min-h-[1800px]"
+        class="relative min-w-[3200px] min-h-[2400px] origin-top-left"
+        :style="{
+          transform: `scale(${zoom})`,
+          transformOrigin: '0 0'
+        }"
       >
         <!-- SVG Overlay for Dynamic Relation Connector Lines -->
         <svg
@@ -137,6 +172,7 @@
               title="Tahan dan geser (Drag) untuk memindahkan posisi tabel"
             >
               <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
+                <Icon icon="lucide:table" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <span class="font-bold text-xs text-sky-200 font-mono truncate">{{ tbl.name }}</span>
               </div>
               <span class="text-[9px] px-1.5 py-0.5 bg-boba-950 text-slate-400 rounded font-mono shrink-0 pointer-events-none border border-boba-800">
@@ -153,8 +189,8 @@
               >
                 <!-- Column Name & Key Marker -->
                 <div class="flex items-center space-x-1.5 truncate min-w-0 flex-1 mr-2">
-                  <span v-if="c.is_primary_key" class="text-[9px] px-1 py-0.2 bg-amber-950 border border-amber-700/60 text-amber-300 rounded font-mono font-bold shrink-0">PK</span>
-                  <span v-else-if="isFkColumn(tbl.name, c.name)" class="text-[9px] px-1 py-0.2 bg-sky-950 border border-sky-700/60 text-sky-300 rounded font-mono font-bold shrink-0">FK</span>
+                  <Icon v-if="c.is_primary_key" icon="lucide:key" class="w-3 h-3 text-amber-400 shrink-0" title="Primary Key" />
+                  <Icon v-else-if="isFkColumn(tbl.name, c.name)" icon="lucide:link" class="w-3 h-3 text-sky-400 shrink-0" title="Foreign Key" />
                   <span v-else class="text-slate-600 text-xs shrink-0">•</span>
                   <span
                     :class="[
@@ -179,14 +215,17 @@
 
             <!-- Outgoing Relations Footer Badge -->
             <div v-if="getTableRelations(tbl.name).length > 0" class="p-2.5 bg-boba-950/90 border-t border-boba-800 space-y-1.5">
-              <div class="text-[9px] uppercase font-bold text-slate-500 font-mono">Relasi Foreign Key:</div>
+              <div class="text-[9px] uppercase font-bold text-slate-500 font-mono flex items-center space-x-1">
+                <Icon icon="lucide:git-fork" class="w-3 h-3 text-slate-500" />
+                <span>Relasi Foreign Key:</span>
+              </div>
               <div
                 v-for="rel in getTableRelations(tbl.name)"
                 :key="`${rel.from_column}_${rel.to_table}`"
                 @mouseenter="highlightRelation(rel)"
                 @mouseleave="clearHighlight"
                 @click="focusTable(rel.to_table)"
-                class="text-[10px] text-sky-300 font-mono flex items-center space-x-1 truncate bg-sky-950/50 hover:bg-sky-900/70 px-2 py-0.5 rounded border border-sky-900/50 cursor-pointer transition"
+                class="text-[10px] text-sky-300 font-mono flex items-center space-x-1.5 truncate bg-sky-950/50 hover:bg-sky-900/70 px-2 py-0.5 rounded border border-sky-900/50 cursor-pointer transition"
                 :title="`Klik untuk geser & fokus ke ${rel.to_table}.${rel.to_column}`"
               >
                 <span class="text-slate-400 font-bold truncate max-w-[90px]">{{ rel.from_column }}</span>
@@ -203,6 +242,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import type { DbConnectionConfig, DbTableMeta, DbForeignKeyRelation } from '../types/index.js';
 
@@ -216,6 +256,9 @@ const loading = ref(false);
 const searchQuery = ref('');
 const foreignKeys = ref<DbForeignKeyRelation[]>([]);
 const showLines = ref(true);
+
+// Zoom Controls
+const zoom = ref(1.0);
 
 const canvasRef = ref<HTMLElement | null>(null);
 
@@ -241,6 +284,33 @@ const filteredTables = computed(() => {
   const q = searchQuery.value.toLowerCase();
   return props.tables.filter(t => t.name.toLowerCase().includes(q));
 });
+
+function setZoom(val: number) {
+  zoom.value = Math.min(2.0, Math.max(0.3, Math.round(val * 100) / 100));
+  nextTick(() => {
+    updateRelationLines();
+  });
+}
+
+function zoomIn() {
+  setZoom(zoom.value + 0.1);
+}
+
+function zoomOut() {
+  setZoom(zoom.value - 0.1);
+}
+
+function resetZoom() {
+  setZoom(1.0);
+}
+
+function handleCanvasWheel(e: WheelEvent) {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.08 : -0.08;
+    setZoom(zoom.value + delta);
+  }
+}
 
 function getTablePos(tableName: string): { x: number; y: number } {
   if (!tablePositions.value[tableName]) {
@@ -275,14 +345,14 @@ function resetGridLayout() {
   });
 }
 
-// Drag Handlers
+// Drag Handlers with Zoom Compensation
 function startDragTable(tableName: string, e: MouseEvent) {
   if (e.button !== 0) return; // Only left mouse button
   draggingTableName.value = tableName;
   const pos = getTablePos(tableName);
   dragOffset = {
-    x: e.clientX - pos.x,
-    y: e.clientY - pos.y,
+    x: e.clientX - pos.x * zoom.value,
+    y: e.clientY - pos.y * zoom.value,
   };
 
   window.addEventListener('mousemove', onDragMouseMove);
@@ -292,8 +362,8 @@ function startDragTable(tableName: string, e: MouseEvent) {
 function onDragMouseMove(e: MouseEvent) {
   if (!draggingTableName.value) return;
   const name = draggingTableName.value;
-  const newX = Math.max(20, e.clientX - dragOffset.x);
-  const newY = Math.max(20, e.clientY - dragOffset.y);
+  const newX = Math.max(20, (e.clientX - dragOffset.x) / zoom.value);
+  const newY = Math.max(20, (e.clientY - dragOffset.y) / zoom.value);
 
   tablePositions.value[name] = { x: newX, y: newY };
   requestAnimationFrame(updateRelationLines);
@@ -335,7 +405,7 @@ async function loadForeignKeys() {
 }
 
 function updateRelationLines() {
-  if (!canvasRef.value || !showLines.value) {
+  if (!showLines.value) {
     computedLines.value = [];
     return;
   }
@@ -372,7 +442,6 @@ function updateRelationLines() {
       }
 
       const dx = Math.abs(endX - startX) * 0.5;
-      const dy = Math.abs(endY - startY) * 0.5;
       const d = `M ${startX} ${startY} C ${startX + dx} ${startY}, ${endX - dx} ${endY}, ${endX} ${endY}`;
 
       lines.push({
@@ -405,8 +474,8 @@ function focusTable(tableName: string) {
   const pos = getTablePos(tableName);
   if (canvasRef.value) {
     canvasRef.value.scrollTo({
-      left: Math.max(0, pos.x - 100),
-      top: Math.max(0, pos.y - 80),
+      left: Math.max(0, pos.x * zoom.value - 100),
+      top: Math.max(0, pos.y * zoom.value - 80),
       behavior: 'smooth',
     });
     highlightedTables.value = [tableName];
@@ -428,7 +497,7 @@ function getTableRelations(tableName: string): DbForeignKeyRelation[] {
   );
 }
 
-watch([() => props.tables, () => filteredTables.value, showLines], () => {
+watch([() => props.tables, () => filteredTables.value, showLines, zoom], () => {
   nextTick(() => {
     updateRelationLines();
   });
