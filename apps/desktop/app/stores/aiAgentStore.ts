@@ -651,7 +651,20 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         }
 
         const resList = await tauriBridge.dbmsExecuteQuery(dbConfig, dbName || undefined, query);
-        const formatted = JSON.stringify(resList, null, 2);
+
+        // ZERO DATA LEAK: Isi baris data (records) TIDAK PERNAH dikirim ke provider AI.
+        // Hanya kirim metadata eksekusi: status, nama kolom, jumlah baris, affected rows, dan execution time.
+        const safeSummary = resList.map((r, idx) => ({
+          result_index: idx + 1,
+          status: 'success',
+          columns: r.columns || [],
+          total_rows_returned: r.rows ? r.rows.length : 0,
+          affected_rows: r.affected_rows || 0,
+          execution_time_ms: r.execution_time_ms || 0,
+          privacy_guard: 'Data baris (records) dienkripsi & dilindungi secara lokal. Isi data tidak dikirim ke AI Provider demi privasi pengguna.'
+        }));
+
+        const formatted = JSON.stringify(safeSummary, null, 2);
         toolCall.result = formatted;
         toolCall.status = 'completed';
         toolCall.executedAt = Date.now();
@@ -861,8 +874,10 @@ You have access to tools to inspect and configure the server and database:
 4. STAGE 4 - SELF-HEALING LOOP: Perbaiki jika ditemukan kegagalan verifikasi.
 5. STAGE 5 - COMPLETION PROOF & SUMMARY: Berikan laporan penutup terstruktur dalam Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris. DILARANG meninggalkan pesan kosong.
 
-### KEAMANAN KREDENSIAL:
-- Token dan password otomatis disamarkan (masked) agar tidak bocor ke provider AI.`;
+### KEBIJAKAN PRIVASI & KEAMANAN DATABASE (ZERO DATA LEAK):
+- Kredensial (password, private key) TIDAK PERNAH dikirim ke provider AI.
+- Seluruh isi baris data (records) dalam database dilindungi secara lokal dan TIDAK PERNAH dikirim ke AI Provider. Kamu hanya menerima metadata eksekusi (nama kolom, jumlah baris, status sukses, dan affected rows).
+- Token dan password otomatis disamarkan (masked) di seluruh log dan output.`;
   }
 
   async function sendMessage(promptText: string) {
