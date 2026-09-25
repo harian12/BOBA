@@ -422,12 +422,30 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     return inspectCommandRisk(cmd) === 'danger';
   }
 
-  // Eksekusi tool call ke server target
+  function isDbMutation(sql: string): boolean {
+    const sanitized = (sql || '').replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    return /\b(UPDATE|DELETE|DROP|TRUNCATE|ALTER|INSERT|CREATE|GRANT|REVOKE|REPLACE|RENAME)\b/i.test(sanitized);
+  }
+
+  // Eksekusi tool call ke server target atau database
   async function executeTool(sessionId: string, toolCall: AiToolCall): Promise<any> {
     toolCall.status = 'running';
 
     // Normalisasi nama tool jika terduplikasi saat chunk streaming
-    const validToolNames = ['exec_command', 'read_file', 'write_file', 'get_system_metrics'];
+    const validToolNames = [
+      'exec_command',
+      'read_file',
+      'write_file',
+      'get_system_metrics',
+      'list_dir',
+      'inspect_service',
+      'run_security_audit',
+      'check_auth_failures',
+      'setup_security_hardening',
+      'db_list_databases',
+      'db_get_schema',
+      'db_execute_query'
+    ];
     for (const v of validToolNames) {
       if (toolCall.name.startsWith(v)) {
         toolCall.name = v;
@@ -436,12 +454,18 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     }
 
     try {
-      const realSessionId = await ensureSessionConnected(sessionId);
+      let realSessionId = sessionId;
+      if (!toolCall.name.startsWith('db_')) {
+        realSessionId = await ensureSessionConnected(sessionId);
+      }
 
       // Guard: Cek batasan Mode Plan
       if (copilotMode.value === 'plan') {
         if (toolCall.name === 'write_file') {
           throw new Error('Aksi ditolak: Mode saat ini adalah PLAN (Read-Only). Ubah ke Mode BUILD untuk menulis/memodifikasi file.');
+        }
+        if (toolCall.name === 'db_execute_query' && isDbMutation(toolCall.args?.query || '')) {
+          throw new Error('Aksi ditolak: Query modifikasi/penghapusan data (UPDATE/DELETE/DROP/dll) dicegah dalam Mode PLAN. Ubah ke Mode BUILD jika ingin mengeksekusinya.');
         }
         if (toolCall.name === 'exec_command') {
           const cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
@@ -535,7 +559,6 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         } else if (scope === 'permissions') {
           cmd = `echo "=== SUID BINARIES (TOP 15) ===" && find / -perm -4000 -type f 2>/dev/null | head -n 15 && echo "=== SUDOERS WITH NOPASSWD ===" && grep -rn "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo "None"`;
         } else {
-          // Full scope composite read-only script
           cmd = `echo "=== 1. SSH CONFIG ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "Default") && echo "=== 2. OPEN PORTS ===" && (ss -tulpn 2>/dev/null | grep LISTEN || netstat -tulpn 2>/dev/null | grep LISTEN) && echo "=== 3. FIREWALL ===" && (ufw status 2>/dev/null || echo "UFW not active") && echo "=== 4. CRON JOBS ===" && (ls -la /etc/cron* /var/spool/cron/crontabs 2>/dev/null | head -n 15) && echo "=== 5. USERS WITH SHELL ===" && (grep -v "/nologin\\|/false" /etc/passwd | cut -d: -f1,3,7)`;
         }
         const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
@@ -560,7 +583,6 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         const enableUfw = toolCall.args?.enable_ufw !== false;
         const installFail2ban = !!toolCall.args?.install_fail2ban;
 
-        // Anti-lockout sequence: selalu allow SSH port sebelum enable firewall
         let script = `echo "=== 1. SSH SAFEGUARD ===" && ufw allow ${port}/tcp && echo "SSH Port ${port} allowed in firewall."`;
         if (enableUfw) {
           script += ` && echo "y" | ufw enable && echo "UFW firewall enabled."`;
@@ -574,6 +596,66 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         toolCall.status = 'completed';
         toolCall.executedAt = Date.now();
         return sanitized;
+      } else if (toolCall.name === 'db_list_databases') {
+        const dbs = vaultStore.vault.databases || [];
+        const res = dbs.map(d => ({
+          id: d.id,
+          name: d.name,
+          engine: d.engine,
+          host: d.host || 'localhost',
+          port: d.port || 3306,
+          database: d.database || 'default',
+        }));
+        const formatted = res.length > 0
+          ? JSON.stringify(res, null, 2)
+          : 'Belum ada database tersimpan di Vault.';
+        toolCall.result = formatted;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return formatted;
+      } else if (toolCall.name === 'db_get_schema') {
+        const connId = toolCall.args?.connection_id;
+        const dbName = toolCall.args?.database;
+        const dbConfig = (connId ? vaultStore.vault.databases?.find(d => d.id === connId) : null) || sessionStore.activeTab?.dbConnection || (vaultStore.vault.databases && vaultStore.vault.databases[0]);
+        if (!dbConfig) {
+          throw new Error('Tidak ada koneksi database yang tersedia di Vault. Silakan tambahkan koneksi database terlebih dahulu.');
+        }
+        const overview = await tauriBridge.dbmsGetSchemaOverview(dbConfig, dbName || undefined);
+        const summary = {
+          connection: dbConfig.name,
+          engine: overview.engine,
+          database: overview.database,
+          tables: overview.tables.map(t => ({
+            name: t.name,
+            type: t.table_type,
+            columns: t.columns.map(c => `${c.name} (${c.data_type}${c.is_primary_key ? ', PK' : ''})`)
+          }))
+        };
+        const formatted = JSON.stringify(summary, null, 2);
+        toolCall.result = formatted;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return formatted;
+      } else if (toolCall.name === 'db_execute_query') {
+        const query = (toolCall.args?.query || '').trim();
+        if (!query) throw new Error('Query SQL kosong');
+        const connId = toolCall.args?.connection_id;
+        const dbName = toolCall.args?.database;
+        const dbConfig = (connId ? vaultStore.vault.databases?.find(d => d.id === connId) : null) || sessionStore.activeTab?.dbConnection || (vaultStore.vault.databases && vaultStore.vault.databases[0]);
+        if (!dbConfig) {
+          throw new Error('Tidak ada koneksi database yang tersedia di Vault. Silakan tambahkan koneksi database terlebih dahulu.');
+        }
+
+        if (copilotMode.value === 'plan' && isDbMutation(query)) {
+          throw new Error('Aksi ditolak: Query modifikasi/penghapusan data (UPDATE/DELETE/DROP/dll) dicegah dalam Mode PLAN. Ubah ke Mode BUILD jika ingin mengeksekusinya.');
+        }
+
+        const resList = await tauriBridge.dbmsExecuteQuery(dbConfig, dbName || undefined, query);
+        const formatted = JSON.stringify(resList, null, 2);
+        toolCall.result = formatted;
+        toolCall.status = 'completed';
+        toolCall.executedAt = Date.now();
+        return formatted;
       } else {
         throw new Error(`Tool "${toolCall.name}" tidak dikenali`);
       }
@@ -706,15 +788,25 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     const session = vaultStore.vault.sessions.find(s => s.id === sessionId);
     const hostInfo = session ? `Host: ${session.username}@${session.host}:${session.port} (${session.name})` : 'No active session attached';
 
+    const dbs = vaultStore.vault.databases || [];
+    const activeTab = sessionStore.activeTab;
+    const activeDbTab = activeTab?.type === 'dbms' ? activeTab.dbConnection : null;
+    let dbInfo = 'No database configured in Vault';
+    if (activeDbTab) {
+      dbInfo = `Active DBMS Tab: "${activeDbTab.name}" (${activeDbTab.engine.toUpperCase()} • ${activeDbTab.host}:${activeDbTab.port || 3306}, Database: ${activeDbTab.database || 'default'})`;
+    } else if (dbs.length > 0) {
+      dbInfo = `Vault Database Connections (${dbs.length}): ` + dbs.map(d => `"${d.name}" (ID: ${d.id}, Engine: ${d.engine}, Host: ${d.host}:${d.port || 3306}, DB: ${d.database || 'default'})`).join('; ');
+    }
+
     const modeDirective = copilotMode.value === 'plan'
       ? `### OPERATIONAL MODE: 📋 PLAN (READ-ONLY & DIAGNOSTIK)
 Saat ini kamu berada dalam Mode PLAN.
-- FOKUS: Hanya mendiagnosa, membaca log/konfigurasi, memeriksa status server, dan MENYUSUN RENCANA AKSI YANG JELAS.
-- DILARANG: Memodifikasi file (write_file dinonaktifkan), menginstal software, merestart service penting, atau mengeksekusi aksi yang mengubah state server.
+- FOKUS: Hanya mendiagnosa, membaca log/konfigurasi, memeriksa status server/database, dan MENYUSUN RENCANA AKSI YANG JELAS.
+- DILARANG: Memodifikasi file (write_file dinonaktifkan), memodifikasi database (query UPDATE/DELETE/DROP/INSERT dicegah), menginstal software, atau mengubah state server/database.
 - Setelah selesai mengumpulkan data dan menganalisis, sajikan ringkasan temuan dan susun langkah-langkah perbaikan, lalu minta pengguna untuk beralih ke Mode BUILD untuk mengeksekusi rencananya.`
       : `### OPERATIONAL MODE: 🔨 BUILD (EKSEKUSI & PERBAIKAN AKTIF)
 Saat ini kamu berada dalam Mode BUILD.
-- Kamu memiliki izin untuk mengeksekusi perintah bash, memperbarui konfigurasi (write_file), dan mengonfigurasi layanan server remote.`;
+- Kamu memiliki izin untuk mengeksekusi perintah bash, memperbarui konfigurasi (write_file), dan mengonfigurasi layanan server remote serta query database.`;
 
     const executionModeDirective = executionMode.value === 'confirm'
       ? `### MODE KONFIRMASI (ONE-BY-ONE CONFIRMATION REQUIRED):
@@ -725,8 +817,9 @@ Saat ini kamu berada dalam Mode BUILD.
       : `### MODE OTOMATIS (AUTONOMOUS EXECUTION):
 - Perintah non-berbahaya dapat dieksekusi secara otomatis dan berurutan.`;
 
-    return `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Linux System Administrator running the LFG (Autonomous Shipping & Ops) Engine.
-Current Target Server: ${hostInfo}
+    return `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Database Administrator running the LFG Engine.
+Target Server: ${hostInfo}
+Database Context: ${dbInfo}
 
 ${modeDirective}
 
@@ -735,33 +828,41 @@ ${executionModeDirective}
 ### ATURAN MUTLAK EKSEKUSI PERINTAH (STRICTLY ONE-BY-ONE SEQUENTIAL):
 - Kamu HANYA BOLEH memanggil MAKSIMAL 1 tool dalam satu respon/giliran. DILARANG KERAS memanggil lebih dari satu tool sekaligus secara paralel.
 - Kamu WAJIB menunggu hasil output eksekusi dari tool sebelumnya sebelum menentukan dan memanggil langkah/perintah berikutnya.
-- Saat memanggil 'exec_command', kamu WAJIB menyertakan:
-  * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan perintah ini.
-  * 'impact': Penjelasan dampak langsung atau efek samping terhadap server (apakah aman/read-only, restart service, memodifikasi konfigurasi, atau berpotensi downtime).
+- Saat memanggil 'exec_command' atau 'db_execute_query', kamu WAJIB menyertakan:
+  * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan query/perintah ini.
+  * 'impact': Penjelasan dampak langsung atau efek samping (apakah aman/read-only, atau mengubah/menghapus baris data pada tabel tertentu).
+
+### KEMAMPUAN DATABASE (DBMS TOOLS):
+- Kamu dapat berinteraksi langsung dengan database melalui:
+  * db_list_databases: melihat daftar koneksi database yang tersedia di Vault.
+  * db_get_schema: menginspeksi tabel dan kolom skema database target.
+  * db_execute_query: mengeksekusi query SQL (SELECT, UPDATE, DELETE, INSERT, DROP, CREATE, SHOW, EXPLAIN).
+- JIKA kamu belum mengetahui skema tabel, panggil 'db_get_schema' terlebih dahulu untuk memeriksa kolom yang tepat sebelum menyusun query!
+- Query perubahan atau penghapusan data (UPDATE, DELETE, DROP, TRUNCATE, INSERT, ALTER) WAJIB meminta persetujuan manual pengguna. Berikan 'description' dan 'impact' yang sangat jelas.
 
 ### DISIPLIN MERESPON HASIL EKSEKUSI TOOL (SANGAT PENTING):
 - Jika perintah menghasilkan ERROR, Access Denied, Permission Denied, atau sintaks salah: JANGAN PERNAH BERHENTI atau menganggap tugas selesai!
-- Analisis error tersebut dan ambil langkah pemulihan (Self-Healing):
-  * Jika MySQL Access Denied: Cari password database (misal baca wp-config.php atau .env), atau gunakan sudo / autentikasi yang tepat.
-  * Jika service gagal/crash: Periksa log detail atau perbaiki konfigurasi.
+- Analisis error tersebut dan ambil langkah pemulihan (Self-Healing).
 - Selalu berikan penjelasan teks analisis yang informatif sebelum memanggil perintah berikutnya. DILARANG menghasilkan pesan kosong!
 
-You have access to tools to inspect and configure the server:
+You have access to tools to inspect and configure the server and database:
 - exec_command: execute bash commands to inspect status, logs, packages, services, network, or perform configuration.
 - read_file: read full text of configuration files or logs.
 - write_file: update or create configuration files (a backup will be made automatically, only in BUILD mode).
 - get_system_metrics: check current CPU, RAM, Disk, and load average.
+- db_list_databases: list database connections in vault.
+- db_get_schema: inspect tables and columns.
+- db_execute_query: execute SQL queries.
 
 ### LFG DevOps Engine (Autonomous Execution Pipeline)
-1. STAGE 1 - PLAN FIRST: Rumuskan rencana singkat sebelum memodifikasi konfigurasi atau men-deploy container/service.
-2. STAGE 2 - AUTONOMOUS EXECUTION: Jalankan langkah demi langkah secara berurutan. Jangan memaksakan workaround berat jika terhalang izin atau autentikasi.
-3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT: Periksa keaktifan service/konfigurasi secara nyata (docker ps, systemctl is-active, ss/curl, nginx -t).
+1. STAGE 1 - PLAN FIRST: Rumuskan rencana singkat sebelum memodifikasi konfigurasi atau database.
+2. STAGE 2 - AUTONOMOUS EXECUTION: Jalankan langkah demi langkah secara berurutan.
+3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT: Periksa keaktifan service/query secara nyata.
 4. STAGE 4 - SELF-HEALING LOOP: Perbaiki jika ditemukan kegagalan verifikasi.
 5. STAGE 5 - COMPLETION PROOF & SUMMARY: Berikan laporan penutup terstruktur dalam Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris. DILARANG meninggalkan pesan kosong.
 
-### KEAMANAN KREDENSIAL & REMOTE GIT:
-- Token kredensial pada URL remote Git (seperti output 'git remote -v' atau file '.git/config') otomatis disamarkan (masked) sebagai 'https://***@github.com' agar tidak bocor ke provider AI.
-- DILARANG meminta pengguna memasukkan token atau kredensial Git dalam percakapan. Jika dibutuhkan remote autentikasi, sarankan penggunaan SSH Key atau Git Credential Manager.`;
+### KEAMANAN KREDENSIAL:
+- Token dan password otomatis disamarkan (masked) agar tidak bocor ke provider AI.`;
   }
 
   async function sendMessage(promptText: string) {
@@ -882,8 +983,10 @@ You have access to tools to inspect and configure the server:
                   const cmd = (pendingCall.args?.command || pendingCall.args?.cmd || pendingCall.args?.bash || '').trim();
                   if (pendingCall.name === 'exec_command' && isDangerousCommand(cmd)) {
                     dialogStore.showToast('Perintah berisiko tinggi memerlukan persetujuan manual', 'warning', 3000);
-                  } else if (copilotMode.value === 'plan' && pendingCall.name === 'write_file') {
-                    dialogStore.showToast('Penulisan file dicegah dalam Mode Plan (Read-Only)', 'warning', 3000);
+                  } else if (pendingCall.name === 'db_execute_query' && isDbMutation(pendingCall.args?.query || '')) {
+                    dialogStore.showToast('Query modifikasi/penghapusan database memerlukan persetujuan manual', 'warning', 3500);
+                  } else if (copilotMode.value === 'plan' && (pendingCall.name === 'write_file' || (pendingCall.name === 'db_execute_query' && isDbMutation(pendingCall.args?.query || '')))) {
+                    dialogStore.showToast('Modifikasi dicegah dalam Mode Plan (Read-Only)', 'warning', 3000);
                   } else {
                     let executed = false;
                     try {

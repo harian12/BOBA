@@ -171,6 +171,70 @@ export const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'db_list_databases',
+      description: 'Daftar semua koneksi database yang tersimpan di vault (MySQL, PostgreSQL, SQLite, Redis, Mongo) beserta database/skema yang aktif.',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'db_get_schema',
+      description: 'Ambil skema lengkap (daftar tabel, kolom, tipe data, dan primary key) dari koneksi database tertentu atau yang sedang aktif.',
+      parameters: {
+        type: 'object',
+        properties: {
+          connection_id: {
+            type: 'string',
+            description: 'ID koneksi database (opsional, jika kosong menggunakan database yang sedang aktif).',
+          },
+          database: {
+            type: 'string',
+            description: 'Nama database / schema spesifik (opsional).',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'db_execute_query',
+      description: 'Jalankan query SQL ke database target. Perintah BACA (SELECT/SHOW/EXPLAIN) dan perintah UBAH/HAPUS (UPDATE/DELETE/DROP/INSERT/ALTER) didukung. Perintah perubahan/penghapusan data WAJIB meminta konfirmasi manual pengguna sebelum dieksekusi.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Query SQL yang akan dieksekusi (contoh: "SELECT * FROM users WHERE status = \'active\' LIMIT 10", "UPDATE users SET status = \'banned\' WHERE id = 5")',
+          },
+          connection_id: {
+            type: 'string',
+            description: 'ID koneksi database (opsional, jika kosong menggunakan database yang sedang aktif)',
+          },
+          database: {
+            type: 'string',
+            description: 'Nama database / schema (opsional)',
+          },
+          description: {
+            type: 'string',
+            description: 'Penjelasan ringkas dalam Bahasa Indonesia tentang tujuan dan apa yang dilakukan query ini.',
+          },
+          impact: {
+            type: 'string',
+            description: 'Penjelasan dampak query: "Aman (Read-Only)" atau "Peringatan: Mengubah / Menghapus data pada tabel X".',
+          },
+        },
+        required: ['query', 'description'],
+      },
+    },
+  },
 ];
 
 export function getAgentTools(mode: AiCopilotMode = 'build') {

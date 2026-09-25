@@ -385,9 +385,78 @@
                   </div>
                 </div>
 
-                <!-- Tool Arguments untuk selain exec_command (read_file, write_file, get_system_metrics, dll) -->
+                <!-- Keterangan Eksekusi untuk Database Query (Khusus db_execute_query) -->
+                <div v-else-if="tc.name === 'db_execute_query'" class="rounded-lg bg-boba-900/90 border border-boba-800/80 p-2.5 space-y-2 font-sans">
+                  <!-- Header: DB Logo & Status Bahaya / Read-Only -->
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center space-x-1.5 text-indigo-300 font-semibold text-[11px]">
+                      <Icon icon="lucide:database" class="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Eksekusi SQL Database:</span>
+                    </div>
+                    <span
+                      :class="[
+                        'px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wide flex items-center space-x-1 uppercase border',
+                        isDbMutationQuery(tc.args.query)
+                          ? 'bg-rose-950/80 text-rose-300 border-rose-700/60 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                          : 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
+                      ]"
+                    >
+                      <span>{{ isDbMutationQuery(tc.args.query) ? '⚠️ PERUBAHAN DATA' : '🛡️ READ-ONLY' }}</span>
+                    </span>
+                  </div>
+
+                  <!-- Deskripsi Tujuan Query -->
+                  <div class="text-[11.5px] text-slate-200 leading-snug">
+                    {{ tc.args.description || 'Menjalankan query SQL pada database' }}
+                  </div>
+
+                  <!-- Dampak Terhadap Database -->
+                  <div
+                    :class="[
+                      'flex items-start space-x-2 text-[10.5px] p-2 rounded-md leading-relaxed border',
+                      isDbMutationQuery(tc.args.query)
+                        ? 'bg-rose-950/40 border-rose-800/60 text-rose-200'
+                        : 'bg-black/40 border-white/5 text-slate-300'
+                    ]"
+                  >
+                    <span class="font-bold shrink-0 mt-0.5">{{ isDbMutationQuery(tc.args.query) ? '🚨' : '⚡' }}</span>
+                    <div>
+                      <span :class="isDbMutationQuery(tc.args.query) ? 'text-rose-300 font-bold' : 'text-amber-300 font-semibold'">Dampak: </span>
+                      <span>{{ tc.args.impact || (isDbMutationQuery(tc.args.query) ? 'Peringatan: Perintah ini akan mengubah atau menghapus data pada database!' : 'Aman (Hanya membaca data)') }}</span>
+                    </div>
+                  </div>
+
+                  <!-- SQL Query Code Box -->
+                  <div class="pt-0.5">
+                    <div class="flex items-center justify-between text-[9px] text-slate-400 font-mono mb-1">
+                      <span>Query SQL Target:</span>
+                      <button
+                        v-if="tc.args.query"
+                        @click="copyCommand(tc.args.query)"
+                        type="button"
+                        class="text-slate-400 hover:text-slate-200 transition text-[9px] flex items-center space-x-1 font-sans"
+                        title="Salin query SQL"
+                      >
+                        <span>📋 Salin</span>
+                      </button>
+                    </div>
+                    <div class="bg-black/60 border border-boba-800/80 p-2.5 rounded text-[11px] font-mono text-emerald-300 overflow-x-auto select-all whitespace-pre-wrap">
+                      {{ tc.args.query || '(query kosong)' }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tool Arguments untuk selain exec_command & db_execute_query (read_file, write_file, db_get_schema, dll) -->
                 <div v-else class="bg-boba-900/90 border border-boba-800/60 p-2.5 rounded-lg text-[10px] text-slate-300 space-y-2">
-                  <div v-if="tc.name === 'read_file'" class="text-sky-300 font-mono">
+                  <div v-if="tc.name === 'db_list_databases'" class="text-sky-300 font-mono flex items-center space-x-1.5">
+                    <Icon icon="lucide:database" class="w-3.5 h-3.5 text-sky-400" />
+                    <span>Daftar Koneksi Database di Vault</span>
+                  </div>
+                  <div v-else-if="tc.name === 'db_get_schema'" class="text-indigo-300 font-mono flex items-center space-x-1.5">
+                    <Icon icon="lucide:table" class="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Inspeksi Skema Tabel & Kolom Database {{ tc.args?.database ? `(${tc.args.database})` : '' }}</span>
+                  </div>
+                  <div v-else-if="tc.name === 'read_file'" class="text-sky-300 font-mono">
                     📄 Baca File: <span class="text-white font-semibold">{{ tc.args.path }}</span>
                   </div>
                   <div v-else-if="tc.name === 'write_file'" class="space-y-1.5 font-mono">
@@ -429,11 +498,13 @@
                       type="button"
                       :class="[
                         'px-3 py-1 text-white font-semibold rounded-md text-[10.5px] transition shadow flex items-center space-x-1',
-                        tc.name === 'exec_command' ? getCommandInsight(tc).buttonClass : 'bg-emerald-600 hover:bg-emerald-500'
+                        tc.name === 'db_execute_query' && isDbMutationQuery(tc.args.query)
+                          ? 'bg-rose-600 hover:bg-rose-500 ring-2 ring-rose-500/50'
+                          : (tc.name === 'exec_command' ? getCommandInsight(tc).buttonClass : 'bg-emerald-600 hover:bg-emerald-500')
                       ]"
                     >
                       <span>✓</span>
-                      <span>Setujui & Jalankan</span>
+                      <span>{{ tc.name === 'db_execute_query' && isDbMutationQuery(tc.args.query) ? 'Setujui & Ubah Data' : 'Setujui & Jalankan' }}</span>
                     </button>
                   </div>
                 </div>
@@ -647,6 +718,12 @@ const dialogStore = useDialogStore();
 function getCommandInsight(tc: any) {
   const cmd = tc.args?.command || tc.args?.cmd || tc.args?.bash || (typeof tc.args === 'string' ? tc.args : '');
   return explainBashCommand(cmd, tc.args?.description, tc.args?.impact);
+}
+
+function isDbMutationQuery(sql?: string): boolean {
+  if (!sql) return false;
+  const sanitized = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  return /\b(UPDATE|DELETE|DROP|TRUNCATE|ALTER|INSERT|CREATE|GRANT|REVOKE|REPLACE|RENAME)\b/i.test(sanitized);
 }
 
 function formatToolStatus(status: string): string {
