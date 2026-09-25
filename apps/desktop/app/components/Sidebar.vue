@@ -11,6 +11,23 @@
       </div>
 
       <div class="flex items-center space-x-1.5">
+        <!-- Check Update Button -->
+        <button
+          @click="$emit('open-update')"
+          title="Periksa Update Aplikasi (GitHub)"
+          class="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-boba-800 rounded-md transition text-xs relative"
+        >
+          <span>🚀</span>
+          <span
+            v-if="hasUpdateAvailable"
+            class="absolute top-1 right-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"
+          ></span>
+          <span
+            v-if="hasUpdateAvailable"
+            class="absolute top-1 right-1 w-2 h-2 rounded-full bg-sky-500"
+          ></span>
+        </button>
+
         <!-- SSH Keys Manager Button -->
         <button
           @click="$emit('open-keys')"
@@ -365,7 +382,11 @@ import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import type { SshSessionConfig, Folder } from '../types/index.js';
 
-const emit = defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys', 'open-change-password']);
+defineProps<{
+  hasUpdateAvailable?: boolean;
+}>();
+
+const emit = defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys', 'open-change-password', 'open-update']);
 
 const vaultStore = useVaultStore();
 const syncStore = useSyncStore();

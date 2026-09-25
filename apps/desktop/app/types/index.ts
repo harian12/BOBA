@@ -154,3 +154,21 @@ export interface AiChatThread {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface ReleaseAssetInfo {
+  name: string;
+  size: number;
+  download_url: string;
+  browser_download_url: string;
+}
+
+export interface AppUpdateInfo {
+  current_version: string;
+  latest_version: string;
+  has_update: boolean;
+  release_name: string;
+  release_notes: string;
+  published_at: string;
+  html_url: string;
+  assets: ReleaseAssetInfo[];
+}

@@ -77,6 +77,8 @@ pub fn run() {
             commands::read_recent_logs,
             commands::fetch_ai_models,
             commands::ai_http_stream,
+            commands::check_app_update,
+            commands::open_external_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BOBA desktop application");

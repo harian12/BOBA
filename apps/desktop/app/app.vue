@@ -8,8 +8,18 @@
         <span class="text-slate-400 text-[11px]">Windows Remote Terminal & SFTP Suite</span>
       </div>
 
-      <!-- Sync Status Pill -->
+      <!-- Sync Status Pill & Update Pill -->
       <div class="flex items-center space-x-2">
+        <button
+          v-if="hasUpdateAvailable"
+          @click="isUpdateOpen = true"
+          class="px-2.5 py-0.5 rounded-full text-[11px] font-mono flex items-center space-x-1.5 transition border bg-sky-950/70 border-sky-500 text-sky-300 hover:bg-sky-900"
+          title="Versi baru tersedia! Klik untuk melihat rilis"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>
+          <span>Update v{{ latestVersionAvailable }}</span>
+        </button>
+
         <button
           @click="isSyncOpen = true"
           :class="['px-2.5 py-0.5 rounded-full text-[11px] font-mono flex items-center space-x-1.5 transition border', syncStore.token ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400' : 'bg-boba-900 border-boba-700 text-slate-400']"
@@ -24,11 +34,13 @@
     <div class="flex-1 flex overflow-hidden">
       <!-- Left Sidebar (Session Organizer) -->
       <Sidebar
+        :has-update-available="hasUpdateAvailable"
         @new-session="handleOpenNewSession"
         @edit-session="handleOpenEditSession"
         @open-sync="isSyncOpen = true"
         @open-keys="handleOpenKeyManager"
         @open-change-password="isChangePasswordOpen = true"
+        @open-update="isUpdateOpen = true"
       />
 
       <!-- Right Workspace Area -->
@@ -263,6 +275,7 @@
     </div>
 
     <!-- Modals & Overlays -->
+    <UpdateModal :is-open="isUpdateOpen" @close="isUpdateOpen = false" />
     <SyncModal :is-open="isSyncOpen" @close="isSyncOpen = false" />
     <KeyManagerModal :is-open="isKeyManagerOpen" @close="isKeyManagerOpen = false" />
     <ChangeMasterPasswordModal :is-open="isChangePasswordOpen" @close="isChangePasswordOpen = false" />
@@ -350,6 +363,7 @@ import NewSessionModal from './components/NewSessionModal.vue';
 import AppDialog from './components/AppDialog.vue';
 import AiAssistantDrawer from './components/AiAssistantDrawer.vue';
 import AiProviderModal from './components/AiProviderModal.vue';
+import UpdateModal from './components/UpdateModal.vue';
 
 import { useVaultStore } from './stores/vaultStore.js';
 import { useSyncStore } from './stores/syncStore.js';
@@ -357,6 +371,7 @@ import { useSessionStore } from './stores/sessionStore.js';
 import { useDialogStore } from './stores/dialogStore.js';
 import { useTransferQueueStore } from './stores/transferQueueStore.js';
 import { useAiAgentStore } from './stores/aiAgentStore.js';
+import { tauriBridge } from './services/tauriBridge.js';
 import type { SshSessionConfig, ActiveTab } from './types/index.js';
 
 const vaultStore = useVaultStore();
@@ -366,6 +381,9 @@ const dialogStore = useDialogStore();
 const queueStore = useTransferQueueStore();
 const aiAgentStore = useAiAgentStore();
 
+const isUpdateOpen = ref(false);
+const hasUpdateAvailable = ref(false);
+const latestVersionAvailable = ref('');
 const isSyncOpen = ref(false);
 const isKeyManagerOpen = ref(false);
 const isChangePasswordOpen = ref(false);
@@ -538,10 +556,27 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
+async function checkUpdateSilently() {
+  const autoCheck = localStorage.getItem('boba_auto_check_update');
+  if (autoCheck === 'false') return;
+
+  try {
+    const info = await tauriBridge.checkAppUpdate();
+    if (info && info.has_update) {
+      hasUpdateAvailable.value = true;
+      latestVersionAvailable.value = info.latest_version;
+    }
+  } catch (e) {
+    // Silent fail on background check
+    console.debug('Background update check failed:', e);
+  }
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('click', closeTabContextMenu);
   queueStore.initListener();
+  checkUpdateSilently();
 });
 
 onUnmounted(() => {

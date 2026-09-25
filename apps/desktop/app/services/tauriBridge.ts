@@ -1,8 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo } from '../types/index.js';
 
 export const tauriBridge = {
+  // Update commands
+  async checkAppUpdate(customRepo?: string, currentVersion?: string): Promise<AppUpdateInfo> {
+    return await invoke('check_app_update', { customRepo: customRepo || null, currentVersion: currentVersion || null });
+  },
+
+  async openExternalUrl(url: string): Promise<void> {
+    return await invoke('open_external_url', { url });
+  },
+
   // Vault commands
   async initOrUnlockVault(masterPassword: string, userSalt: string): Promise<boolean> {
     return await invoke('init_or_unlock_vault', { masterPassword, userSalt });

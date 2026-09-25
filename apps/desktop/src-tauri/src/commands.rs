@@ -782,3 +782,149 @@ pub async fn ai_http_stream(
 
     Ok(())
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct ReleaseAssetInfo {
+    pub name: String,
+    pub size: u64,
+    pub download_url: String,
+    pub browser_download_url: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AppUpdateInfo {
+    pub current_version: String,
+    pub latest_version: String,
+    pub has_update: bool,
+    pub release_name: String,
+    pub release_notes: String,
+    pub published_at: String,
+    pub html_url: String,
+    pub assets: Vec<ReleaseAssetInfo>,
+}
+
+fn parse_semver(v: &str) -> Vec<u64> {
+    v.trim_start_matches(|c: char| !c.is_ascii_digit())
+        .split('.')
+        .filter_map(|part| {
+            let num_str = part.chars().take_while(|c| c.is_ascii_digit()).collect::<String>();
+            num_str.parse::<u64>().ok()
+        })
+        .collect()
+}
+
+fn is_version_newer(latest: &str, current: &str) -> bool {
+    let latest_parts = parse_semver(latest);
+    let current_parts = parse_semver(current);
+
+    let max_len = std::cmp::max(latest_parts.len(), current_parts.len());
+    for i in 0..max_len {
+        let l = latest_parts.get(i).copied().unwrap_or(0);
+        let c = current_parts.get(i).copied().unwrap_or(0);
+        if l > c {
+            return true;
+        } else if l < c {
+            return false;
+        }
+    }
+    false
+}
+
+#[tauri::command]
+pub async fn check_app_update(custom_repo: Option<String>, current_version: Option<String>) -> Result<AppUpdateInfo, String> {
+    let repo = custom_repo.unwrap_or_else(|| "harian12/BOBA".to_string());
+    let curr_ver = current_version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+
+    let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("BOBA-Desktop-App")
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let res = client
+        .get(&url)
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .map_err(|e| format!("Network request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("GitHub API returned {}: {}", status, body));
+    }
+
+    let json: serde_json::Value = res.json().await.map_err(|e| format!("Invalid JSON response: {}", e))?;
+
+    let tag_name = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let release_name = json.get("name").and_then(|v| v.as_str()).unwrap_or(&tag_name).to_string();
+    let release_notes = json.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let published_at = json.get("published_at").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let html_url = json.get("html_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    let latest_ver = if tag_name.starts_with('v') || tag_name.starts_with('V') {
+        tag_name[1..].to_string()
+    } else {
+        tag_name.clone()
+    };
+
+    let has_update = is_version_newer(&latest_ver, &curr_ver);
+
+    let mut assets = Vec::new();
+    if let Some(arr) = json.get("assets").and_then(|a| a.as_array()) {
+        for item in arr {
+            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let size = item.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+            let download_url = item.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let browser_download_url = item.get("browser_download_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+            if !name.is_empty() {
+                assets.push(ReleaseAssetInfo {
+                    name,
+                    size,
+                    download_url,
+                    browser_download_url,
+                });
+            }
+        }
+    }
+
+    Ok(AppUpdateInfo {
+        current_version: curr_ver,
+        latest_version: latest_ver,
+        has_update,
+        release_name,
+        release_notes,
+        published_at,
+        html_url,
+        assets,
+    })
+}
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| format!("Gagal membuka URL: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Gagal membuka URL: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Gagal membuka URL: {}", e))?;
+    }
+    Ok(())
+}
