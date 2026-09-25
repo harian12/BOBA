@@ -9,7 +9,7 @@
           title="Versi Aplikasi BOBA (Klik untuk cek pembaruan)"
           class="px-1.5 py-0.2 bg-boba-900 hover:bg-boba-800 text-slate-400 hover:text-sky-300 border border-boba-750 rounded text-[10px] font-mono transition"
         >
-          v0.1.5
+          v0.1.6
         </button>
         <span class="text-slate-600">|</span>
         <span class="text-slate-400 text-[11px]">Windows Remote Terminal & SFTP Suite</span>
