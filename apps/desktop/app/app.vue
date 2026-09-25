@@ -613,6 +613,14 @@ function handleKeyDown(e: KeyboardEvent) {
   } else if (e.altKey && e.key === 'ArrowLeft') {
     e.preventDefault();
     sessionStore.prevTab();
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T' || e.key === 'n' || e.key === 'N')) {
+    if (sessionStore.activeTabId) {
+      const curTab = sessionStore.tabs.find(t => t.id === sessionStore.activeTabId);
+      if (curTab && curTab.type === 'dbms') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('boba:dbms-new-subtab', { detail: { tabId: curTab.id } }));
+      }
+    }
   } else if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
     if (!isSyncOpen.value && !isKeyManagerOpen.value && !isNewSessionOpen.value) {
       if (sessionStore.activeTabId) {

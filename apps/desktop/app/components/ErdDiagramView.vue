@@ -36,6 +36,16 @@
           </button>
         </div>
 
+        <!-- Fit to Screen Button -->
+        <button
+          @click="fitToScreen"
+          title="Paskan Seluruh Diagram ke Layar (Fit to Screen)"
+          class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-sky-300 hover:text-white rounded text-xs transition flex items-center space-x-1.5"
+        >
+          <Icon icon="lucide:minimize-2" class="w-3.5 h-3.5" />
+          <span>Fit Screen</span>
+        </button>
+
         <!-- Reorganize / Reset Layout -->
         <button
           @click="resetGridLayout"
@@ -356,6 +366,67 @@ function onCanvasPanMouseUp() {
   window.removeEventListener('mouseup', onCanvasPanMouseUp);
 }
 
+const storageKey = computed(() => {
+  const dbId = props.dbConfig?.id || 'local';
+  const dbName = props.activeDb || 'default';
+  return `boba_erd_pos_${dbId}_${dbName}`;
+});
+
+function savePositionsToStorage() {
+  try {
+    localStorage.setItem(storageKey.value, JSON.stringify(tablePositions.value));
+  } catch (e) {
+    console.debug('Failed to save ERD positions:', e);
+  }
+}
+
+function loadPositionsFromStorage() {
+  try {
+    const saved = localStorage.getItem(storageKey.value);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        tablePositions.value = parsed;
+      }
+    }
+  } catch (e) {
+    console.debug('Failed to load ERD positions:', e);
+  }
+}
+
+function fitToScreen() {
+  if (!canvasRef.value || props.tables.length === 0) return;
+  const tbls = props.tables;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const cardWidth = 320;
+  const cardHeight = 320;
+
+  tbls.forEach(t => {
+    const pos = getTablePos(t.name);
+    if (pos.x < minX) minX = pos.x;
+    if (pos.y < minY) minY = pos.y;
+    if (pos.x + cardWidth > maxX) maxX = pos.x + cardWidth;
+    if (pos.y + cardHeight > maxY) maxY = pos.y + cardHeight;
+  });
+
+  const diagramWidth = (maxX - minX) + 160;
+  const diagramHeight = (maxY - minY) + 160;
+
+  const viewWidth = canvasRef.value.clientWidth || 1000;
+  const viewHeight = canvasRef.value.clientHeight || 700;
+
+  const scaleX = viewWidth / diagramWidth;
+  const scaleY = viewHeight / diagramHeight;
+  const optimalZoom = Math.min(scaleX, scaleY);
+
+  setZoom(Math.max(0.3, Math.min(1.2, optimalZoom)));
+  canvasRef.value.scrollTo({
+    left: Math.max(0, (minX - 40) * zoom.value),
+    top: Math.max(0, (minY - 40) * zoom.value),
+    behavior: 'smooth'
+  });
+}
+
 function getTablePos(tableName: string): { x: number; y: number } {
   if (!tablePositions.value[tableName]) {
     // Default grid coordinate calculation
@@ -384,6 +455,7 @@ function resetGridLayout() {
     };
   });
   tablePositions.value = newPositions;
+  savePositionsToStorage();
   nextTick(() => {
     updateRelationLines();
   });
@@ -417,6 +489,7 @@ function onDragMouseUp() {
   draggingTableName.value = null;
   window.removeEventListener('mousemove', onDragMouseMove);
   window.removeEventListener('mouseup', onDragMouseUp);
+  savePositionsToStorage();
   updateRelationLines();
 }
 
@@ -548,7 +621,10 @@ watch([() => props.tables, () => filteredTables.value, showLines, zoom], () => {
 });
 
 onMounted(() => {
-  resetGridLayout();
+  loadPositionsFromStorage();
+  if (Object.keys(tablePositions.value).length === 0) {
+    resetGridLayout();
+  }
   loadForeignKeys();
 });
 

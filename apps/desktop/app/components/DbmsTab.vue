@@ -2614,12 +2614,19 @@ function handleCloseSubTabEvent(e: any) {
   closeQueryTab(activeQueryTabId.value);
 }
 
+function handleNewSubTabEvent(e: any) {
+  if (e.detail?.tabId && e.detail.tabId !== props.tab.id) return;
+  addNewQueryTab();
+}
+
 onMounted(() => {
   loadSchemaOverview();
   window.addEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
+  window.addEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
+  window.removeEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);
 });
 </script>
