@@ -4,7 +4,7 @@
     @click="closeAllContextMenus"
   >
     <!-- Left Pane: Schema & Object Explorer -->
-    <div class="w-64 border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full">
+    <div v-show="!isSidebarCollapsed" class="w-64 border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full">
       <!-- Database Header & Selector -->
       <div class="p-2.5 border-b border-boba-800 space-y-2.5">
         <!-- DB Connection Name & Refresh -->
@@ -142,6 +142,15 @@
       <!-- Multi-Tab Query Editor Sub-Tabs Bar (Fitur 6 - Auto Open on Table Click) -->
       <div class="h-8 bg-[#0b0e17] border-b border-boba-800 flex items-center px-1 shrink-0 select-none overflow-x-auto justify-between">
         <div class="flex items-center overflow-x-auto no-scrollbar">
+          <!-- Collapse/Expand DB Object Tree Sidebar Button -->
+          <button
+            @click="isSidebarCollapsed = !isSidebarCollapsed"
+            :title="isSidebarCollapsed ? 'Tampilkan Objek & Tabel Database' : 'Sembunyikan Objek & Tabel (Layar Penuh)'"
+            class="p-1 hover:bg-boba-800 text-slate-400 hover:text-sky-300 rounded transition mr-1.5 shrink-0"
+          >
+            <Icon :icon="isSidebarCollapsed ? 'lucide:panel-left-open' : 'lucide:panel-left-close'" class="w-3.5 h-3.5" />
+          </button>
+
           <div
             v-for="(qTab, qIdx) in queryTabs"
             :key="qTab.id"
@@ -1317,6 +1326,8 @@ const props = defineProps<{
 
 const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
+
+const isSidebarCollapsed = ref(false);
 
 const isImporterOpen = ref(false);
 const isProcesslistOpen = ref(false);

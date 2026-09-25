@@ -1,325 +1,420 @@
 <template>
   <aside
-    class="w-72 bg-boba-900 border-r border-boba-800 flex flex-col h-full select-none relative"
+    class="flex h-full select-none relative bg-boba-950"
     @click="closeContextMenu"
   >
-    <!-- Brand / Header -->
-    <div class="px-4 py-3 border-b border-boba-800 flex items-center justify-between">
-      <div class="flex items-center space-x-2.5">
-        <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30" />
-        <span class="font-bold text-sm tracking-wide text-slate-100">BOBA</span>
-      </div>
+    <!-- Left Activity Bar Rail (48px) -->
+    <div class="w-12 bg-[#090c14] border-r border-boba-800 flex flex-col items-center py-2.5 justify-between shrink-0">
+      <!-- Top Modes: Sessions / Databases / SFTP -->
+      <div class="flex flex-col items-center space-y-2.5 w-full">
+        <!-- Brand Logo -->
+        <div class="p-1 mb-1">
+          <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30" />
+        </div>
 
-      <div class="flex items-center space-x-1">
-        <!-- Check Update Button -->
+        <!-- Mode 1: SSH Sessions / Terminal -->
         <button
-          @click="$emit('open-update')"
-          title="Periksa Update Aplikasi (GitHub)"
-          class="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-boba-800 rounded-md transition text-xs relative"
+          @click="activeMode = 'sessions'"
+          :class="[
+            'w-9 h-9 flex items-center justify-center rounded-lg transition relative',
+            activeMode === 'sessions'
+              ? 'bg-boba-800 text-sky-400 shadow-md border border-sky-500/30'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-boba-850'
+          ]"
+          title="Sessions & Remote SSH"
         >
-          <Icon icon="lucide:rocket" class="w-3.5 h-3.5" />
-          <span
-            v-if="hasUpdateAvailable"
-            class="absolute top-1 right-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"
-          ></span>
-          <span
-            v-if="hasUpdateAvailable"
-            class="absolute top-1 right-1 w-2 h-2 rounded-full bg-sky-500"
-          ></span>
+          <Icon icon="lucide:terminal" class="w-5 h-5" />
+          <span v-if="activeMode === 'sessions'" class="absolute left-0 top-2 bottom-2 w-1 bg-sky-400 rounded-r"></span>
         </button>
 
-        <!-- SSH Keys Manager Button -->
+        <!-- Mode 2: Databases (DBMS) -->
+        <button
+          @click="activeMode = 'databases'"
+          :class="[
+            'w-9 h-9 flex items-center justify-center rounded-lg transition relative',
+            activeMode === 'databases'
+              ? 'bg-boba-800 text-sky-400 shadow-md border border-sky-500/30'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-boba-850'
+          ]"
+          title="Databases (DBMS Client & ERD)"
+        >
+          <Icon icon="lucide:database" class="w-5 h-5" />
+          <span v-if="activeMode === 'databases'" class="absolute left-0 top-2 bottom-2 w-1 bg-sky-400 rounded-r"></span>
+        </button>
+
+        <!-- Mode 3: SFTP Manager -->
+        <button
+          @click="sessionStore.openSftpTab()"
+          class="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-sky-300 hover:bg-boba-850 transition"
+          title="Buka SFTP Manager Dedicated"
+        >
+          <Icon icon="lucide:folder-sync" class="w-5 h-5" />
+        </button>
+      </div>
+
+      <!-- Bottom Tools: Keys, Security, Sync, Lock, Update -->
+      <div class="flex flex-col items-center space-y-1.5 w-full">
+        <!-- Update -->
+        <button
+          @click="$emit('open-update')"
+          title="Periksa Update Aplikasi"
+          class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-sky-400 hover:bg-boba-850 rounded-md transition relative"
+        >
+          <Icon icon="lucide:rocket" class="w-4 h-4" />
+          <span v-if="hasUpdateAvailable" class="absolute top-1 right-1 w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
+        </button>
+
+        <!-- SSH Key Vault -->
         <button
           @click="$emit('open-keys')"
           title="SSH Key Vault (E2EE)"
-          class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-boba-800 rounded-md transition text-xs"
+          class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-boba-850 rounded-md transition"
         >
-          <Icon icon="lucide:key" class="w-3.5 h-3.5" />
+          <Icon icon="lucide:key" class="w-4 h-4" />
         </button>
 
-        <!-- Change Master Password Button -->
+        <!-- Security Master Password -->
         <button
           @click="$emit('open-change-password')"
-          title="Ubah Master Password (E2EE)"
-          class="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-boba-800 rounded-md transition text-xs"
+          title="Master Password (E2EE)"
+          class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-sky-400 hover:bg-boba-850 rounded-md transition"
         >
-          <Icon icon="lucide:shield-check" class="w-3.5 h-3.5" />
+          <Icon icon="lucide:shield-check" class="w-4 h-4" />
         </button>
 
-        <!-- Sync Trigger Button -->
+        <!-- Cloud Sync -->
         <button
           @click="$emit('open-sync')"
-          :title="syncStore.token ? `Logged in as ${syncStore.userEmail}` : 'Configure Cloud Sync'"
-          class="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded-md transition"
+          :title="syncStore.token ? `Logged in: ${syncStore.userEmail}` : 'Cloud Sync'"
+          class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-boba-850 rounded-md transition"
         >
-          <Icon icon="lucide:cloud" :class="['w-3.5 h-3.5', syncStore.token ? 'text-emerald-400' : 'text-slate-400']" />
+          <Icon icon="lucide:cloud" :class="['w-4 h-4', syncStore.token ? 'text-emerald-400' : 'text-slate-400']" />
         </button>
 
-        <!-- Lock Vault Button -->
+        <!-- Lock Vault -->
         <button
           @click="vaultStore.lock"
           title="Lock Vault"
-          class="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-boba-800 rounded-md transition text-xs"
+          class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-boba-850 rounded-md transition"
         >
-          <Icon icon="lucide:lock" class="w-3.5 h-3.5" />
+          <Icon icon="lucide:lock" class="w-4 h-4" />
         </button>
       </div>
     </div>
 
-    <!-- Search / Filter -->
-    <div class="px-3 py-2 border-b border-boba-800">
-      <input
-        v-model="searchQuery"
-        type="text"
-        placeholder="Filter sessions..."
-        class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition"
-      />
-    </div>
-
-    <!-- Action Toolbar (Add Session / Folder) -->
-    <div class="px-3.5 py-2 flex items-center justify-between border-b border-boba-800 text-xs">
-      <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Sessions</span>
-      <div class="flex items-center space-x-1.5">
-        <button
-          @click="sessionStore.openSftpTab()"
-          title="Buka SFTP Manager Dedicated (Dual Pane / Inter-Session)"
-          class="px-2 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded text-[11px] font-medium border border-sky-700/50 transition flex items-center space-x-1"
-        >
-          <Icon icon="lucide:folder-sync" class="w-3.5 h-3.5 text-sky-400" />
-          <span>SFTP</span>
-        </button>
-        <button
-          @click="promptNewFolder"
-          title="New Folder"
-          class="px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded text-[11px] transition"
-        >
-          + Folder
-        </button>
-        <button
-          @click="$emit('new-session')"
-          title="New SSH Session"
-          class="px-2.5 py-1 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-md text-[11px] font-medium shadow-sm transition"
-        >
-          + Session
-        </button>
-      </div>
-    </div>
-
-    <!-- Session Hierarchy Tree (Supports Drag and Drop) -->
-    <div
-      ref="treeContainer"
-      class="flex-1 overflow-y-auto p-2.5 space-y-1 text-xs font-sans"
-      data-unorg-zone
-    >
-      <div v-if="filteredFolders.length === 0 && unorganizedSessions.length === 0" class="p-6 text-center text-slate-500">
-        No sessions found. Click "+ Session" to add.
-      </div>
-
-      <!-- Folders -->
-      <div
-        v-for="folder in filteredFolders"
-        :key="folder.id"
-        data-folder-wrap
-        :data-folder-id="folder.id"
-        class="space-y-0.5 rounded-lg transition-all relative"
-        :class="[
-          dragType === 'session' && dragOverFolderId === folder.id ? 'bg-sky-950/50 ring-2 ring-sky-500' : '',
-          dragType === 'folder' && dragOverFolderTargetId === folder.id && dragOverFolderPos === 'top' ? 'border-t-2 border-sky-400' : '',
-          dragType === 'folder' && dragOverFolderTargetId === folder.id && dragOverFolderPos === 'bottom' ? 'border-b-2 border-sky-400' : '',
-          draggingFolderId === folder.id ? 'opacity-30' : ''
-        ]"
-        @contextmenu.prevent="openFolderContextMenu($event, folder)"
-      >
-        <!-- Folder Row -->
-        <div
-          data-folder-row
-          :data-folder-id="folder.id"
-          @mousedown="beginPointerDrag('folder', folder, $event)"
-          @click="toggleFolder(folder.id)"
-          class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/70 rounded-lg group cursor-pointer select-none transition"
-          :class="[dragGhost?.type === 'folder' && dragGhost.id === folder.id ? 'opacity-30' : '']"
-        >
-          <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
-            <!-- Chevron Dropdown Indicator -->
-            <Icon
-              :icon="isFolderCollapsed(folder.id) ? 'lucide:chevron-right' : 'lucide:chevron-down'"
-              class="w-3.5 h-3.5 text-slate-400 shrink-0"
-            />
-            <Icon
-              :icon="isFolderCollapsed(folder.id) ? 'lucide:folder' : 'lucide:folder-open'"
-              class="w-4 h-4 text-amber-400 shrink-0"
-            />
-            <span class="font-semibold text-slate-200 truncate text-[13px]">{{ folder.name }}</span>
-            <span class="text-[10px] text-slate-500 font-mono">({{ getSessionsInFolder(folder.id).length }})</span>
+    <!-- Main Sidebar Drawer (w-64) -->
+    <div class="w-64 bg-boba-900 border-r border-boba-800 flex flex-col h-full">
+      <!-- ================= PANEL 1: SESSIONS & SSH ================= -->
+      <template v-if="activeMode === 'sessions'">
+        <!-- Action Toolbar (Add Session / Folder) -->
+        <div class="px-3 py-2.5 flex items-center justify-between border-b border-boba-800 text-xs">
+          <div class="flex items-center space-x-1.5">
+            <Icon icon="lucide:server" class="w-3.5 h-3.5 text-sky-400" />
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Sessions</span>
           </div>
-
-          <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1.5 shrink-0 transition-opacity">
+          <div class="flex items-center space-x-1">
             <button
-              @click.stop="$emit('new-session', folder.id)"
-              title="Add Session to this folder"
-              class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-300 hover:text-white text-xs font-bold transition"
+              @click="promptNewFolder"
+              title="New Folder"
+              class="px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded text-[11px] transition"
             >
-              +
+              + Folder
             </button>
             <button
-              @click.stop="deleteFolder(folder)"
-              title="Delete folder"
-              class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+              @click="$emit('new-session')"
+              title="New SSH Session"
+              class="px-2 py-1 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-md text-[11px] font-medium shadow-sm transition"
             >
-              ✕
+              + Session
             </button>
           </div>
         </div>
 
-        <!-- Folder Children Sessions (Collapsible) -->
-        <div v-show="!isFolderCollapsed(folder.id)" class="pl-5 pr-1 space-y-0.5">
+        <!-- Search / Filter Sessions -->
+        <div class="px-2.5 py-2 border-b border-boba-800">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Filter sessions..."
+            class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition font-sans"
+          />
+        </div>
+
+        <!-- Session Hierarchy Tree (Supports Drag and Drop) -->
+        <div
+          ref="treeContainer"
+          class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-sans"
+          data-unorg-zone
+        >
+          <div v-if="filteredFolders.length === 0 && unorganizedSessions.length === 0" class="p-6 text-center text-slate-500">
+            No sessions found. Click "+ Session" to add.
+          </div>
+
+          <!-- Folders -->
           <div
-            v-if="getSessionsInFolder(folder.id).length === 0"
-            class="px-3 py-1 text-[11px] text-slate-600 italic"
+            v-for="folder in filteredFolders"
+            :key="folder.id"
+            class="space-y-0.5"
+            :data-folder-id="folder.id"
           >
-            Empty folder (drop session here)
+            <!-- Folder Header Card -->
+            <div
+              @contextmenu.prevent="openFolderContextMenu($event, folder)"
+              @pointerdown="onPointerDownFolder($event, folder)"
+              :class="[
+                'flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition select-none relative',
+                dragOverFolderId === folder.id ? 'bg-sky-950/70 border border-sky-500/60 shadow-sm' : 'hover:bg-boba-800/80',
+                draggingFolderId === folder.id ? 'opacity-40' : ''
+              ]"
+            >
+              <!-- Folder Insertion Drop Indicators -->
+              <div
+                v-if="dragOverFolderTargetId === folder.id && dragOverFolderPos === 'top'"
+                class="absolute -top-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+              <div
+                v-if="dragOverFolderTargetId === folder.id && dragOverFolderPos === 'bottom'"
+                class="absolute -bottom-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+
+              <div
+                class="flex items-center space-x-2 truncate mr-2"
+                @click="toggleFolder(folder.id)"
+              >
+                <span class="text-slate-500 text-[10px] transform transition-transform duration-150 inline-block w-3 text-center">
+                  {{ collapsedFolders[folder.id] ? '▶' : '▼' }}
+                </span>
+                <span class="text-slate-400 group-hover:text-amber-400 transition-colors">
+                  <Icon icon="lucide:folder" class="w-3.5 h-3.5 inline" />
+                </span>
+                <span class="font-medium text-slate-200 truncate">{{ folder.name }}</span>
+                <span class="text-[10px] text-slate-500 font-mono">({{ getSessionsInFolder(folder.id).length }})</span>
+              </div>
+
+              <!-- Folder Actions -->
+              <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                <button
+                  @click.stop="promptRenameFolder(folder)"
+                  title="Rename folder"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                >
+                  ✎
+                </button>
+                <button
+                  @click.stop="deleteFolder(folder)"
+                  title="Delete folder (Sessions will be unorganized)"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <!-- Folder Sessions List -->
+            <div
+              v-show="!collapsedFolders[folder.id]"
+              class="pl-4 space-y-0.5 border-l border-boba-800/80 ml-3.5 my-0.5"
+            >
+              <div
+                v-if="getSessionsInFolder(folder.id).length === 0"
+                class="py-1 px-2 text-[11px] text-slate-500 italic"
+              >
+                Empty folder
+              </div>
+
+              <div
+                v-for="session in getSessionsInFolder(folder.id)"
+                :key="session.id"
+                :data-session-id="session.id"
+                :data-parent-folder="folder.id"
+                @dblclick="connectSession(session)"
+                @contextmenu.prevent="openSessionContextMenu($event, session)"
+                @pointerdown="onPointerDownSession($event, session)"
+                :class="[
+                  'flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition select-none relative',
+                  draggingSessionId === session.id ? 'opacity-40' : 'hover:bg-boba-800/80',
+                  sessionStore.activeTab?.sessionConfig?.id === session.id ? 'bg-boba-800 text-sky-300 font-medium' : 'text-slate-300'
+                ]"
+              >
+                <!-- Insertion Drop Line Indicators -->
+                <div
+                  v-if="dragOverSessionId === session.id && dragOverSessionPos === 'top'"
+                  class="absolute -top-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+                ></div>
+                <div
+                  v-if="dragOverSessionId === session.id && dragOverSessionPos === 'bottom'"
+                  class="absolute -bottom-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+                ></div>
+
+                <div class="flex items-center space-x-2 truncate mr-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-slate-600 group-hover:bg-sky-400 shrink-0 transition-colors"></span>
+                  <span class="truncate text-[12px]">{{ session.name }}</span>
+                </div>
+
+                <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                  <button
+                    @click.stop="$emit('edit-session', session)"
+                    title="Edit session"
+                    class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    @click.stop="deleteSession(session)"
+                    title="Delete session"
+                    class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Unorganized Sessions -->
+          <div v-if="unorganizedSessions.length > 0" class="pt-1.5 space-y-0.5">
+            <div
+              v-if="filteredFolders.length > 0"
+              class="px-2 py-1 text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+            >
+              Ungrouped
+            </div>
+
+            <div
+              v-for="session in unorganizedSessions"
+              :key="session.id"
+              :data-session-id="session.id"
+              @dblclick="connectSession(session)"
+              @contextmenu.prevent="openSessionContextMenu($event, session)"
+              @pointerdown="onPointerDownSession($event, session)"
+              :class="[
+                'flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition select-none relative',
+                draggingSessionId === session.id ? 'opacity-40' : 'hover:bg-boba-800/80',
+                sessionStore.activeTab?.sessionConfig?.id === session.id ? 'bg-boba-800 text-sky-300 font-medium' : 'text-slate-300'
+              ]"
+            >
+              <!-- Insertion Drop Line Indicators -->
+              <div
+                v-if="dragOverSessionId === session.id && dragOverSessionPos === 'top'"
+                class="absolute -top-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+              <div
+                v-if="dragOverSessionId === session.id && dragOverSessionPos === 'bottom'"
+                class="absolute -bottom-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+
+              <div class="flex items-center space-x-2 truncate mr-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-600 group-hover:bg-sky-400 shrink-0 transition-colors"></span>
+                <span class="truncate text-[12px]">{{ session.name }}</span>
+              </div>
+
+              <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                <button
+                  @click.stop="$emit('edit-session', session)"
+                  title="Edit session"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                >
+                  ✎
+                </button>
+                <button
+                  @click.stop="deleteSession(session)"
+                  title="Delete session"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- ================= PANEL 2: DATABASES (DBMS) ================= -->
+      <template v-else-if="activeMode === 'databases'">
+        <!-- Action Toolbar for DB -->
+        <div class="px-3 py-2.5 flex items-center justify-between border-b border-boba-800 text-xs">
+          <div class="flex items-center space-x-1.5">
+            <Icon icon="lucide:database" class="w-3.5 h-3.5 text-emerald-400" />
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Databases</span>
+            <span class="text-[10px] text-slate-500 font-mono">({{ dbmsStore.databases.length }})</span>
+          </div>
+          <button
+            @click="dbmsStore.openNewModal()"
+            title="Add New Database Connection"
+            class="px-2 py-1 bg-emerald-900/80 hover:bg-emerald-700 text-emerald-200 hover:text-white rounded text-[11px] font-medium border border-emerald-600/50 transition flex items-center space-x-1"
+          >
+            <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+            <span>+ DB</span>
+          </button>
+        </div>
+
+        <!-- Search / Filter Databases -->
+        <div class="px-2.5 py-2 border-b border-boba-800">
+          <input
+            v-model="dbSearchQuery"
+            type="text"
+            placeholder="Filter databases..."
+            class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition font-sans"
+          />
+        </div>
+
+        <!-- Database Connections List -->
+        <div class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-sans">
+          <div v-if="filteredDatabases.length === 0" class="p-6 text-center text-slate-500 text-xs">
+            <div class="mb-2">Belum ada koneksi database.</div>
+            <button
+              @click="dbmsStore.openNewModal()"
+              class="px-3 py-1.5 bg-boba-800 hover:bg-boba-750 text-emerald-300 rounded text-xs transition border border-boba-700"
+            >
+              + Tambah Database
+            </button>
           </div>
 
           <div
-            v-for="session in getSessionsInFolder(folder.id)"
-            :key="session.id"
-            data-sess-row
-            :data-session-id="session.id"
-            @mousedown="beginPointerDrag('session', session, $event)"
-            @dblclick="sessionStore.openSession(session, true)"
-            @contextmenu.prevent="openSessionContextMenu($event, session)"
-            class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-md cursor-grab active:cursor-grabbing group transition select-none"
-            :class="[
-              dragGhost?.type === 'session' && dragGhost.id === session.id ? 'opacity-30' : '',
-              dragType === 'session' && dragOverSessionId === session.id && dragOverSessionPos === 'top' ? 'border-t-2 border-sky-400' : '',
-              dragType === 'session' && dragOverSessionId === session.id && dragOverSessionPos === 'bottom' ? 'border-b-2 border-sky-400' : ''
-            ]"
-            title="Drag to move or reorder, double click to connect"
+            v-for="db in filteredDatabases"
+            :key="db.id"
+            @dblclick="dbmsStore.connectDatabase(db)"
+            class="p-2.5 bg-boba-950/60 hover:bg-boba-800/80 border border-boba-800 hover:border-sky-500/40 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1.5"
+            :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
           >
-            <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
-              <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              <span class="text-slate-300 truncate font-mono text-[12px]">{{ session.name || session.host }}</span>
+            <!-- Top Row: Icon, Name, Actions -->
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2 truncate mr-1">
+                <Icon :icon="getDbIcon(db.engine)" class="w-4 h-4 shrink-0" />
+                <span class="text-slate-200 font-bold truncate text-[12px] font-mono">{{ db.name }}</span>
+              </div>
+
+              <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                <button
+                  @click.stop="dbmsStore.openEditModal(db)"
+                  title="Edit database connection"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                >
+                  ✎
+                </button>
+                <button
+                  @click.stop="handleDeleteDb(db)"
+                  title="Delete database connection"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-            <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+
+            <!-- Details Row -->
+            <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+              <span class="truncate">{{ db.engine.toUpperCase() }} • {{ db.host || 'Local' }}:{{ db.port || 3306 }}</span>
               <button
-                @click.stop="$emit('edit-session', session)"
-                title="Edit session"
-                class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                @click.stop="dbmsStore.connectDatabase(db)"
+                class="px-1.5 py-0.5 bg-sky-950 hover:bg-sky-800 text-sky-300 rounded border border-sky-800/60 text-[10px] transition"
               >
-                ✎
-              </button>
-              <button
-                @click.stop="deleteSession(session)"
-                title="Delete session"
-                class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
-              >
-                ✕
+                Buka
               </button>
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- Root / Unorganized Sessions (Drop Target to remove from folder) -->
-      <div
-        v-if="unorganizedSessions.length > 0"
-        data-unorg
-        class="pt-1.5 space-y-0.5 rounded-lg"
-        :class="[dragType === 'session' && dragOverRoot ? 'bg-sky-950/30 ring-1 ring-sky-500/50' : '']"
-      >
-        <div
-          v-for="session in unorganizedSessions"
-          :key="session.id"
-          data-sess-row
-          :data-session-id="session.id"
-          @mousedown="beginPointerDrag('session', session, $event)"
-          @dblclick="sessionStore.openSession(session, true)"
-          @contextmenu.prevent="openSessionContextMenu($event, session)"
-          class="flex items-center justify-between px-2.5 py-1.5 hover:bg-boba-800/80 rounded-lg cursor-grab active:cursor-grabbing group transition select-none"
-          :class="[
-            dragGhost?.type === 'session' && dragGhost.id === session.id ? 'opacity-30' : '',
-            dragType === 'session' && dragOverSessionId === session.id && dragOverSessionPos === 'top' ? 'border-t-2 border-sky-400' : '',
-            dragType === 'session' && dragOverSessionId === session.id && dragOverSessionPos === 'bottom' ? 'border-b-2 border-sky-400' : ''
-          ]"
-          title="Drag to move or reorder, double click to connect"
-        >
-          <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
-            <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span class="text-slate-300 truncate font-mono text-[12px]">{{ session.name || session.host }}</span>
-          </div>
-          <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
-            <button
-              @click.stop="$emit('edit-session', session)"
-              title="Edit session"
-              class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
-            >
-              ✎
-            </button>
-            <button
-              @click.stop="deleteSession(session)"
-              title="Delete session"
-              class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- DBMS / Databases Section in Sidebar -->
-    <div class="border-t border-boba-800 bg-[#0f131c] flex flex-col max-h-56">
-      <div class="px-3.5 py-2 flex items-center justify-between border-b border-boba-800/80 text-xs">
-        <div class="flex items-center space-x-1.5">
-          <Icon icon="lucide:database" class="w-3.5 h-3.5 text-sky-400" />
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Databases</span>
-          <span class="text-[10px] text-slate-500 font-mono">({{ dbmsStore.databases.length }})</span>
-        </div>
-        <button
-          @click="dbmsStore.openNewModal()"
-          title="Add New Database Connection"
-          class="px-2 py-0.5 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-300 hover:text-white rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
-        >
-          <Icon icon="lucide:plus" class="w-3 h-3" />
-          <span>DB</span>
-        </button>
-      </div>
-
-      <div class="overflow-y-auto p-2 space-y-0.5 text-xs font-sans">
-        <div v-if="dbmsStore.databases.length === 0" class="py-3 text-center text-slate-500 text-[11px]">
-          Belum ada database. Klik "+ DB" untuk menambah.
-        </div>
-
-        <div
-          v-for="db in dbmsStore.databases"
-          :key="db.id"
-          @dblclick="dbmsStore.connectDatabase(db)"
-          class="flex items-center justify-between px-2 py-1.5 hover:bg-boba-800/80 rounded-md cursor-pointer group transition select-none"
-          :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
-        >
-          <div class="flex items-center space-x-2 truncate mr-1.5">
-            <Icon :icon="getDbIcon(db.engine)" class="w-3.5 h-3.5 shrink-0" />
-            <span class="text-slate-300 truncate text-[12px] font-medium">{{ db.name }}</span>
-          </div>
-
-          <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
-            <button
-              @click.stop="dbmsStore.openEditModal(db)"
-              title="Edit database connection"
-              class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
-            >
-              ✎
-            </button>
-            <button
-              @click.stop="handleDeleteDb(db)"
-              title="Delete database connection"
-              class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      </div>
+      </template>
     </div>
 
     <!-- Drag Ghost Indicator -->
@@ -370,60 +465,68 @@
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
           <Icon icon="lucide:copy" class="w-3.5 h-3.5" />
-          <span>Copy (Duplicate)</span>
+          <span>Copy</span>
         </button>
 
-        <div class="h-px bg-[#232936] my-1"></div>
+        <button
+          @click="handleContextDuplicate(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <Icon icon="lucide:copy-plus" class="w-3.5 h-3.5" />
+          <span>Duplicate</span>
+        </button>
+
+        <div class="h-px bg-[#2e3748] my-1"></div>
 
         <button
           @click="handleContextEdit(contextMenu.session)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <Icon icon="lucide:edit-3" class="w-3.5 h-3.5" />
-          <span>Edit Session</span>
+          <Icon icon="lucide:pencil" class="w-3.5 h-3.5" />
+          <span>Edit</span>
         </button>
 
         <button
-          @click="handleContextDelete(contextMenu.session)"
-          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-300 transition"
+          @click="handleContextDeleteSession(contextMenu.session)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-400 transition"
         >
           <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
-          <span>Delete Session</span>
+          <span>Delete</span>
         </button>
       </template>
 
       <!-- Folder Menu Items -->
       <template v-else-if="contextMenu.type === 'folder' && contextMenu.folder">
         <button
-          v-if="clipboardSession"
-          @click="handleContextPasteToFolder(contextMenu.folder.id)"
-          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded bg-sky-950/60 hover:bg-sky-600 hover:text-white text-sky-300 transition font-semibold"
-        >
-          <Icon icon="lucide:clipboard-paste" class="w-3.5 h-3.5" />
-          <span>Paste Session Here ({{ clipboardSession.session.name || clipboardSession.session.host }})</span>
-        </button>
-
-        <button
-          @click="handleContextNewSessionInFolder(contextMenu.folder.id)"
+          @click="handleContextNewSessionInFolder(contextMenu.folder)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
           <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
-          <span>New Session Here</span>
+          <span>New Session Inside</span>
+        </button>
+
+        <button
+          v-if="clipboard"
+          @click="handleContextPasteIntoFolder(contextMenu.folder)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white text-sky-400 transition"
+        >
+          <Icon icon="lucide:clipboard-paste" class="w-3.5 h-3.5" />
+          <span>Paste {{ clipboard.type === 'session' ? 'Session' : 'Folder' }}</span>
         </button>
 
         <button
           @click="handleContextRenameFolder(contextMenu.folder)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
-          <Icon icon="lucide:tag" class="w-3.5 h-3.5" />
+          <Icon icon="lucide:pencil" class="w-3.5 h-3.5" />
           <span>Rename Folder</span>
         </button>
 
-        <div class="h-px bg-[#232936] my-1"></div>
+        <div class="h-px bg-[#2e3748] my-1"></div>
 
         <button
           @click="handleContextDeleteFolder(contextMenu.folder)"
-          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-300 transition"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-400 transition"
         >
           <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
           <span>Delete Folder</span>
@@ -455,6 +558,13 @@ const sessionStore = useSessionStore();
 const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
 
+// Sidebar Modes: 'sessions' | 'databases'
+const activeMode = ref<'sessions' | 'databases'>('sessions');
+
+const searchQuery = ref('');
+const dbSearchQuery = ref('');
+const collapsedFolders = ref<Record<string, boolean>>({});
+
 function getDbIcon(engine?: string): string {
   switch (engine?.toLowerCase()) {
     case 'mysql':
@@ -474,6 +584,16 @@ function getDbIcon(engine?: string): string {
   }
 }
 
+const filteredDatabases = computed(() => {
+  if (!dbSearchQuery.value.trim()) return dbmsStore.databases;
+  const q = dbSearchQuery.value.toLowerCase();
+  return dbmsStore.databases.filter(d =>
+    d.name.toLowerCase().includes(q) ||
+    d.engine.toLowerCase().includes(q) ||
+    (d.host && d.host.toLowerCase().includes(q))
+  );
+});
+
 async function handleDeleteDb(db: DbConnectionConfig) {
   const confirmed = await dialogStore.confirm({
     title: `Hapus Koneksi "${db.name}"?`,
@@ -485,9 +605,6 @@ async function handleDeleteDb(db: DbConnectionConfig) {
     await dbmsStore.removeDatabase(db.id);
   }
 }
-
-const searchQuery = ref('');
-const collapsedFolders = ref<Record<string, boolean>>({});
 
 // Drag and Drop States (Pointer-based, works reliably in WebView2)
 const treeContainer = ref<HTMLElement | null>(null);
@@ -511,287 +628,294 @@ const dragGhost = ref<{
   y: number;
 } | null>(null);
 
-let pointerDragStart: { type: 'session' | 'folder'; id: string; label: string; x: number; y: number } | null = null;
-let dragPointerMoved = false;
+// Pointer drag tracking
+let dragStartX = 0;
+let dragStartY = 0;
+let isDragging = false;
+let pendingDragItem: { type: 'session' | 'folder'; item: any } | null = null;
 
 // Clipboard State for Cut/Copy/Paste
-const clipboardSession = ref<{
-  session: SshSessionConfig;
-  mode: 'cut' | 'copy';
+const clipboard = ref<{
+  action: 'cut' | 'copy';
+  type: 'session' | 'folder';
+  data: SshSessionConfig | Folder;
 } | null>(null);
 
 // Context Menu State
 const contextMenu = ref<{
   show: boolean;
-  type: 'session' | 'folder' | null;
   x: number;
   y: number;
+  type: 'session' | 'folder' | null;
   session?: SshSessionConfig;
   folder?: Folder;
 }>({
   show: false,
-  type: null,
   x: 0,
   y: 0,
+  type: null,
 });
 
-function toggleFolder(folderId: string) {
-  collapsedFolders.value[folderId] = !isFolderCollapsed(folderId);
-}
-
-function isFolderCollapsed(folderId: string): boolean {
-  if (searchQuery.value) return false;
-  return collapsedFolders.value[folderId] !== false;
-}
-
+// Computed Filters
 const filteredFolders = computed(() => {
-  if (!searchQuery.value) return vaultStore.vault.folders;
-  return vaultStore.vault.folders.filter(f =>
-    f.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-    getSessionsInFolder(f.id).length > 0
-  );
+  const folders = vaultStore.vault.folders || [];
+  if (!searchQuery.value.trim()) return folders;
+  const q = searchQuery.value.toLowerCase();
+
+  return folders.filter(f => {
+    if (f.name.toLowerCase().includes(q)) return true;
+    const folderSessions = vaultStore.vault.sessions.filter(s => s.folder_id === f.id);
+    return folderSessions.some(s => s.name.toLowerCase().includes(q) || s.host.toLowerCase().includes(q));
+  });
 });
 
 const unorganizedSessions = computed(() => {
-  return vaultStore.vault.sessions.filter(s => {
-    const matchesSearch = !searchQuery.value ||
-      s.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      s.host.toLowerCase().includes(searchQuery.value.toLowerCase());
-    return (!s.folder_id || !vaultStore.vault.folders.some(f => f.id === s.folder_id)) && matchesSearch;
-  });
+  const sessions = (vaultStore.vault.sessions || []).filter(s => !s.folder_id);
+  if (!searchQuery.value.trim()) return sessions;
+  const q = searchQuery.value.toLowerCase();
+  return sessions.filter(s => s.name.toLowerCase().includes(q) || s.host.toLowerCase().includes(q));
 });
 
-function getSessionsInFolder(folderId: string): SshSessionConfig[] {
-  return vaultStore.vault.sessions.filter(s => {
-    const matchesFolder = s.folder_id === folderId;
-    const matchesSearch = !searchQuery.value ||
-      s.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      s.host.toLowerCase().includes(searchQuery.value.toLowerCase());
-    return matchesFolder && matchesSearch;
+function getSessionsInFolder(folderId: string) {
+  const sessions = (vaultStore.vault.sessions || []).filter(s => s.folder_id === folderId);
+  if (!searchQuery.value.trim()) return sessions;
+  const q = searchQuery.value.toLowerCase();
+  return sessions.filter(s => s.name.toLowerCase().includes(q) || s.host.toLowerCase().includes(q));
+}
+
+function toggleFolder(folderId: string) {
+  collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
+}
+
+function connectSession(session: SshSessionConfig) {
+  sessionStore.openSession(session);
+}
+
+// Dialog-based Folder Prompts
+async function promptNewFolder() {
+  const folderName = await dialogStore.prompt({
+    title: 'Buat Folder Baru',
+    description: 'Masukkan nama folder untuk mengelompokkan sesi:',
+    placeholder: 'Nama folder (misal: Production, Staging)',
+    confirmText: 'Buat Folder',
   });
+
+  if (folderName && folderName.trim()) {
+    vaultStore.addFolder(folderName.trim());
+  }
 }
 
-// ---- Pointer-based Drag & Drop ----
+async function promptRenameFolder(folder: Folder) {
+  const newName = await dialogStore.prompt({
+    title: 'Ubah Nama Folder',
+    description: 'Masukkan nama baru untuk folder ini:',
+    defaultValue: folder.name,
+    confirmText: 'Simpan',
+  });
 
-function beginPointerDrag(type: 'session' | 'folder', item: any, e: MouseEvent) {
+  if (newName && newName.trim() && newName.trim() !== folder.name) {
+    vaultStore.renameFolder(folder.id, newName.trim());
+  }
+}
+
+async function deleteFolder(folder: Folder) {
+  const confirmed = await dialogStore.confirm({
+    title: `Hapus Folder "${folder.name}"?`,
+    description: 'Sesi di dalam folder ini tidak akan dihapus, melainkan dipindahkan ke daftar tidak terkelompok (Ungrouped).',
+    confirmText: 'Hapus Folder',
+    isDestructive: true,
+  });
+
+  if (confirmed) {
+    vaultStore.deleteFolder(folder.id);
+  }
+}
+
+async function deleteSession(session: SshSessionConfig) {
+  const confirmed = await dialogStore.confirm({
+    title: `Hapus Sesi "${session.name}"?`,
+    description: 'Sesi ini akan dihapus secara permanen dari vault Anda.',
+    confirmText: 'Hapus Sesi',
+    isDestructive: true,
+  });
+
+  if (confirmed) {
+    vaultStore.deleteSession(session.id);
+  }
+}
+
+// Pointer Drag and Drop Handlers
+function onPointerDownSession(e: PointerEvent, session: SshSessionConfig) {
   if (e.button !== 0) return;
-  if ((e.target as HTMLElement).closest('button')) return;
-
-  pointerDragStart = {
-    type,
-    id: item.id,
-    label: type === 'folder' ? item.name : (item.name || item.host || 'Session'),
-    x: e.clientX,
-    y: e.clientY,
-  };
-  dragPointerMoved = false;
-
-  window.addEventListener('mousemove', onPointerDragMove);
-  window.addEventListener('mouseup', onPointerDragEnd);
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  pendingDragItem = { type: 'session', item: session };
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
 }
 
-function onPointerDragMove(e: MouseEvent) {
-  if (!pointerDragStart) return;
+function onPointerDownFolder(e: PointerEvent, folder: Folder) {
+  if (e.button !== 0) return;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  pendingDragItem = { type: 'folder', item: folder };
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+}
 
-  // Activate drag after a small movement threshold
-  if (!dragType.value) {
-    const dx = e.clientX - pointerDragStart.x;
-    const dy = e.clientY - pointerDragStart.y;
-    if (Math.hypot(dx, dy) < 4) return;
-    dragType.value = pointerDragStart.type;
-    draggingSessionId.value = pointerDragStart.type === 'session' ? pointerDragStart.id : null;
-    draggingFolderId.value = pointerDragStart.type === 'folder' ? pointerDragStart.id : null;
-    dragGhost.value = { ...pointerDragStart, x: e.clientX, y: e.clientY };
-    document.body.style.cursor = 'grabbing';
-    dragPointerMoved = true;
+function onPointerMove(e: PointerEvent) {
+  if (!pendingDragItem) return;
+
+  if (!isDragging) {
+    const dist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+    if (dist > 5) {
+      isDragging = true;
+      dragType.value = pendingDragItem.type;
+      if (pendingDragItem.type === 'session') {
+        draggingSessionId.value = pendingDragItem.item.id;
+        dragGhost.value = {
+          type: 'session',
+          id: pendingDragItem.item.id,
+          label: pendingDragItem.item.name,
+          x: e.clientX,
+          y: e.clientY,
+        };
+      } else {
+        draggingFolderId.value = pendingDragItem.item.id;
+        dragGhost.value = {
+          type: 'folder',
+          id: pendingDragItem.item.id,
+          label: pendingDragItem.item.name,
+          x: e.clientX,
+          y: e.clientY,
+        };
+      }
+    }
   }
 
-  if (!dragType.value) return;
-  e.preventDefault();
-
-  // Position ghost near cursor
-  if (dragGhost.value) {
+  if (isDragging && dragGhost.value) {
     dragGhost.value.x = e.clientX;
     dragGhost.value.y = e.clientY;
-  }
 
-  // Auto-scroll when near the edges of the scroll container
-  const cont = treeContainer.value;
-  if (cont) {
-    const r = cont.getBoundingClientRect();
-    if (e.clientY < r.top + 28) cont.scrollTop -= 12;
-    else if (e.clientY > r.bottom - 28) cont.scrollTop += 12;
-  }
-
-  // Compute drop target from the element under the pointer
-  computeDragTarget(e.clientX, e.clientY);
-}
-
-function computeDragTarget(clientX: number, clientY: number) {
-  clearDropOverlays();
-  if (!dragType.value) return;
-
-  const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-  if (!el || !treeContainer.value || !treeContainer.value.contains(el)) return;
-
-  // 1. Over a session row -> reorder session (session drag only)
-  const sessRow = el.closest('[data-sess-row]') as HTMLElement | null;
-  if (dragType.value === 'session' && sessRow) {
-    const id = sessRow.getAttribute('data-session-id');
-    if (id && id !== draggingSessionId.value) {
-      dragOverSessionId.value = id;
-      const rect = sessRow.getBoundingClientRect();
-      dragOverSessionPos.value = clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
-    }
-    return;
-  }
-
-  // 2. Over a folder area
-  const folderWrap = el.closest('[data-folder-wrap]') as HTMLElement | null;
-  if (folderWrap) {
-    const fid = folderWrap.getAttribute('data-folder-id');
-    if (!fid) return;
+    const elem = document.elementFromPoint(e.clientX, e.clientY);
+    if (!elem) return;
 
     if (dragType.value === 'session') {
-      // Dragging a session onto a folder -> move into folder (unless already inside this folder body)
-      const srcFolder = vaultStore.vault.sessions.find(s => s.id === draggingSessionId.value)?.folder_id ?? null;
-      if (srcFolder !== fid) dragOverFolderId.value = fid;
-    } else if (dragType.value === 'folder' && fid !== draggingFolderId.value) {
-      // Dragging a folder over another folder -> reorder before/after it
-      dragOverFolderTargetId.value = fid;
-      const rowEl = el.closest('[data-folder-row]') as HTMLElement | null;
-      const rect = (rowEl || folderWrap).getBoundingClientRect();
-      dragOverFolderPos.value = clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
-    }
-    return;
-  }
+      const sessionCard = elem.closest('[data-session-id]') as HTMLElement | null;
+      const folderCard = elem.closest('[data-folder-id]') as HTMLElement | null;
+      const unorgZone = elem.closest('[data-unorg-zone]') as HTMLElement | null;
 
-  // 3. Anywhere else inside the tree -> root drop zone (unorganize sessions)
-  if (dragType.value === 'session') {
-    dragOverRoot.value = true;
+      if (sessionCard) {
+        const targetId = sessionCard.getAttribute('data-session-id');
+        if (targetId && targetId !== draggingSessionId.value) {
+          const rect = sessionCard.getBoundingClientRect();
+          const relY = e.clientY - rect.top;
+          dragOverSessionId.value = targetId;
+          dragOverSessionPos.value = relY < rect.height / 2 ? 'top' : 'bottom';
+          dragOverFolderId.value = null;
+          dragOverRoot.value = false;
+          return;
+        }
+      }
+
+      if (folderCard) {
+        const folderId = folderCard.getAttribute('data-folder-id');
+        if (folderId) {
+          dragOverFolderId.value = folderId;
+          dragOverSessionId.value = null;
+          dragOverRoot.value = false;
+          return;
+        }
+      }
+
+      if (unorgZone && !sessionCard && !folderCard) {
+        dragOverFolderId.value = null;
+        dragOverSessionId.value = null;
+        dragOverRoot.value = true;
+        return;
+      }
+    } else if (dragType.value === 'folder') {
+      const folderCard = elem.closest('[data-folder-id]') as HTMLElement | null;
+      if (folderCard) {
+        const targetId = folderCard.getAttribute('data-folder-id');
+        if (targetId && targetId !== draggingFolderId.value) {
+          const rect = folderCard.getBoundingClientRect();
+          const relY = e.clientY - rect.top;
+          dragOverFolderTargetId.value = targetId;
+          dragOverFolderPos.value = relY < rect.height / 2 ? 'top' : 'bottom';
+          return;
+        }
+      }
+    }
+
+    dragOverFolderId.value = null;
+    dragOverFolderTargetId.value = null;
+    dragOverSessionId.value = null;
+    dragOverRoot.value = false;
   }
 }
 
-function clearDropOverlays() {
+async function onPointerUp(e: PointerEvent) {
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
+
+  if (!isDragging) {
+    pendingDragItem = null;
+    return;
+  }
+
+  if (dragType.value === 'session' && draggingSessionId.value) {
+    const sessId = draggingSessionId.value;
+
+    if (dragOverFolderId.value) {
+      vaultStore.moveSessionToFolder(sessId, dragOverFolderId.value);
+    } else if (dragOverSessionId.value && dragOverSessionPos.value) {
+      const targetSessionId = dragOverSessionId.value;
+      const targetSession = vaultStore.vault.sessions.find(s => s.id === targetSessionId);
+      const targetFolderId = targetSession ? targetSession.folder_id : null;
+
+      vaultStore.reorderSession(sessId, targetSessionId, dragOverSessionPos.value, targetFolderId);
+    } else if (dragOverRoot.value) {
+      vaultStore.moveSessionToFolder(sessId, null);
+    }
+  } else if (dragType.value === 'folder' && draggingFolderId.value) {
+    const srcFolderId = draggingFolderId.value;
+    if (dragOverFolderTargetId.value && dragOverFolderPos.value) {
+      vaultStore.reorderFolder(srcFolderId, dragOverFolderTargetId.value, dragOverFolderPos.value);
+    }
+  }
+
+  isDragging = false;
+  pendingDragItem = null;
+  dragType.value = null;
+  draggingSessionId.value = null;
+  draggingFolderId.value = null;
   dragOverFolderId.value = null;
   dragOverFolderTargetId.value = null;
   dragOverFolderPos.value = null;
   dragOverSessionId.value = null;
   dragOverSessionPos.value = null;
   dragOverRoot.value = false;
-}
-
-function onPointerDragEnd(e: MouseEvent) {
-  if (!pointerDragStart) return;
-  window.removeEventListener('mousemove', onPointerDragMove);
-  window.removeEventListener('mouseup', onPointerDragEnd);
-
-  if (dragType.value) {
-    const type = dragType.value;
-    const id = pointerDragStart.id;
-    executeDrop(type, id);
-  }
-
-  // If never moved, treat as click (no-op). Toggle handled by @click on folder.
-  pointerDragStart = null;
-  dragType.value = null;
-  draggingSessionId.value = null;
-  draggingFolderId.value = null;
   dragGhost.value = null;
-  clearDropOverlays();
-  document.body.style.cursor = '';
 }
 
-async function executeDrop(type: 'session' | 'folder', id: string) {
-  // Session dragged onto a session row -> reorder into that session's folder at pos
-  if (type === 'session' && dragOverSessionId.value && dragOverSessionId.value !== id) {
-    const targetSession = vaultStore.vault.sessions.find(s => s.id === dragOverSessionId.value);
-    if (targetSession) {
-      const sessions = [...vaultStore.vault.sessions];
-      const srcIndex = sessions.findIndex(s => s.id === id);
-      if (srcIndex >= 0) {
-        const [moved] = sessions.splice(srcIndex, 1);
-        moved.folder_id = targetSession.folder_id;
-        collapsedFolders.value[targetSession.folder_id || ''] = false;
-        const newTargetIndex = sessions.findIndex(s => s.id === targetSession.id);
-        const insertIndex = dragOverSessionPos.value === 'top' ? newTargetIndex : newTargetIndex + 1;
-        sessions.splice(insertIndex, 0, moved);
-        vaultStore.vault.sessions = sessions;
-        await vaultStore.persist(true);
-      }
-    }
-    return;
-  }
-
-  // Session dragged onto a folder -> move into folder
-  if (type === 'session' && dragOverFolderId.value) {
-    const sessions = [...vaultStore.vault.sessions];
-    const session = sessions.find(s => s.id === id);
-    if (session && session.folder_id !== dragOverFolderId.value) {
-      session.folder_id = dragOverFolderId.value;
-      collapsedFolders.value[dragOverFolderId.value] = false;
-      vaultStore.vault.sessions = sessions;
-      await vaultStore.persist(true);
-    }
-    return;
-  }
-
-  // Session dropped on root empty zone -> unorganize
-  if (type === 'session' && dragOverRoot.value) {
-    const sessions = [...vaultStore.vault.sessions];
-    const session = sessions.find(s => s.id === id);
-    if (session && session.folder_id !== null) {
-      session.folder_id = null;
-      vaultStore.vault.sessions = sessions;
-      await vaultStore.persist(true);
-    }
-    return;
-  }
-
-  // Folder dragged over another folder -> reorder
-  if (type === 'folder' && dragOverFolderTargetId.value && dragOverFolderTargetId.value !== id) {
-    const folders = [...vaultStore.vault.folders];
-    const srcIndex = folders.findIndex(f => f.id === id);
-    const tgtIndex = folders.findIndex(f => f.id === dragOverFolderTargetId.value);
-    if (srcIndex >= 0 && tgtIndex >= 0) {
-      const [moved] = folders.splice(srcIndex, 1);
-      const newTargetIndex = folders.findIndex(f => f.id === dragOverFolderTargetId.value);
-      const insertIndex = dragOverFolderPos.value === 'top' ? newTargetIndex : newTargetIndex + 1;
-      folders.splice(insertIndex, 0, moved);
-      vaultStore.vault.folders = folders;
-      await vaultStore.persist(true);
-    }
-    return;
-  }
-}
-
-// Context Menu Functions
+// Context Menu Handlers
 function openSessionContextMenu(e: MouseEvent, session: SshSessionConfig) {
-  let posX = e.clientX;
-  let posY = e.clientY;
-  if (posX + 210 > window.innerWidth) posX = window.innerWidth - 220;
-  if (posY + 200 > window.innerHeight) posY = window.innerHeight - 210;
-
   contextMenu.value = {
     show: true,
+    x: e.clientX,
+    y: e.clientY,
     type: 'session',
-    x: posX,
-    y: posY,
     session,
   };
 }
 
 function openFolderContextMenu(e: MouseEvent, folder: Folder) {
-  let posX = e.clientX;
-  let posY = e.clientY;
-  if (posX + 210 > window.innerWidth) posX = window.innerWidth - 220;
-  if (posY + 180 > window.innerHeight) posY = window.innerHeight - 190;
-
   contextMenu.value = {
     show: true,
+    x: e.clientX,
+    y: e.clientY,
     type: 'folder',
-    x: posX,
-    y: posY,
     folder,
   };
 }
@@ -802,33 +926,27 @@ function closeContextMenu() {
 
 function handleContextConnect(session: SshSessionConfig) {
   closeContextMenu();
-  sessionStore.openSession(session, true);
+  connectSession(session);
 }
 
 function handleContextOpenSftp(session: SshSessionConfig) {
   closeContextMenu();
-  // Open terminal tab if not open, then open sftp tab
-  sessionStore.openSession(session, false);
-  const tab = sessionStore.tabs.find(t => t.sessionConfig.id === session.id);
-  if (tab) {
-    sessionStore.openSftpTab(tab);
-  }
+  sessionStore.openSftpTab(undefined, session);
 }
 
 function handleContextCut(session: SshSessionConfig) {
   closeContextMenu();
-  clipboardSession.value = {
-    session,
-    mode: 'cut',
-  };
+  clipboard.value = { action: 'cut', type: 'session', data: session };
 }
 
 function handleContextCopy(session: SshSessionConfig) {
   closeContextMenu();
-  clipboardSession.value = {
-    session,
-    mode: 'copy',
-  };
+  clipboard.value = { action: 'copy', type: 'session', data: session };
+}
+
+function handleContextDuplicate(session: SshSessionConfig) {
+  closeContextMenu();
+  vaultStore.duplicateSession(session.id);
 }
 
 function handleContextEdit(session: SshSessionConfig) {
@@ -836,28 +954,19 @@ function handleContextEdit(session: SshSessionConfig) {
   emit('edit-session', session);
 }
 
-function handleContextDelete(session: SshSessionConfig) {
+function handleContextDeleteSession(session: SshSessionConfig) {
   closeContextMenu();
   deleteSession(session);
 }
 
-function handleContextNewSessionInFolder(folderId: string) {
+function handleContextNewSessionInFolder(folder: Folder) {
   closeContextMenu();
-  emit('new-session', folderId);
+  emit('new-session', folder.id);
 }
 
-async function handleContextRenameFolder(folder: Folder) {
+function handleContextRenameFolder(folder: Folder) {
   closeContextMenu();
-  const newName = await dialogStore.prompt({
-    title: `Rename Folder "${folder.name}"`,
-    description: 'Enter new folder name.',
-    defaultValue: folder.name,
-    confirmText: 'Rename',
-  });
-  if (newName && newName.trim() && newName.trim() !== folder.name) {
-    folder.name = newName.trim();
-    await vaultStore.persist(true);
-  }
+  promptRenameFolder(folder);
 }
 
 function handleContextDeleteFolder(folder: Folder) {
@@ -865,78 +974,18 @@ function handleContextDeleteFolder(folder: Folder) {
   deleteFolder(folder);
 }
 
-async function handleContextPasteToFolder(targetFolderId: string | null) {
+function handleContextPasteIntoFolder(folder: Folder) {
   closeContextMenu();
-  if (!clipboardSession.value) return;
+  if (!clipboard.value) return;
 
-  const { session, mode } = clipboardSession.value;
-
-  if (mode === 'cut') {
-    // Move session
-    const target = vaultStore.vault.sessions.find(s => s.id === session.id);
-    if (target) {
-      target.folder_id = targetFolderId;
-      await vaultStore.persist(true);
+  if (clipboard.value.type === 'session') {
+    const session = clipboard.value.data as SshSessionConfig;
+    if (clipboard.value.action === 'cut') {
+      vaultStore.moveSessionToFolder(session.id, folder.id);
+      clipboard.value = null;
+    } else {
+      vaultStore.duplicateSession(session.id, folder.id);
     }
-    clipboardSession.value = null;
-  } else if (mode === 'copy') {
-    // Duplicate session into target folder
-    const newSession: SshSessionConfig = {
-      ...JSON.parse(JSON.stringify(session)),
-      id: `ses_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: `${session.name || session.host} (Copy)`,
-      folder_id: targetFolderId,
-    };
-    vaultStore.vault.sessions.push(newSession);
-    await vaultStore.persist(true);
   }
 }
-
-async function promptNewFolder() {
-  const name = await dialogStore.prompt({
-    title: 'Create New Folder',
-    description: 'Enter a folder name to organize your SSH sessions.',
-    placeholder: 'e.g. Production Clusters',
-    confirmText: 'Create Folder',
-  });
-  if (name && name.trim()) {
-    await vaultStore.addFolder(name.trim());
-  }
-}
-
-async function deleteFolder(folder: Folder) {
-  const confirmed = await dialogStore.confirm({
-    title: `Delete Folder "${folder.name}"?`,
-    description: 'Sessions inside this folder will be moved to unorganized sessions.',
-    confirmText: 'Delete Folder',
-    isDestructive: true,
-  });
-  if (confirmed) {
-    await vaultStore.removeFolder(folder.id);
-  }
-}
-
-async function deleteSession(session: SshSessionConfig) {
-  const confirmed = await dialogStore.confirm({
-    title: `Delete Session "${session.name || session.host}"?`,
-    description: 'This action cannot be undone.',
-    confirmText: 'Delete Session',
-    isDestructive: true,
-  });
-  if (confirmed) {
-    await vaultStore.removeSession(session.id);
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('click', closeContextMenu);
-});
-
-onUnmounted(() => {
-  window.removeEventListener('click', closeContextMenu);
-  window.removeEventListener('mousemove', onPointerDragMove);
-  window.removeEventListener('mouseup', onPointerDragEnd);
-  pointerDragStart = null;
-  document.body.style.cursor = '';
-});
 </script>
