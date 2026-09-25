@@ -585,14 +585,28 @@ impl DbmsManager {
                         for (idx, _col) in r.columns().iter().enumerate() {
                             let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
                                 Value::String(s)
+                            } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
+                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
+                                Value::String(d.format("%Y-%m-%d").to_string())
+                            } else if let Ok(t) = r.try_get::<chrono::NaiveTime, _>(idx) {
+                                Value::String(t.format("%H:%M:%S").to_string())
                             } else if let Ok(i) = r.try_get::<i64, _>(idx) {
                                 Value::Number(i.into())
+                            } else if let Ok(i) = r.try_get::<i32, _>(idx) {
+                                Value::Number(i.into())
+                            } else if let Ok(u) = r.try_get::<u64, _>(idx) {
+                                Value::Number(u.into())
                             } else if let Ok(f) = r.try_get::<f64, _>(idx) {
                                 serde_json::Number::from_f64(f)
                                     .map(Value::Number)
                                     .unwrap_or(Value::Null)
                             } else if let Ok(b) = r.try_get::<bool, _>(idx) {
                                 Value::Bool(b)
+                            } else if let Ok(json_v) = r.try_get::<serde_json::Value, _>(idx) {
+                                json_v
                             } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
                                 Value::String(String::from_utf8_lossy(&bytes).to_string())
                             } else {
@@ -676,9 +690,21 @@ impl DbmsManager {
                         for (idx, _col) in r.columns().iter().enumerate() {
                             let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
                                 Value::String(s)
+                            } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
+                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
+                                Value::String(d.format("%Y-%m-%d").to_string())
+                            } else if let Ok(t) = r.try_get::<chrono::NaiveTime, _>(idx) {
+                                Value::String(t.format("%H:%M:%S").to_string())
+                            } else if let Ok(u) = r.try_get::<uuid::Uuid, _>(idx) {
+                                Value::String(u.to_string())
                             } else if let Ok(i) = r.try_get::<i64, _>(idx) {
                                 Value::Number(i.into())
                             } else if let Ok(i) = r.try_get::<i32, _>(idx) {
+                                Value::Number(i.into())
+                            } else if let Ok(i) = r.try_get::<i16, _>(idx) {
                                 Value::Number(i.into())
                             } else if let Ok(f) = r.try_get::<f64, _>(idx) {
                                 serde_json::Number::from_f64(f)
@@ -688,6 +714,8 @@ impl DbmsManager {
                                 Value::Bool(b)
                             } else if let Ok(json_v) = r.try_get::<serde_json::Value, _>(idx) {
                                 json_v
+                            } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
+                                Value::String(String::from_utf8_lossy(&bytes).to_string())
                             } else {
                                 Value::Null
                             };
@@ -768,6 +796,12 @@ impl DbmsManager {
                         for (idx, _col) in r.columns().iter().enumerate() {
                             let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
                                 Value::String(s)
+                            } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
+                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
+                                Value::String(d.format("%Y-%m-%d").to_string())
                             } else if let Ok(i) = r.try_get::<i64, _>(idx) {
                                 Value::Number(i.into())
                             } else if let Ok(f) = r.try_get::<f64, _>(idx) {

@@ -1344,11 +1344,6 @@ function cloneRow(row: any[]) {
     initialValues[colName] = val === null ? '' : String(val);
   });
 
-  const pk = getTablePrimaryKey(activeTable.value);
-  if (pk && typeof initialValues[pk.name] === 'string' && isNaN(Number(initialValues[pk.name]))) {
-    initialValues[pk.name] = `${initialValues[pk.name]}_copy`;
-  }
-
   pendingNewRows.value.push({
     tempId,
     values: initialValues,
