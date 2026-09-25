@@ -69,6 +69,9 @@
               <span v-else-if="tab.type === 'sftp'" class="text-xs shrink-0">
                 📁
               </span>
+              <span v-else-if="tab.type === 'dbms'" class="text-xs shrink-0">
+                🗄️
+              </span>
               <span
                 v-else
                 :class="['w-1.5 h-1.5 rounded-full shrink-0', tab.connected ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400 animate-pulse']"
@@ -220,10 +223,11 @@
                   sessionStore.layoutMode !== '1' && sessionStore.activeTabId === tab.id ? 'border-sky-500/80 ring-1 ring-sky-500/40' : 'border-boba-800/80'
                 ]"
               >
-                <!-- Render Editor Tab, SFTP Manager Tab, or Terminal Tab -->
+                <!-- Render Editor Tab, SFTP Manager Tab, DBMS Tab, or Terminal Tab -->
                 <div class="flex-1 h-full overflow-hidden">
                   <EditorTab v-if="tab.type === 'editor'" :tab="tab" />
                   <SftpManagerTab v-else-if="tab.type === 'sftp'" :tab="tab" />
+                  <DbmsTab v-else-if="tab.type === 'dbms'" :tab="tab" />
                   <TerminalTab v-else :tab="tab" />
                 </div>
 
@@ -275,6 +279,11 @@
     </div>
 
     <!-- Modals & Overlays -->
+    <DbConnectionModal
+      :is-open="dbmsStore.isModalOpen"
+      :db-config="dbmsStore.editingDbConfig"
+      @close="dbmsStore.isModalOpen = false"
+    />
     <UpdateModal :is-open="isUpdateOpen" @close="isUpdateOpen = false" />
     <SyncModal :is-open="isSyncOpen" @close="isSyncOpen = false" />
     <KeyManagerModal :is-open="isKeyManagerOpen" @close="isKeyManagerOpen = false" />
@@ -354,6 +363,7 @@ import Sidebar from './components/Sidebar.vue';
 import TerminalTab from './components/TerminalTab.vue';
 import EditorTab from './components/EditorTab.vue';
 import SftpManagerTab from './components/SftpManagerTab.vue';
+import DbmsTab from './components/DbmsTab.vue';
 import SftpDrawer from './components/SftpDrawer.vue';
 import VaultLockModal from './components/VaultLockModal.vue';
 import SyncModal from './components/SyncModal.vue';
@@ -364,6 +374,7 @@ import AppDialog from './components/AppDialog.vue';
 import AiAssistantDrawer from './components/AiAssistantDrawer.vue';
 import AiProviderModal from './components/AiProviderModal.vue';
 import UpdateModal from './components/UpdateModal.vue';
+import DbConnectionModal from './components/DbConnectionModal.vue';
 
 import { useVaultStore } from './stores/vaultStore.js';
 import { useSyncStore } from './stores/syncStore.js';
@@ -371,6 +382,7 @@ import { useSessionStore } from './stores/sessionStore.js';
 import { useDialogStore } from './stores/dialogStore.js';
 import { useTransferQueueStore } from './stores/transferQueueStore.js';
 import { useAiAgentStore } from './stores/aiAgentStore.js';
+import { useDbmsStore } from './stores/dbmsStore.js';
 import { tauriBridge } from './services/tauriBridge.js';
 import type { SshSessionConfig, ActiveTab } from './types/index.js';
 
@@ -380,6 +392,7 @@ const sessionStore = useSessionStore();
 const dialogStore = useDialogStore();
 const queueStore = useTransferQueueStore();
 const aiAgentStore = useAiAgentStore();
+const dbmsStore = useDbmsStore();
 
 const isUpdateOpen = ref(false);
 const hasUpdateAvailable = ref(false);

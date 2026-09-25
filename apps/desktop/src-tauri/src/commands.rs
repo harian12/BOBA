@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 use crate::crypto::CryptoEngine;
+use crate::dbms::DbmsManager;
 use crate::ssh_session::{RemoteFileItem, SshManager};
 use crate::sync::{AuthResponse, SyncService, VaultGetResponse, VaultPutRequest};
 use crate::vault::VaultData;
@@ -15,6 +16,7 @@ pub struct AppState {
     pub current_vault: Arc<Mutex<VaultData>>,
     pub sync_service: SyncService,
     pub ssh_manager: Arc<SshManager>,
+    pub dbms_manager: Arc<DbmsManager>,
 }
 
 // --- E2EE Local Vault & Auth Commands ---
@@ -927,4 +929,33 @@ pub fn open_external_url(url: String) -> Result<(), String> {
             .map_err(|e| format!("Gagal membuka URL: {}", e))?;
     }
     Ok(())
+}
+
+// --- DBMS Commands ---
+
+#[tauri::command]
+pub async fn dbms_test_connection(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+) -> Result<String, String> {
+    state.dbms_manager.test_connection(&config).await
+}
+
+#[tauri::command]
+pub async fn dbms_get_schema_overview(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+    selected_db: Option<String>,
+) -> Result<crate::dbms::DbSchemaOverview, String> {
+    state.dbms_manager.get_schema_overview(&config, selected_db).await
+}
+
+#[tauri::command]
+pub async fn dbms_execute_query(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+    selected_db: Option<String>,
+    query: String,
+) -> Result<crate::dbms::DbQueryResult, String> {
+    state.dbms_manager.execute_query(&config, selected_db, &query).await
 }

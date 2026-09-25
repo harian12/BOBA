@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { ActiveTab, SshSessionConfig } from '../types/index.js';
+import type { ActiveTab, SshSessionConfig, DbConnectionConfig } from '../types/index.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 
 export type GridLayoutMode = '1' | '2-col' | '2-row' | '3' | '4';
@@ -148,6 +148,38 @@ export const useSessionStore = defineStore('session', () => {
     openSession(sourceTab.sessionConfig, true);
   }
 
+  function openDbmsTab(dbConfig: DbConnectionConfig) {
+    const existing = tabs.value.find(t => t.type === 'dbms' && t.dbConnection?.id === dbConfig.id);
+    if (existing) {
+      activeTabId.value = existing.id;
+      return;
+    }
+
+    const uniqueId = `dbms_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newTab: ActiveTab = {
+      id: uniqueId,
+      type: 'dbms',
+      title: `${dbConfig.name}`,
+      sessionConfig: {
+        id: dbConfig.id,
+        folder_id: null,
+        name: dbConfig.name,
+        host: dbConfig.host || 'localhost',
+        port: dbConfig.port || 3306,
+        username: dbConfig.username || 'root',
+        auth_type: 'password',
+        sftp_auto_open: false,
+      },
+      connected: true,
+      sftpOpen: false,
+      currentRemotePath: '',
+      dbConnection: dbConfig,
+    };
+
+    tabs.value.push(newTab);
+    activeTabId.value = uniqueId;
+  }
+
   async function closeTab(id: string) {
     const index = tabs.value.findIndex(t => t.id === id);
     if (index === -1) return;
@@ -216,6 +248,7 @@ export const useSessionStore = defineStore('session', () => {
     openSession,
     openEditorTab,
     openSftpTab,
+    openDbmsTab,
     duplicateTab,
     closeTab,
     closeOtherTabs,

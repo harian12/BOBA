@@ -54,6 +54,8 @@ pub struct VaultData {
     pub sessions: Vec<SshSessionConfig>,
     pub keys: Vec<SshKeyItem>,
     pub snippets: Vec<SnippetItem>,
+    #[serde(default)]
+    pub databases: Vec<crate::dbms::DbConnectionConfig>,
 }
 
 impl Default for VaultData {
@@ -84,6 +86,7 @@ impl Default for VaultData {
                     description: Some("Check storage disk partitions".into()),
                 }
             ],
+            databases: vec![],
         }
     }
 }

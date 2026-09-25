@@ -1,8 +1,21 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult } from '../types/index.js';
 
 export const tauriBridge = {
+  // DBMS commands
+  async dbmsTestConnection(config: DbConnectionConfig): Promise<string> {
+    return await invoke('dbms_test_connection', { config });
+  },
+
+  async dbmsGetSchemaOverview(config: DbConnectionConfig, selectedDb?: string): Promise<DbSchemaOverview> {
+    return await invoke('dbms_get_schema_overview', { config, selectedDb: selectedDb || null });
+  },
+
+  async dbmsExecuteQuery(config: DbConnectionConfig, selectedDb: string | undefined, query: string): Promise<DbQueryResult> {
+    return await invoke('dbms_execute_query', { config, selectedDb: selectedDb || null, query });
+  },
+
   // Update commands
   async checkAppUpdate(customRepo?: string, currentVersion?: string): Promise<AppUpdateInfo> {
     return await invoke('check_app_update', { customRepo: customRepo || null, currentVersion: currentVersion || null });

@@ -263,6 +263,59 @@
       </div>
     </div>
 
+    <!-- DBMS / Databases Section in Sidebar -->
+    <div class="border-t border-boba-800 bg-[#0f131c] flex flex-col max-h-56">
+      <div class="px-3.5 py-2 flex items-center justify-between border-b border-boba-800/80 text-xs">
+        <div class="flex items-center space-x-1.5">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Databases</span>
+          <span class="text-[10px] text-slate-500 font-mono">({{ dbmsStore.databases.length }})</span>
+        </div>
+        <button
+          @click="dbmsStore.openNewModal()"
+          title="Add New Database Connection"
+          class="px-2 py-0.5 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-300 hover:text-white rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
+        >
+          <span>+ DB</span>
+        </button>
+      </div>
+
+      <div class="overflow-y-auto p-2 space-y-0.5 text-xs font-sans">
+        <div v-if="dbmsStore.databases.length === 0" class="py-3 text-center text-slate-500 text-[11px]">
+          Belum ada database. Klik "+ DB" untuk menambah.
+        </div>
+
+        <div
+          v-for="db in dbmsStore.databases"
+          :key="db.id"
+          @dblclick="dbmsStore.connectDatabase(db)"
+          class="flex items-center justify-between px-2 py-1.5 hover:bg-boba-800/80 rounded-md cursor-pointer group transition select-none"
+          :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
+        >
+          <div class="flex items-center space-x-2 truncate mr-1.5">
+            <span class="text-xs shrink-0">{{ getDbIcon(db.engine) }}</span>
+            <span class="text-slate-300 truncate text-[12px] font-medium">{{ db.name }}</span>
+          </div>
+
+          <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+            <button
+              @click.stop="dbmsStore.openEditModal(db)"
+              title="Edit database connection"
+              class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+            >
+              ✎
+            </button>
+            <button
+              @click.stop="handleDeleteDb(db)"
+              title="Delete database connection"
+              class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Drag Ghost Indicator -->
     <div
       v-if="dragGhost"
@@ -380,7 +433,8 @@ import { useVaultStore } from '../stores/vaultStore.js';
 import { useSyncStore } from '../stores/syncStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
-import type { SshSessionConfig, Folder } from '../types/index.js';
+import { useDbmsStore } from '../stores/dbmsStore.js';
+import type { SshSessionConfig, Folder, DbConnectionConfig } from '../types/index.js';
 
 defineProps<{
   hasUpdateAvailable?: boolean;
@@ -392,6 +446,38 @@ const vaultStore = useVaultStore();
 const syncStore = useSyncStore();
 const sessionStore = useSessionStore();
 const dialogStore = useDialogStore();
+const dbmsStore = useDbmsStore();
+
+function getDbIcon(engine?: string): string {
+  switch (engine?.toLowerCase()) {
+    case 'mysql':
+    case 'mariadb':
+      return '🐬';
+    case 'postgres':
+    case 'postgresql':
+      return '🐘';
+    case 'sqlite':
+      return '🗃️';
+    case 'redis':
+      return '⚡';
+    case 'mongodb':
+      return '🍃';
+    default:
+      return '🗄️';
+  }
+}
+
+async function handleDeleteDb(db: DbConnectionConfig) {
+  const confirmed = await dialogStore.confirm({
+    title: `Hapus Koneksi "${db.name}"?`,
+    description: 'Koneksi database ini akan dihapus dari vault Anda.',
+    confirmText: 'Hapus Database',
+    isDestructive: true,
+  });
+  if (confirmed) {
+    await dbmsStore.removeDatabase(db.id);
+  }
+}
 
 const searchQuery = ref('');
 const collapsedFolders = ref<Record<string, boolean>>({});

@@ -42,6 +42,53 @@ export interface VaultData {
   sessions: SshSessionConfig[];
   keys: SshKeyItem[];
   snippets: SnippetItem[];
+  databases?: DbConnectionConfig[];
+}
+
+export interface DbConnectionConfig {
+  id: string;
+  name: string;
+  engine: 'mysql' | 'postgres' | 'sqlite' | 'redis' | 'mongodb';
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  database?: string;
+  ssl?: boolean;
+  sqlite_path?: string;
+  is_remote_sqlite?: boolean;
+  ssh_tunnel_enabled?: boolean;
+  ssh_session_id?: string;
+}
+
+export interface DbColumnMeta {
+  name: string;
+  data_type: string;
+  is_nullable: boolean;
+  is_primary_key: boolean;
+  default_value?: string | null;
+}
+
+export interface DbTableMeta {
+  name: string;
+  schema?: string | null;
+  table_type: string; // 'TABLE' | 'VIEW' | 'COLLECTION' | 'STRING' | 'HASH' | etc
+  row_count?: number | null;
+  columns: DbColumnMeta[];
+}
+
+export interface DbSchemaOverview {
+  databases: string[];
+  current_database?: string | null;
+  tables: DbTableMeta[];
+}
+
+export interface DbQueryResult {
+  columns: string[];
+  rows: any[][];
+  affected_rows: number;
+  execution_time_ms: number;
+  error?: string | null;
 }
 
 export interface RemoteFileItem {
@@ -81,8 +128,8 @@ export interface ServerMetrics {
 }
 
 export interface ActiveTab {
-  id: string; // session ID or editor tab ID
-  type?: 'terminal' | 'editor' | 'sftp';
+  id: string; // session ID or editor/sftp/dbms tab ID
+  type?: 'terminal' | 'editor' | 'sftp' | 'dbms';
   title: string;
   sessionConfig: SshSessionConfig;
   connected: boolean;
@@ -101,6 +148,8 @@ export interface ActiveTab {
     saving: boolean;
     parentSessionId: string;
   };
+  // DBMS tab specific fields
+  dbConnection?: DbConnectionConfig;
 }
 
 export interface VaultSnapshot {
@@ -110,6 +159,7 @@ export interface VaultSnapshot {
   sessions: SshSessionConfig[];
   keys: SshKeyItem[];
   snippets: SnippetItem[];
+  databases?: DbConnectionConfig[];
 }
 
 // AI Copilot & Server Agent Types

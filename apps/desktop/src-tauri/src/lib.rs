@@ -1,11 +1,13 @@
 pub mod commands;
 pub mod crypto;
+pub mod dbms;
 pub mod ppk;
 pub mod ssh_session;
 pub mod sync;
 pub mod vault;
 
 use commands::AppState;
+use dbms::DbmsManager;
 use parking_lot::Mutex;
 use ssh_session::SshManager;
 use std::sync::Arc;
@@ -20,6 +22,7 @@ pub fn run() {
         current_vault: Arc::new(Mutex::new(VaultData::default())),
         sync_service: SyncService::new(),
         ssh_manager: Arc::new(SshManager::new()),
+        dbms_manager: Arc::new(DbmsManager::new()),
     };
 
     tauri::Builder::default()
@@ -79,6 +82,9 @@ pub fn run() {
             commands::ai_http_stream,
             commands::check_app_update,
             commands::open_external_url,
+            commands::dbms_test_connection,
+            commands::dbms_get_schema_overview,
+            commands::dbms_execute_query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BOBA desktop application");
