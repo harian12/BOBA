@@ -445,6 +445,36 @@
           </div>
         </div>
 
+        <!-- Unsaved Pending Edits Banner (Commit / Rollback Controls) -->
+        <div
+          v-if="pendingEditsCount > 0 && activeViewTab === 'data'"
+          class="px-3.5 py-2 bg-gradient-to-r from-amber-950 to-orange-950/90 border-b border-amber-500/60 flex items-center justify-between text-xs font-sans shadow-md animate-in fade-in shrink-0 select-none"
+        >
+          <div class="flex items-center space-x-2.5 text-amber-200">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span class="font-bold">
+              Ada {{ pendingEditsCount }} sel data yang diubah (belum disimpan ke database).
+            </span>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button
+              @click="rollbackPendingEdits"
+              class="px-3 py-1 bg-boba-900 hover:bg-boba-800 text-slate-300 hover:text-white rounded border border-boba-700 text-xs font-medium transition flex items-center space-x-1"
+            >
+              <span>↩️ Batalkan (Reset)</span>
+            </button>
+            <button
+              @click="commitPendingEdits"
+              :disabled="committingEdits"
+              class="px-4 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-bold text-xs shadow-lg transition flex items-center space-x-1"
+            >
+              <span v-if="committingEdits" class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></span>
+              <span>{{ committingEdits ? 'Menyimpan...' : '💾 Simpan Perubahan (Commit)' }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Query Error Banner -->
         <div v-if="errorMessage" class="p-3 bg-rose-950/60 border-b border-rose-800 text-rose-300 text-xs font-mono select-text flex items-start space-x-2">
           <span class="text-sm shrink-0">⚠️</span>
@@ -488,13 +518,20 @@
                       'px-3 py-1 border-r border-boba-850 text-slate-300 whitespace-nowrap max-w-xs truncate cursor-pointer transition-colors relative',
                       editingCell?.rIdx === rIdx && editingCell?.cIdx === cIdx
                         ? 'p-0.5 bg-sky-950 ring-1 ring-sky-400'
-                        : 'hover:bg-sky-950/40',
+                        : (isCellPending(rIdx, cIdx) ? 'bg-amber-950/80 text-amber-200 border-amber-600/70 font-semibold ring-1 ring-amber-500/50' : 'hover:bg-sky-950/40'),
                       justUpdatedCell === `${rIdx}_${cIdx}`
                         ? 'bg-emerald-950/80 text-emerald-200 ring-1 ring-emerald-400'
                         : ''
                     ]"
-                    :title="typeof val === 'object' ? JSON.stringify(val) : String(val)"
+                    :title="isCellPending(rIdx, cIdx) ? `Perubahan belum disimpan (Sebelumnya: ${pendingEdits[`${rIdx}_${cIdx}`]?.oldVal})` : (typeof val === 'object' ? JSON.stringify(val) : String(val))"
                   >
+                    <!-- Indicator dot for pending edits -->
+                    <span
+                      v-if="isCellPending(rIdx, cIdx)"
+                      class="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 mr-1 animate-pulse"
+                      title="Perubahan belum di-commit"
+                    ></span>
+
                     <!-- Active Inline Cell Input -->
                     <input
                       v-if="editingCell?.rIdx === rIdx && editingCell?.cIdx === cIdx"
@@ -1055,6 +1092,15 @@ export interface FilterState {
   active: boolean;
 }
 
+export interface PendingCellEdit {
+  rIdx: number;
+  cIdx: number;
+  colName: string;
+  oldVal: any;
+  newVal: any;
+  rowSnapshot: any[];
+}
+
 interface SubQueryTab {
   id: string;
   title: string;
@@ -1069,6 +1115,7 @@ interface SubQueryTab {
   errorMessage: string | null;
   activeViewTab: 'data' | 'structure' | 'ddl';
   filterState: FilterState;
+  pendingEdits: Record<string, PendingCellEdit>;
 }
 
 function createDefaultTab(
@@ -1104,6 +1151,7 @@ function createDefaultTab(
       ],
       active: false,
     },
+    pendingEdits: {},
   };
 }
 
@@ -1187,6 +1235,23 @@ const filterState = computed({
     if (activeQueryTab.value) activeQueryTab.value.filterState = val;
   },
 });
+
+const pendingEdits = computed({
+  get: () => activeQueryTab.value?.pendingEdits || {},
+  set: (val: Record<string, PendingCellEdit>) => {
+    if (activeQueryTab.value) activeQueryTab.value.pendingEdits = val;
+  },
+});
+
+const pendingEditsCount = computed(() => {
+  return Object.keys(pendingEdits.value).length;
+});
+
+function isCellPending(rIdx: number, cIdx: number): boolean {
+  return `${rIdx}_${cIdx}` in pendingEdits.value;
+}
+
+const committingEdits = ref(false);
 
 function addNewQueryTab(
   customTitle?: string,
@@ -1621,7 +1686,7 @@ function cancelInlineCellEdit() {
   editingCell.value = null;
 }
 
-async function saveInlineCellEdit(rIdx: number, cIdx: number) {
+function saveInlineCellEdit(rIdx: number, cIdx: number) {
   if (!editingCell.value || !activeTable.value || !queryResult.value) return;
   const { tempValue, originalVal } = editingCell.value;
   const colName = queryResult.value.columns[cIdx];
@@ -1634,75 +1699,35 @@ async function saveInlineCellEdit(rIdx: number, cIdx: number) {
     return;
   }
 
-  // Build WHERE clause
-  const pk = getTablePrimaryKey(activeTable.value);
-  let whereClause = '';
-  if (pk) {
-    const pkIdx = queryResult.value.columns.indexOf(pk.name);
-    if (pkIdx !== -1) {
-      const pkVal = row[pkIdx];
-      whereClause = typeof pkVal === 'number' ? `\`${pk.name}\` = ${pkVal}` : `\`${pk.name}\` = '${String(pkVal).replace(/'/g, "''")}'`;
-    }
-  }
-
-  if (!whereClause) {
-    // Match by all previous column values
-    const conditions: string[] = [];
-    queryResult.value.columns.forEach((col, idx) => {
-      const v = row[idx];
-      if (v === null) {
-        conditions.push(`\`${col}\` IS NULL`);
-      } else if (typeof v === 'number') {
-        conditions.push(`\`${col}\` = ${v}`);
-      } else {
-        conditions.push(`\`${col}\` = '${String(v).replace(/'/g, "''")}'`);
-      }
-    });
-    whereClause = conditions.slice(0, 4).join(' AND ');
-  }
-
-  // Format new value
-  let formattedVal = '';
+  // Parse new value
+  let parsedVal: any = tempValue;
   if (tempValue.trim().toUpperCase() === 'NULL' || tempValue.trim() === '') {
-    formattedVal = 'NULL';
+    parsedVal = null;
   } else if (!isNaN(Number(tempValue)) && tempValue.trim() !== '') {
-    formattedVal = tempValue.trim();
+    parsedVal = Number(tempValue);
+  }
+
+  const key = `${rIdx}_${cIdx}`;
+  const existingPending = pendingEdits.value[key];
+  const initialOldVal = existingPending ? existingPending.oldVal : originalVal;
+
+  const initialStr = initialOldVal === null ? '' : (typeof initialOldVal === 'object' ? JSON.stringify(initialOldVal) : String(initialOldVal));
+  if (tempValue === initialStr) {
+    delete pendingEdits.value[key];
   } else {
-    formattedVal = `'${tempValue.replace(/'/g, "''")}'`;
+    pendingEdits.value[key] = {
+      rIdx,
+      cIdx,
+      colName,
+      oldVal: initialOldVal,
+      newVal: parsedVal,
+      rowSnapshot: [...row],
+    };
   }
 
-  const updateSql = `UPDATE \`${activeTable.value.name}\` SET \`${colName}\` = ${formattedVal} WHERE ${whereClause};`;
-
-  try {
-    await tauriBridge.dbmsExecuteQuery(
-      props.tab.dbConnection!,
-      activeDatabase.value || undefined,
-      updateSql
-    );
-
-    // Update local table cell
-    let parsedVal: any = tempValue;
-    if (formattedVal === 'NULL') {
-      parsedVal = null;
-    } else if (!isNaN(Number(tempValue)) && tempValue.trim() !== '') {
-      parsedVal = Number(tempValue);
-    }
-    queryResult.value.rows[rIdx][cIdx] = parsedVal;
-
-    // Trigger flash animation
-    justUpdatedCell.value = `${rIdx}_${cIdx}`;
-    setTimeout(() => {
-      justUpdatedCell.value = null;
-    }, 1200);
-  } catch (err: any) {
-    await dialogStore.alert({
-      title: 'Gagal Memperbarui Cell',
-      description: String(err?.message || err),
-      variant: 'error',
-    });
-  } finally {
-    editingCell.value = null;
-  }
+  // Update view data locally (Pending commit)
+  queryResult.value.rows[rIdx][cIdx] = parsedVal;
+  editingCell.value = null;
 }
 
 function openCellContextMenu(e: MouseEvent, rIdx: number, cIdx: number, row: any[], value: any) {
@@ -1870,35 +1895,139 @@ async function handleCommitInsert() {
   handlePageChange(currentPage.value);
 }
 
-async function handleCommitEdit() {
+function handleCommitEdit() {
   if (!activeTable.value || !editingRowOriginal.value || !queryResult.value) return;
-  const pk = getTablePrimaryKey(activeTable.value);
-  if (!pk) return;
-
-  const pkIdx = queryResult.value.columns.indexOf(pk.name);
-  if (pkIdx === -1) return;
-
-  const pkVal = editingRowOriginal.value[pkIdx];
-  const pkClause = typeof pkVal === 'number' ? `${pk.name} = ${pkVal}` : `${pk.name} = '${String(pkVal).replace(/'/g, "''")}'`;
-
-  const setClauses: string[] = [];
-  for (const [colName, val] of Object.entries(rowFormValues.value)) {
-    if (val.toUpperCase() === 'NULL') {
-      setClauses.push(`${colName} = NULL`);
-    } else if (!isNaN(Number(val))) {
-      setClauses.push(`${colName} = ${val}`);
-    } else {
-      setClauses.push(`${colName} = '${val.replace(/'/g, "''")}'`);
-    }
+  const rIdx = queryResult.value.rows.findIndex(r => r === editingRowOriginal.value);
+  if (rIdx === -1) {
+    closeRowModals();
+    return;
   }
 
-  if (setClauses.length === 0) return;
+  const row = queryResult.value.rows[rIdx];
 
-  const sql = `UPDATE ${activeTable.value.name} SET ${setClauses.join(', ')} WHERE ${pkClause};`;
+  queryResult.value.columns.forEach((colName, cIdx) => {
+    const entered = rowFormValues.value[colName];
+    if (entered !== undefined) {
+      const orig = editingRowOriginal.value![cIdx];
+      const origStr = orig === null ? 'NULL' : String(orig);
+      if (entered !== origStr) {
+        let parsedVal: any = entered;
+        if (entered.trim().toUpperCase() === 'NULL' || entered.trim() === '') {
+          parsedVal = null;
+        } else if (!isNaN(Number(entered)) && entered.trim() !== '') {
+          parsedVal = Number(entered);
+        }
+
+        const key = `${rIdx}_${cIdx}`;
+        const existing = pendingEdits.value[key];
+        pendingEdits.value[key] = {
+          rIdx,
+          cIdx,
+          colName,
+          oldVal: existing ? existing.oldVal : orig,
+          newVal: parsedVal,
+          rowSnapshot: [...row],
+        };
+
+        queryResult.value!.rows[rIdx][cIdx] = parsedVal;
+      }
+    }
+  });
+
   closeRowModals();
-  currentQueryText.value = sql;
-  await executeQuery(sql);
-  handlePageChange(currentPage.value);
+}
+
+async function commitPendingEdits() {
+  if (!activeTable.value || !queryResult.value || pendingEditsCount.value === 0) return;
+  committingEdits.value = true;
+  errorMessage.value = null;
+
+  try {
+    const pk = getTablePrimaryKey(activeTable.value);
+    // Group pending edits by row index (rIdx)
+    const editsByRow: Record<number, PendingCellEdit[]> = {};
+    Object.values(pendingEdits.value).forEach(edit => {
+      if (!editsByRow[edit.rIdx]) editsByRow[edit.rIdx] = [];
+      editsByRow[edit.rIdx].push(edit);
+    });
+
+    for (const [rIdxStr, edits] of Object.entries(editsByRow)) {
+      const rIdx = Number(rIdxStr);
+      const row = edits[0].rowSnapshot;
+
+      // Build WHERE clause for this row
+      let whereClause = '';
+      if (pk) {
+        const pkIdx = queryResult.value.columns.indexOf(pk.name);
+        if (pkIdx !== -1) {
+          const pkVal = row[pkIdx];
+          whereClause = typeof pkVal === 'number' ? `\`${pk.name}\` = ${pkVal}` : `\`${pk.name}\` = '${String(pkVal).replace(/'/g, "''")}'`;
+        }
+      }
+
+      if (!whereClause) {
+        const conditions: string[] = [];
+        queryResult.value.columns.forEach((col, idx) => {
+          const v = row[idx];
+          if (v === null) {
+            conditions.push(`\`${col}\` IS NULL`);
+          } else if (typeof v === 'number') {
+            conditions.push(`\`${col}\` = ${v}`);
+          } else {
+            conditions.push(`\`${col}\` = '${String(v).replace(/'/g, "''")}'`);
+          }
+        });
+        whereClause = conditions.slice(0, 4).join(' AND ');
+      }
+
+      // Build SET clause
+      const setClauses = edits.map(e => {
+        let formatted = '';
+        if (e.newVal === null) {
+          formatted = 'NULL';
+        } else if (typeof e.newVal === 'number') {
+          formatted = String(e.newVal);
+        } else {
+          formatted = `'${String(e.newVal).replace(/'/g, "''")}'`;
+        }
+        return `\`${e.colName}\` = ${formatted}`;
+      });
+
+      const updateSql = `UPDATE \`${activeTable.value.name}\` SET ${setClauses.join(', ')} WHERE ${whereClause};`;
+
+      await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection!,
+        activeDatabase.value || undefined,
+        updateSql
+      );
+    }
+
+    // Clear pending edits on success
+    pendingEdits.value = {};
+    await dialogStore.alert({
+      title: 'Perubahan Berhasil Disimpan',
+      description: 'Semua perubahan data telah berhasil di-commit ke database.',
+      variant: 'success',
+    });
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Gagal Menyimpan Perubahan',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    committingEdits.value = false;
+  }
+}
+
+function rollbackPendingEdits() {
+  if (!queryResult.value || pendingEditsCount.value === 0) return;
+  Object.values(pendingEdits.value).forEach(edit => {
+    if (queryResult.value && queryResult.value.rows[edit.rIdx]) {
+      queryResult.value.rows[edit.rIdx][edit.cIdx] = edit.oldVal;
+    }
+  });
+  pendingEdits.value = {};
 }
 
 async function handleDeleteRow(row: any[]) {
