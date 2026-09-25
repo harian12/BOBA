@@ -67,14 +67,21 @@
 
       <!-- SQLite Specific Field -->
       <div v-if="form.engine === 'sqlite'" class="space-y-1">
-        <label class="block text-xs font-semibold text-slate-300">Path File Database (.db / .sqlite) *</label>
+        <label class="block text-xs font-semibold text-slate-300">Path File Database (.db / .sqlite / .sqlite3) *</label>
         <div class="flex space-x-2">
           <input
             v-model="form.sqlite_path"
             type="text"
-            placeholder="D:/data/app.sqlite atau /var/data.db"
+            placeholder="D:/data/app.sqlite atau C:/data/db.sqlite3"
             class="flex-1 bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none font-mono"
           />
+          <button
+            type="button"
+            @click="browseSqliteFile"
+            class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1"
+          >
+            <span>📂 Browse</span>
+          </button>
         </div>
       </div>
 
@@ -278,6 +285,37 @@ watch(
     }
   }
 );
+
+async function browseSqliteFile() {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      filters: [
+        {
+          name: 'SQLite Database',
+          extensions: ['db', 'sqlite', 'sqlite3', 'db3', 's3db'],
+        },
+        {
+          name: 'All Files',
+          extensions: ['*'],
+        },
+      ],
+    });
+
+    if (selected && typeof selected === 'string') {
+      form.value.sqlite_path = selected;
+      if (!form.value.name) {
+        const parts = selected.replace(/\\/g, '/').split('/');
+        const fileName = parts[parts.length - 1] || 'SQLite DB';
+        form.value.name = fileName;
+      }
+    }
+  } catch (err) {
+    console.error('File dialog error:', err);
+  }
+}
 
 async function handleTestConnection() {
   if (!form.value.name) form.value.name = `${form.value.engine.toUpperCase()} Test`;

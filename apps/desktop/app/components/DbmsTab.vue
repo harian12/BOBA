@@ -61,7 +61,6 @@
           v-for="tbl in filteredTables"
           :key="tbl.name"
           @click="handleSelectTable(tbl)"
-          @contextmenu.prevent="openTableContextMenu($event, tbl)"
           :class="[
             'flex items-center justify-between px-2.5 py-1.5 rounded cursor-pointer transition select-none group',
             activeTable?.name === tbl.name
@@ -114,7 +113,7 @@
             </button>
           </div>
 
-          <!-- Execution Stats Badge -->
+          <!-- Execution Stats Badge & History Toggle -->
           <div class="flex items-center space-x-3 text-[11px] font-mono">
             <span v-if="lastExecutionTime !== null" class="text-slate-400">
               Waktu: <strong class="text-slate-200">{{ lastExecutionTime }}ms</strong>
@@ -123,6 +122,13 @@
               Baris: <strong class="text-emerald-400">{{ queryResult.rows.length }}</strong>
               <span v-if="queryResult.affected_rows > 0"> (Affected: {{ queryResult.affected_rows }})</span>
             </span>
+            <button
+              @click="showHistory = !showHistory"
+              :class="['px-2 py-0.5 rounded transition text-[11px]', showHistory ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+              title="Lihat Riwayat Query"
+            >
+              🕒 Riwayat
+            </button>
           </div>
         </div>
 
@@ -145,6 +151,22 @@
           </button>
         </div>
 
+        <!-- Query History Dropdown (if active) -->
+        <div v-if="showHistory" class="p-2 bg-boba-950 border-b border-boba-800 max-h-36 overflow-y-auto space-y-1 font-mono text-[11px]">
+          <div v-if="queryHistory.length === 0" class="text-slate-500 text-center py-2 text-xs">
+            Belum ada riwayat query.
+          </div>
+          <div
+            v-for="(h, idx) in queryHistory"
+            :key="idx"
+            @click="loadHistoryQuery(h)"
+            class="px-2.5 py-1 rounded bg-[#111622] hover:bg-sky-950/70 text-slate-300 hover:text-sky-200 cursor-pointer truncate flex items-center justify-between transition"
+          >
+            <span class="truncate mr-2">{{ h }}</span>
+            <span class="text-[10px] text-slate-500 shrink-0 font-sans">Gunakan ↵</span>
+          </div>
+        </div>
+
         <!-- SQL Editor Textarea -->
         <div class="p-2">
           <textarea
@@ -157,51 +179,77 @@
         </div>
       </div>
 
-      <!-- Bottom Section: Interactive Data Grid & Export Tools -->
+      <!-- Bottom Section: View Mode Switcher & Content -->
       <div class="flex-1 flex flex-col overflow-hidden">
-        <!-- Data Grid Header Actions -->
+        <!-- View Mode Navigation Tabs -->
         <div class="px-3 py-1.5 border-b border-boba-800 flex items-center justify-between text-xs bg-[#111622] shrink-0">
-          <div class="flex items-center space-x-2">
-            <span class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Hasil Data:</span>
-            <span v-if="activeTable" class="px-2 py-0.5 bg-sky-950 border border-sky-800 text-sky-300 rounded font-mono text-[10px]">
-              {{ activeTable.name }}
-            </span>
+          <div class="flex items-center space-x-1">
+            <button
+              @click="activeViewTab = 'data'"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'data' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+            >
+              📊 Data
+            </button>
+            <button
+              v-if="activeTable && activeTable.columns.length > 0"
+              @click="activeViewTab = 'structure'"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'structure' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+            >
+              📐 Struktur ({{ activeTable.columns.length }} Kolom)
+            </button>
+            <button
+              v-if="activeTable && activeTable.columns.length > 0"
+              @click="activeViewTab = 'ddl'"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'ddl' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+            >
+              📜 DDL Script
+            </button>
           </div>
 
-          <!-- Export & Grid Options -->
-          <div class="flex items-center space-x-1.5" v-if="queryResult && queryResult.columns.length > 0">
+          <!-- Actions: Insert Row & Export Tools -->
+          <div class="flex items-center space-x-1.5">
             <button
-              @click="exportData('csv')"
-              title="Ekspor ke CSV"
-              class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+              v-if="activeTable && activeTable.columns.length > 0 && activeViewTab === 'data'"
+              @click="isInsertModalOpen = true"
+              class="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
             >
-              <span>📄 CSV</span>
+              <span>+ Tambah Baris</span>
             </button>
-            <button
-              @click="exportData('json')"
-              title="Ekspor ke JSON"
-              class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
-            >
-              <span>📦 JSON</span>
-            </button>
-            <button
-              @click="exportData('sql')"
-              title="Ekspor sebagai SQL INSERT Statements"
-              class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
-            >
-              <span>💾 SQL Dump</span>
-            </button>
+
+            <template v-if="queryResult && queryResult.columns.length > 0 && activeViewTab === 'data'">
+              <button
+                @click="exportData('csv')"
+                title="Ekspor ke CSV"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+              >
+                <span>📄 CSV</span>
+              </button>
+              <button
+                @click="exportData('json')"
+                title="Ekspor ke JSON"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+              >
+                <span>📦 JSON</span>
+              </button>
+              <button
+                @click="exportData('sql')"
+                title="Ekspor sebagai SQL INSERT Statements"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+              >
+                <span>💾 SQL Dump</span>
+              </button>
+            </template>
           </div>
         </div>
 
         <!-- Query Error Banner -->
-        <div v-if="errorMessage" class="p-4 bg-rose-950/60 border-b border-rose-800 text-rose-300 text-xs font-mono select-text flex items-start space-x-2">
+        <div v-if="errorMessage" class="p-3 bg-rose-950/60 border-b border-rose-800 text-rose-300 text-xs font-mono select-text flex items-start space-x-2">
           <span class="text-sm shrink-0">⚠️</span>
           <div class="flex-1 break-all">{{ errorMessage }}</div>
         </div>
 
-        <!-- Interactive Data Table Grid -->
-        <div class="flex-1 overflow-auto bg-[#07090e] relative font-mono text-xs select-text">
+        <!-- VIEW 1: Interactive Data Table Grid -->
+        <div v-if="activeViewTab === 'data'" class="flex-1 overflow-auto bg-[#07090e] relative font-mono text-xs select-text">
           <table v-if="queryResult && queryResult.columns.length > 0" class="w-full text-left border-collapse">
             <thead class="bg-[#141a29] sticky top-0 z-10 border-b border-boba-800 shadow-sm text-slate-300">
               <tr>
@@ -253,6 +301,87 @@
             <div class="text-xs">Pilih tabel di navigasi kiri atau ketik query SQL untuk melihat data.</div>
           </div>
         </div>
+
+        <!-- VIEW 2: Table Structure / Column Meta -->
+        <div v-else-if="activeViewTab === 'structure'" class="flex-1 overflow-auto bg-[#07090e] p-3 font-mono text-xs select-text">
+          <table v-if="activeTable && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
+            <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
+              <tr>
+                <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
+                <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
+                <th class="px-3 py-2 border-r border-boba-800">Primary Key</th>
+                <th class="px-3 py-2 border-r border-boba-800">Nullable</th>
+                <th class="px-3 py-2">Default Value</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-boba-850">
+              <tr v-for="col in activeTable.columns" :key="col.name" class="hover:bg-boba-800/40">
+                <td class="px-3 py-1.5 font-bold text-sky-300 border-r border-boba-850">{{ col.name }}</td>
+                <td class="px-3 py-1.5 text-amber-300 border-r border-boba-850">{{ col.data_type }}</td>
+                <td class="px-3 py-1.5 border-r border-boba-850">
+                  <span v-if="col.is_primary_key" class="px-1.5 py-0.5 bg-amber-950 border border-amber-800 text-amber-300 rounded text-[10px]">PK 🔑</span>
+                  <span v-else class="text-slate-600">-</span>
+                </td>
+                <td class="px-3 py-1.5 border-r border-boba-850">
+                  <span :class="col.is_nullable ? 'text-emerald-400' : 'text-rose-400'">
+                    {{ col.is_nullable ? 'YES' : 'NO' }}
+                  </span>
+                </td>
+                <td class="px-3 py-1.5 text-slate-400">{{ col.default_value ?? 'NULL' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- VIEW 3: Table DDL Script -->
+        <div v-else-if="activeViewTab === 'ddl'" class="flex-1 overflow-auto bg-[#07090e] p-3 font-mono text-xs select-text">
+          <div class="p-3 bg-boba-950 rounded-lg border border-boba-800 whitespace-pre text-emerald-300 leading-relaxed">
+{{ generateTableDdl() }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insert Row Modal -->
+    <div
+      v-if="isInsertModalOpen && activeTable"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-2">
+          <div class="font-bold text-sm text-slate-100">Tambah Baris Baru ke {{ activeTable.name }}</div>
+          <button @click="isInsertModalOpen = false" class="text-slate-400 hover:text-white text-xs">✕</button>
+        </div>
+
+        <div class="space-y-2.5">
+          <div v-for="col in activeTable.columns" :key="col.name" class="space-y-1">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-semibold text-slate-200 font-mono">{{ col.name }}</span>
+              <span class="text-[10px] text-slate-500 font-mono">({{ col.data_type }})</span>
+            </div>
+            <input
+              v-model="insertRowValues[col.name]"
+              type="text"
+              :placeholder="col.default_value ? `Default: ${col.default_value}` : (col.is_nullable ? 'NULL' : 'Wajib diisi')"
+              class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2 border-t border-boba-800">
+          <button
+            @click="isInsertModalOpen = false"
+            class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs"
+          >
+            Batal
+          </button>
+          <button
+            @click="handleCommitInsert"
+            class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
+          >
+            Simpan Baris (INSERT)
+          </button>
+        </div>
       </div>
     </div>
 
@@ -303,16 +432,23 @@ const activeDatabase = ref<string>('');
 const tableFilter = ref('');
 const activeTable = ref<DbTableMeta | null>(null);
 
+const activeViewTab = ref<'data' | 'structure' | 'ddl'>('data');
 const queryText = ref('');
 const executing = ref(false);
 const errorMessage = ref<string | null>(null);
 const queryResult = ref<DbQueryResult | null>(null);
 const lastExecutionTime = ref<number | null>(null);
 
+const showHistory = ref(false);
+const queryHistory = ref<string[]>([]);
+
 const aiPrompt = ref('');
 const aiGenerating = ref(false);
 
 const selectedCell = ref<{ column: string; value: any } | null>(null);
+
+const isInsertModalOpen = ref(false);
+const insertRowValues = ref<Record<string, string>>({});
 
 function getEngineIcon(engine?: string): string {
   switch (engine?.toLowerCase()) {
@@ -368,6 +504,7 @@ function handleDatabaseChange() {
 
 function handleSelectTable(tbl: DbTableMeta) {
   activeTable.value = tbl;
+  insertRowValues.value = {};
   const engine = props.tab.dbConnection?.engine.toLowerCase();
 
   if (engine === 'redis') {
@@ -376,6 +513,7 @@ function handleSelectTable(tbl: DbTableMeta) {
     queryText.value = `SELECT * FROM ${tbl.name} LIMIT 100;`;
   }
 
+  activeViewTab.value = 'data';
   executeQuery();
 }
 
@@ -395,12 +533,24 @@ async function executeQuery(customQuery?: string) {
     );
     queryResult.value = res;
     lastExecutionTime.value = res.execution_time_ms;
+
+    // Add to history
+    if (!queryHistory.value.includes(q.trim())) {
+      queryHistory.value.unshift(q.trim());
+      if (queryHistory.value.length > 20) queryHistory.value.pop();
+    }
   } catch (err: any) {
     errorMessage.value = String(err?.message || err);
     queryResult.value = null;
   } finally {
     executing.value = false;
   }
+}
+
+function loadHistoryQuery(q: string) {
+  queryText.value = q;
+  showHistory.value = false;
+  executeQuery();
 }
 
 function handleEditorKeyDown(e: KeyboardEvent) {
@@ -424,8 +574,52 @@ function openCellDetail(column: string, value: any) {
   selectedCell.value = { column, value };
 }
 
-function openTableContextMenu(e: MouseEvent, tbl: DbTableMeta) {
-  handleSelectTable(tbl);
+function generateTableDdl(): string {
+  if (!activeTable.value) return '-- Pilih tabel untuk melihat DDL';
+  const cols = activeTable.value.columns.map(c => {
+    let def = `  \`${c.name}\` ${c.data_type.toUpperCase()}`;
+    if (!c.is_nullable) def += ' NOT NULL';
+    if (c.default_value) def += ` DEFAULT ${c.default_value}`;
+    if (c.is_primary_key) def += ' PRIMARY KEY';
+    return def;
+  }).join(',\n');
+
+  return `CREATE TABLE \`${activeTable.value.name}\` (\n${cols}\n);`;
+}
+
+async function handleCommitInsert() {
+  if (!activeTable.value) return;
+  const cols: string[] = [];
+  const vals: string[] = [];
+
+  for (const [colName, val] of Object.entries(insertRowValues.value)) {
+    if (val !== undefined && val !== '') {
+      cols.push(colName);
+      if (val.toUpperCase() === 'NULL') {
+        vals.push('NULL');
+      } else if (!isNaN(Number(val))) {
+        vals.push(val);
+      } else {
+        vals.push(`'${val.replace(/'/g, "''")}'`);
+      }
+    }
+  }
+
+  if (cols.length === 0) {
+    await dialogStore.alert({
+      title: 'Data Kosong',
+      description: 'Harap isi minimal satu kolom untuk memasukkan baris baru.',
+      variant: 'error',
+    });
+    return;
+  }
+
+  const sql = `INSERT INTO ${activeTable.value.name} (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
+  isInsertModalOpen.value = false;
+  queryText.value = sql;
+  await executeQuery(sql);
+  // Reload table data
+  executeQuery(`SELECT * FROM ${activeTable.value.name} LIMIT 100;`);
 }
 
 async function handleAiGenerateSql() {
@@ -433,18 +627,13 @@ async function handleAiGenerateSql() {
   aiGenerating.value = true;
 
   const prompt = aiPrompt.value.trim();
-  const engine = props.tab.dbConnection?.engine || 'SQL';
-  const tablesHint = schemaOverview.value?.tables.map(t => t.name).slice(0, 15).join(', ') || '';
+  const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
 
-  // Local rule-based AI prompt template / query builder
   if (prompt.toLowerCase().includes('semua') || prompt.toLowerCase().includes('all')) {
-    const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
     queryText.value = `SELECT * FROM ${targetTable} LIMIT 100;`;
   } else if (prompt.toLowerCase().includes('hitung') || prompt.toLowerCase().includes('count')) {
-    const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
     queryText.value = `SELECT COUNT(*) AS total_count FROM ${targetTable};`;
   } else {
-    const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'my_table');
     queryText.value = `-- AI Generated for: "${prompt}"\nSELECT * FROM ${targetTable} ORDER BY 1 DESC LIMIT 50;`;
   }
 
