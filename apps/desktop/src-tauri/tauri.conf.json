@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
   "productName": "BOBA",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "identifier": "com.boba.app",
   "build": {
     "beforeDevCommand": "npm.cmd run dev",
@@ -29,7 +29,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "resources": {
       "dlls/*": "./"
     },
@@ -39,5 +40,13 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3OTg2NDc5OUU0REYzQjQKUldTMDgwMmVlV1NZRnlwNVNUd0phVjRYckZJVk5XS2MyUkIxelZXd2ZWbUVJL2pva0xvV1JZSzMK",
+      "endpoints": [
+        "https://github.com/harian12/BOBA/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
