@@ -1,5 +1,8 @@
 <template>
-  <div class="h-full w-full flex bg-[#0d1117] text-slate-100 font-sans overflow-hidden select-none">
+  <div
+    class="h-full w-full flex bg-[#0d1117] text-slate-100 font-sans overflow-hidden select-none"
+    @click="closeTableContextMenu"
+  >
     <!-- Left Pane: Schema & Object Explorer -->
     <div class="w-64 border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full">
       <!-- Database Header & Selector -->
@@ -61,6 +64,7 @@
           v-for="tbl in filteredTables"
           :key="tbl.name"
           @click="handleSelectTable(tbl)"
+          @contextmenu.prevent.stop="openTableContextMenu($event, tbl)"
           :class="[
             'flex items-center justify-between px-2.5 py-1.5 rounded cursor-pointer transition select-none group',
             activeTable?.name === tbl.name
@@ -249,56 +253,119 @@
         </div>
 
         <!-- VIEW 1: Interactive Data Table Grid -->
-        <div v-if="activeViewTab === 'data'" class="flex-1 overflow-auto bg-[#07090e] relative font-mono text-xs select-text">
-          <table v-if="queryResult && queryResult.columns.length > 0" class="w-full text-left border-collapse">
-            <thead class="bg-[#141a29] sticky top-0 z-10 border-b border-boba-800 shadow-sm text-slate-300">
-              <tr>
-                <th class="px-2 py-1.5 text-[10px] text-slate-500 font-mono border-r border-boba-800 w-10 text-center">#</th>
-                <th
-                  v-for="col in queryResult.columns"
-                  :key="col"
-                  class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap"
+        <div v-if="activeViewTab === 'data'" class="flex-1 flex flex-col overflow-hidden bg-[#07090e] relative font-mono text-xs select-text">
+          <div class="flex-1 overflow-auto">
+            <table v-if="queryResult && queryResult.columns.length > 0" class="w-full text-left border-collapse">
+              <thead class="bg-[#141a29] sticky top-0 z-10 border-b border-boba-800 shadow-sm text-slate-300">
+                <tr>
+                  <th class="px-2 py-1.5 text-[10px] text-slate-500 font-mono border-r border-boba-800 w-10 text-center">#</th>
+                  <th
+                    v-for="col in queryResult.columns"
+                    :key="col"
+                    class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap"
+                  >
+                    {{ col }}
+                  </th>
+                  <th v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-3 py-1.5 text-slate-400 select-none w-20 text-center">
+                    Aksi
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-boba-850">
+                <tr
+                  v-for="(row, rIdx) in queryResult.rows"
+                  :key="rIdx"
+                  class="hover:bg-boba-800/40 transition group"
                 >
-                  {{ col }}
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-boba-850">
-              <tr
-                v-for="(row, rIdx) in queryResult.rows"
-                :key="rIdx"
-                class="hover:bg-boba-800/40 transition group"
-              >
-                <td class="px-2 py-1 text-[10px] text-slate-600 border-r border-boba-850 text-center select-none">
-                  {{ rIdx + 1 }}
-                </td>
-                <td
-                  v-for="(val, cIdx) in row"
-                  :key="cIdx"
-                  @dblclick="openCellDetail(queryResult.columns[cIdx], val)"
-                  class="px-3 py-1 border-r border-boba-850 text-slate-300 whitespace-nowrap max-w-xs truncate cursor-pointer hover:bg-sky-950/50"
-                  :title="typeof val === 'object' ? JSON.stringify(val) : String(val)"
-                >
-                  <span v-if="val === null" class="text-slate-600 italic">NULL</span>
-                  <span v-else-if="typeof val === 'boolean'" :class="val ? 'text-emerald-400' : 'text-rose-400'">
-                    {{ val ? 'TRUE' : 'FALSE' }}
-                  </span>
-                  <span v-else-if="typeof val === 'object'" class="text-purple-400">
-                    {{ JSON.stringify(val) }}
-                  </span>
-                  <span v-else>{{ val }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  <td class="px-2 py-1 text-[10px] text-slate-600 border-r border-boba-850 text-center select-none">
+                    {{ (currentPage - 1) * pageSize + rIdx + 1 }}
+                  </td>
+                  <td
+                    v-for="(val, cIdx) in row"
+                    :key="cIdx"
+                    @dblclick="openCellDetail(queryResult.columns[cIdx], val)"
+                    class="px-3 py-1 border-r border-boba-850 text-slate-300 whitespace-nowrap max-w-xs truncate cursor-pointer hover:bg-sky-950/50"
+                    :title="typeof val === 'object' ? JSON.stringify(val) : String(val)"
+                  >
+                    <span v-if="val === null" class="text-slate-600 italic">NULL</span>
+                    <span v-else-if="typeof val === 'boolean'" :class="val ? 'text-emerald-400' : 'text-rose-400'">
+                      {{ val ? 'TRUE' : 'FALSE' }}
+                    </span>
+                    <span v-else-if="typeof val === 'object'" class="text-purple-400">
+                      {{ JSON.stringify(val) }}
+                    </span>
+                    <span v-else>{{ val }}</span>
+                  </td>
+                  <td v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-2 py-1 text-center select-none whitespace-nowrap">
+                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1 transition">
+                      <button
+                        @click="openEditRowModal(row)"
+                        title="Edit baris data"
+                        class="p-1 hover:bg-sky-900/60 rounded text-sky-400 hover:text-sky-200 transition text-xs"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        @click="handleDeleteRow(row)"
+                        title="Hapus baris data"
+                        class="p-1 hover:bg-rose-900/60 rounded text-rose-400 hover:text-rose-200 transition text-xs"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-          <!-- Empty State Grid -->
+            <!-- Empty State Grid -->
+            <div
+              v-else-if="!executing && !errorMessage"
+              class="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 space-y-2"
+            >
+              <span class="text-3xl">🗄️</span>
+              <div class="text-xs">Pilih tabel di navigasi kiri atau ketik query SQL untuk melihat data.</div>
+            </div>
+          </div>
+
+          <!-- Data Grid Pagination Footer (if activeTable is selected) -->
           <div
-            v-else-if="!executing && !errorMessage"
-            class="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 space-y-2"
+            v-if="activeTable && activeViewTab === 'data'"
+            class="px-3 py-1.5 bg-[#121724] border-t border-boba-800 flex items-center justify-between text-xs shrink-0 select-none"
           >
-            <span class="text-3xl">🗄️</span>
-            <div class="text-xs">Pilih tabel di navigasi kiri atau ketik query SQL untuk melihat data.</div>
+            <div class="flex items-center space-x-2">
+              <span class="text-slate-400 text-[11px]">Halaman:</span>
+              <span class="font-bold text-sky-400 text-xs">{{ currentPage }}</span>
+              <span class="text-slate-500">|</span>
+              <span class="text-slate-400 text-[11px]">Limit:</span>
+              <select
+                v-model.number="pageSize"
+                @change="handlePageChange(1)"
+                class="bg-boba-950 border border-boba-700 rounded px-1.5 py-0.5 text-xs text-slate-200 focus:outline-none"
+              >
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+                <option :value="250">250</option>
+                <option :value="500">500</option>
+              </select>
+            </div>
+
+            <div class="flex items-center space-x-1.5">
+              <button
+                @click="handlePageChange(currentPage - 1)"
+                :disabled="currentPage <= 1"
+                class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 disabled:opacity-40 rounded text-[11px] text-slate-200 transition"
+              >
+                ◀ Prev
+              </button>
+              <button
+                @click="handlePageChange(currentPage + 1)"
+                :disabled="!queryResult || queryResult.rows.length < pageSize"
+                class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 disabled:opacity-40 rounded text-[11px] text-slate-200 transition"
+              >
+                Next ▶
+              </button>
+            </div>
           </div>
         </div>
 
@@ -342,25 +409,84 @@
       </div>
     </div>
 
-    <!-- Insert Row Modal -->
+    <!-- Table Context Menu Floating Overlay -->
     <div
-      v-if="isInsertModalOpen && activeTable"
+      v-if="tableContextMenu.visible && tableContextMenu.table"
+      :style="{ top: `${tableContextMenu.y}px`, left: `${tableContextMenu.x}px` }"
+      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-52 text-[11px] text-slate-200 select-none font-sans"
+      @click.stop
+    >
+      <div class="px-2.5 py-1 text-[10px] text-slate-400 font-semibold truncate border-b border-[#232b3d] mb-0.5 font-mono">
+        {{ tableContextMenu.table.name }}
+      </div>
+      <button
+        @click="handleContextAction('select')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>📊</span>
+        <span>Lihat Data (100 Baris)</span>
+      </button>
+      <button
+        @click="handleContextAction('structure')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>📐</span>
+        <span>Lihat Struktur Kolom</span>
+      </button>
+      <button
+        @click="handleContextAction('copy_name')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>📋</span>
+        <span>Salin Nama Tabel</span>
+      </button>
+      <button
+        @click="handleContextAction('ddl')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1.5 mb-1"
+      >
+        <span>📜</span>
+        <span>Lihat Syntax DDL</span>
+      </button>
+      <button
+        @click="handleContextAction('truncate')"
+        class="w-full text-left px-2.5 py-1 hover:bg-amber-950/80 hover:text-amber-300 text-amber-400 flex items-center space-x-2 transition"
+      >
+        <span>🧹</span>
+        <span>Kosongkan Tabel (TRUNCATE)</span>
+      </button>
+      <button
+        @click="handleContextAction('drop')"
+        class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
+      >
+        <span>🗑️</span>
+        <span>Hapus Tabel (DROP)</span>
+      </button>
+    </div>
+
+    <!-- Insert / Edit Row Modal -->
+    <div
+      v-if="(isInsertModalOpen || isEditModalOpen) && activeTable"
       class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     >
       <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
         <div class="flex items-center justify-between border-b border-boba-800 pb-2">
-          <div class="font-bold text-sm text-slate-100">Tambah Baris Baru ke {{ activeTable.name }}</div>
-          <button @click="isInsertModalOpen = false" class="text-slate-400 hover:text-white text-xs">✕</button>
+          <div class="font-bold text-sm text-slate-100">
+            {{ isEditModalOpen ? `Edit Baris ${activeTable.name}` : `Tambah Baris Baru ke ${activeTable.name}` }}
+          </div>
+          <button @click="closeRowModals" class="text-slate-400 hover:text-white text-xs">✕</button>
         </div>
 
         <div class="space-y-2.5">
           <div v-for="col in activeTable.columns" :key="col.name" class="space-y-1">
             <div class="flex items-center justify-between text-xs">
-              <span class="font-semibold text-slate-200 font-mono">{{ col.name }}</span>
+              <div class="flex items-center space-x-1.5">
+                <span class="font-semibold text-slate-200 font-mono">{{ col.name }}</span>
+                <span v-if="col.is_primary_key" class="text-[9px] px-1 bg-amber-950 text-amber-300 rounded font-mono">PK</span>
+              </div>
               <span class="text-[10px] text-slate-500 font-mono">({{ col.data_type }})</span>
             </div>
             <input
-              v-model="insertRowValues[col.name]"
+              v-model="rowFormValues[col.name]"
               type="text"
               :placeholder="col.default_value ? `Default: ${col.default_value}` : (col.is_nullable ? 'NULL' : 'Wajib diisi')"
               class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none"
@@ -370,16 +496,16 @@
 
         <div class="flex justify-end space-x-2 pt-2 border-t border-boba-800">
           <button
-            @click="isInsertModalOpen = false"
+            @click="closeRowModals"
             class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs"
           >
             Batal
           </button>
           <button
-            @click="handleCommitInsert"
+            @click="isEditModalOpen ? handleCommitEdit() : handleCommitInsert()"
             class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
           >
-            Simpan Baris (INSERT)
+            {{ isEditModalOpen ? 'Simpan Perubahan (UPDATE)' : 'Simpan Baris (INSERT)' }}
           </button>
         </div>
       </div>
@@ -439,6 +565,9 @@ const errorMessage = ref<string | null>(null);
 const queryResult = ref<DbQueryResult | null>(null);
 const lastExecutionTime = ref<number | null>(null);
 
+const currentPage = ref(1);
+const pageSize = ref(100);
+
 const showHistory = ref(false);
 const queryHistory = ref<string[]>([]);
 
@@ -448,7 +577,21 @@ const aiGenerating = ref(false);
 const selectedCell = ref<{ column: string; value: any } | null>(null);
 
 const isInsertModalOpen = ref(false);
-const insertRowValues = ref<Record<string, string>>({});
+const isEditModalOpen = ref(false);
+const editingRowOriginal = ref<any[] | null>(null);
+const rowFormValues = ref<Record<string, string>>({});
+
+const tableContextMenu = ref<{
+  visible: boolean;
+  x: number;
+  y: number;
+  table: DbTableMeta | null;
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  table: null,
+});
 
 function getEngineIcon(engine?: string): string {
   switch (engine?.toLowerCase()) {
@@ -477,6 +620,10 @@ const filteredTables = computed(() => {
   );
 });
 
+function getTablePrimaryKey(tbl: DbTableMeta) {
+  return tbl.columns.find(c => c.is_primary_key);
+}
+
 async function loadSchemaOverview() {
   if (!props.tab.dbConnection) return;
   loadingSchema.value = true;
@@ -504,17 +651,27 @@ function handleDatabaseChange() {
 
 function handleSelectTable(tbl: DbTableMeta) {
   activeTable.value = tbl;
-  insertRowValues.value = {};
+  currentPage.value = 1;
+  rowFormValues.value = {};
   const engine = props.tab.dbConnection?.engine.toLowerCase();
 
   if (engine === 'redis') {
     queryText.value = `GET ${tbl.name}`;
   } else {
-    queryText.value = `SELECT * FROM ${tbl.name} LIMIT 100;`;
+    queryText.value = `SELECT * FROM ${tbl.name} LIMIT ${pageSize.value} OFFSET 0;`;
   }
 
   activeViewTab.value = 'data';
   executeQuery();
+}
+
+function handlePageChange(page: number) {
+  if (page < 1 || !activeTable.value) return;
+  currentPage.value = page;
+  const offset = (page - 1) * pageSize.value;
+  const sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
+  queryText.value = sql;
+  executeQuery(sql);
 }
 
 async function executeQuery(customQuery?: string) {
@@ -562,7 +719,7 @@ function handleEditorKeyDown(e: KeyboardEvent) {
 
 function formatQuickSql() {
   let s = queryText.value.trim();
-  const keywords = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'INSERT INTO', 'UPDATE', 'SET', 'DELETE FROM'];
+  const keywords = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'INSERT INTO', 'UPDATE', 'SET', 'DELETE FROM'];
   for (const kw of keywords) {
     const re = new RegExp(`\\b${kw}\\b`, 'gi');
     s = s.replace(re, kw);
@@ -572,6 +729,64 @@ function formatQuickSql() {
 
 function openCellDetail(column: string, value: any) {
   selectedCell.value = { column, value };
+}
+
+function openTableContextMenu(e: MouseEvent, tbl: DbTableMeta) {
+  tableContextMenu.value = {
+    visible: true,
+    x: Math.min(e.clientX, window.innerWidth - 220),
+    y: Math.min(e.clientY, window.innerHeight - 200),
+    table: tbl,
+  };
+}
+
+function closeTableContextMenu() {
+  tableContextMenu.value.visible = false;
+  tableContextMenu.value.table = null;
+}
+
+async function handleContextAction(action: 'select' | 'structure' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
+  const tbl = tableContextMenu.value.table;
+  closeTableContextMenu();
+  if (!tbl) return;
+
+  if (action === 'select') {
+    handleSelectTable(tbl);
+  } else if (action === 'structure') {
+    activeTable.value = tbl;
+    activeViewTab.value = 'structure';
+  } else if (action === 'copy_name') {
+    await navigator.clipboard.writeText(tbl.name);
+  } else if (action === 'ddl') {
+    activeTable.value = tbl;
+    activeViewTab.value = 'ddl';
+  } else if (action === 'truncate') {
+    const confirm = await dialogStore.confirm({
+      title: `Kosongkan Tabel "${tbl.name}"?`,
+      description: 'Semua data di dalam tabel ini akan dihapus secara permanen (TRUNCATE).',
+      confirmText: 'Kosongkan',
+      isDestructive: true,
+    });
+    if (confirm) {
+      const sql = `TRUNCATE TABLE ${tbl.name};`;
+      queryText.value = sql;
+      await executeQuery(sql);
+      handleSelectTable(tbl);
+    }
+  } else if (action === 'drop') {
+    const confirm = await dialogStore.confirm({
+      title: `Hapus Tabel "${tbl.name}"?`,
+      description: 'Tabel beserta seluruh strukturnya akan dihapus dari database (DROP TABLE).',
+      confirmText: 'Hapus Tabel',
+      isDestructive: true,
+    });
+    if (confirm) {
+      const sql = `DROP TABLE ${tbl.name};`;
+      queryText.value = sql;
+      await executeQuery(sql);
+      loadSchemaOverview();
+    }
+  }
 }
 
 function generateTableDdl(): string {
@@ -587,12 +802,30 @@ function generateTableDdl(): string {
   return `CREATE TABLE \`${activeTable.value.name}\` (\n${cols}\n);`;
 }
 
+function closeRowModals() {
+  isInsertModalOpen.value = false;
+  isEditModalOpen.value = false;
+  editingRowOriginal.value = null;
+  rowFormValues.value = {};
+}
+
+function openEditRowModal(row: any[]) {
+  if (!activeTable.value || !queryResult.value) return;
+  editingRowOriginal.value = row;
+  const form: Record<string, string> = {};
+  queryResult.value.columns.forEach((col, idx) => {
+    form[col] = row[idx] === null ? 'NULL' : String(row[idx]);
+  });
+  rowFormValues.value = form;
+  isEditModalOpen.value = true;
+}
+
 async function handleCommitInsert() {
   if (!activeTable.value) return;
   const cols: string[] = [];
   const vals: string[] = [];
 
-  for (const [colName, val] of Object.entries(insertRowValues.value)) {
+  for (const [colName, val] of Object.entries(rowFormValues.value)) {
     if (val !== undefined && val !== '') {
       cols.push(colName);
       if (val.toUpperCase() === 'NULL') {
@@ -615,11 +848,67 @@ async function handleCommitInsert() {
   }
 
   const sql = `INSERT INTO ${activeTable.value.name} (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
-  isInsertModalOpen.value = false;
+  closeRowModals();
   queryText.value = sql;
   await executeQuery(sql);
-  // Reload table data
-  executeQuery(`SELECT * FROM ${activeTable.value.name} LIMIT 100;`);
+  handlePageChange(currentPage.value);
+}
+
+async function handleCommitEdit() {
+  if (!activeTable.value || !editingRowOriginal.value || !queryResult.value) return;
+  const pk = getTablePrimaryKey(activeTable.value);
+  if (!pk) return;
+
+  const pkIdx = queryResult.value.columns.indexOf(pk.name);
+  if (pkIdx === -1) return;
+
+  const pkVal = editingRowOriginal.value[pkIdx];
+  const pkClause = typeof pkVal === 'number' ? `${pk.name} = ${pkVal}` : `${pk.name} = '${String(pkVal).replace(/'/g, "''")}'`;
+
+  const setClauses: string[] = [];
+  for (const [colName, val] of Object.entries(rowFormValues.value)) {
+    if (val.toUpperCase() === 'NULL') {
+      setClauses.push(`${colName} = NULL`);
+    } else if (!isNaN(Number(val))) {
+      setClauses.push(`${colName} = ${val}`);
+    } else {
+      setClauses.push(`${colName} = '${val.replace(/'/g, "''")}'`);
+    }
+  }
+
+  if (setClauses.length === 0) return;
+
+  const sql = `UPDATE ${activeTable.value.name} SET ${setClauses.join(', ')} WHERE ${pkClause};`;
+  closeRowModals();
+  queryText.value = sql;
+  await executeQuery(sql);
+  handlePageChange(currentPage.value);
+}
+
+async function handleDeleteRow(row: any[]) {
+  if (!activeTable.value || !queryResult.value) return;
+  const pk = getTablePrimaryKey(activeTable.value);
+  if (!pk) return;
+
+  const pkIdx = queryResult.value.columns.indexOf(pk.name);
+  if (pkIdx === -1) return;
+
+  const pkVal = row[pkIdx];
+  const pkClause = typeof pkVal === 'number' ? `${pk.name} = ${pkVal}` : `${pk.name} = '${String(pkVal).replace(/'/g, "''")}'`;
+
+  const confirm = await dialogStore.confirm({
+    title: 'Hapus Baris Data?',
+    description: `Baris dengan ${pk.name} = "${pkVal}" akan dihapus dari tabel.`,
+    confirmText: 'Hapus Baris',
+    isDestructive: true,
+  });
+
+  if (confirm) {
+    const sql = `DELETE FROM ${activeTable.value.name} WHERE ${pkClause};`;
+    queryText.value = sql;
+    await executeQuery(sql);
+    handlePageChange(currentPage.value);
+  }
 }
 
 async function handleAiGenerateSql() {
@@ -630,7 +919,7 @@ async function handleAiGenerateSql() {
   const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
 
   if (prompt.toLowerCase().includes('semua') || prompt.toLowerCase().includes('all')) {
-    queryText.value = `SELECT * FROM ${targetTable} LIMIT 100;`;
+    queryText.value = `SELECT * FROM ${targetTable} LIMIT ${pageSize.value};`;
   } else if (prompt.toLowerCase().includes('hitung') || prompt.toLowerCase().includes('count')) {
     queryText.value = `SELECT COUNT(*) AS total_count FROM ${targetTable};`;
   } else {
