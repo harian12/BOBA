@@ -1,7 +1,7 @@
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -115,10 +115,9 @@ pub const MONGO_UNSUPPORTED_SCHEMA: &str =
     "MongoDB belum didukung untuk pembacaan skema. Koneksi TCP diuji, tetapi tidak ada driver MongoDB yang aktif.";
 
 pub struct DbmsManager {
-    // Keeps active pools / connections for fast reuse if desired
-    _mysql_pools: Arc<Mutex<HashMap<String, sqlx::MySqlPool>>>,
-    _pg_pools: Arc<Mutex<HashMap<String, sqlx::PgPool>>>,
-    _sqlite_pools: Arc<Mutex<HashMap<String, sqlx::SqlitePool>>>,
+    mysql_pools: Arc<Mutex<HashMap<String, sqlx::MySqlPool>>>,
+    pg_pools: Arc<Mutex<HashMap<String, sqlx::PgPool>>>,
+    sqlite_pools: Arc<Mutex<HashMap<String, sqlx::SqlitePool>>>,
 }
 
 fn percent_encode(value: &str) -> String {
@@ -178,12 +177,37 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
     statements
 }
 
+fn quote_mysql_identifier(identifier: &str) -> String {
+    format!("`{}`", identifier.replace('`', "``"))
+}
+
+const SQLITE_SCHEMA_QUERY: &str = "SELECT m.name,
+                                m.type,
+                                p.name,
+                                p.type,
+                                p.\"notnull\",
+                                p.pk,
+                                p.dflt_value
+                         FROM sqlite_master AS m
+                         JOIN pragma_table_info(m.name) AS p
+                         WHERE m.type IN ('table', 'view')
+                           AND m.name NOT LIKE 'sqlite_%'
+                         ORDER BY m.name, p.cid";
+
+type SqliteMetadataRow = (String, String, String, String, i64, i64, Option<String>);
+
+async fn fetch_sqlite_metadata(
+    pool: &sqlx::SqlitePool,
+) -> Result<Vec<SqliteMetadataRow>, sqlx::Error> {
+    sqlx::query_as(SQLITE_SCHEMA_QUERY).fetch_all(pool).await
+}
+
 impl DbmsManager {
     pub fn new() -> Self {
         Self {
-            _mysql_pools: Arc::new(Mutex::new(HashMap::new())),
-            _pg_pools: Arc::new(Mutex::new(HashMap::new())),
-            _sqlite_pools: Arc::new(Mutex::new(HashMap::new())),
+            mysql_pools: Arc::new(Mutex::new(HashMap::new())),
+            pg_pools: Arc::new(Mutex::new(HashMap::new())),
+            sqlite_pools: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -242,6 +266,66 @@ impl DbmsManager {
                 port
             )
         }
+    }
+
+    async fn mysql_pool(&self, url: &str) -> Result<sqlx::MySqlPool, String> {
+        if let Some(pool) = self.mysql_pools.lock().get(url).cloned() {
+            if !pool.is_closed() {
+                return Ok(pool);
+            }
+        }
+
+        let pool = sqlx::mysql::MySqlPoolOptions::new()
+            .max_connections(1)
+            .idle_timeout(std::time::Duration::from_secs(600))
+            .max_lifetime(std::time::Duration::from_secs(1800))
+            .connect(url)
+            .await
+            .map_err(|e| format!("MySQL error: {}", e))?;
+        self.mysql_pools
+            .lock()
+            .insert(url.to_string(), pool.clone());
+        Ok(pool)
+    }
+
+    async fn pg_pool(&self, url: &str) -> Result<sqlx::PgPool, String> {
+        if let Some(pool) = self.pg_pools.lock().get(url).cloned() {
+            if !pool.is_closed() {
+                return Ok(pool);
+            }
+        }
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .idle_timeout(std::time::Duration::from_secs(600))
+            .max_lifetime(std::time::Duration::from_secs(1800))
+            .connect(url)
+            .await
+            .map_err(|e| format!("PostgreSQL error: {}", e))?;
+        self.pg_pools
+            .lock()
+            .insert(url.to_string(), pool.clone());
+        Ok(pool)
+    }
+
+    async fn sqlite_pool(&self, url: &str) -> Result<sqlx::SqlitePool, String> {
+        if let Some(pool) = self.sqlite_pools.lock().get(url).cloned() {
+            if !pool.is_closed() {
+                return Ok(pool);
+            }
+        }
+
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .idle_timeout(std::time::Duration::from_secs(600))
+            .max_lifetime(std::time::Duration::from_secs(1800))
+            .connect(url)
+            .await
+            .map_err(|e| format!("SQLite error: {}", e))?;
+        self.sqlite_pools
+            .lock()
+            .insert(url.to_string(), pool.clone());
+        Ok(pool)
     }
 
     pub async fn test_connection(&self, config: &DbConnectionConfig) -> Result<String, String> {
@@ -391,13 +475,8 @@ impl DbmsManager {
                     cfg.database = Some(db.clone());
                 }
                 let url = Self::build_mysql_url(&cfg);
-                let pool = sqlx::mysql::MySqlPoolOptions::new()
-                    .max_connections(1)
-                    .connect(&url)
-                    .await
-                    .map_err(|e| format!("MySQL error: {}", e))?;
+                let pool = self.mysql_pool(&url).await?;
 
-                // List databases
                 let db_rows: Vec<(String,)> = sqlx::query_as("SHOW DATABASES")
                     .fetch_all(&pool)
                     .await
@@ -408,52 +487,66 @@ impl DbmsManager {
                 let mut tables = Vec::new();
 
                 if let Some(ref active_db) = cur_db {
-                    // Use active db
-                    let _ = sqlx::query(&format!("USE `{}`", active_db)).execute(&pool).await;
+                    let use_query = format!("USE {}", quote_mysql_identifier(active_db));
+                    let _ = sqlx::query(&use_query).execute(&pool).await;
 
                     let t_rows: Vec<(String, String)> = sqlx::query_as("SHOW FULL TABLES")
                         .fetch_all(&pool)
                         .await
                         .unwrap_or_default();
 
-                    for (t_name, t_type) in t_rows {
-                        let col_query = format!("SHOW FULL COLUMNS FROM `{}`", t_name);
-                        let mut columns = Vec::new();
+                    let col_rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(
+                        "SELECT table_name, column_name, column_type, is_nullable, column_default
+                         FROM information_schema.COLUMNS
+                         WHERE table_schema = ?
+                         ORDER BY table_name, ordinal_position",
+                    )
+                    .bind(active_db)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+                    let pk_rows: Vec<(String, String)> = sqlx::query_as(
+                        "SELECT table_name, column_name
+                         FROM information_schema.KEY_COLUMN_USAGE
+                         WHERE table_schema = ? AND constraint_name = 'PRIMARY'",
+                    )
+                    .bind(active_db)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+                    let pk_columns: HashSet<(String, String)> =
+                        pk_rows.into_iter().collect();
+                    let mut columns_by_table: HashMap<String, Vec<DbColumnMeta>> = HashMap::new();
 
-                        if let Ok(rows) = sqlx::query(&col_query).fetch_all(&pool).await {
-                            use sqlx::Row;
-                            for r in rows {
-                                let name: String = r.try_get("Field").unwrap_or_default();
-                                let data_type: String = r.try_get("Type").unwrap_or_default();
-                                let is_null_str: String = r.try_get("Null").unwrap_or_default();
-                                let key_str: String = r.try_get("Key").unwrap_or_default();
-                                let default_val: Option<String> = r.try_get("Default").ok();
+                    for (table_name, column_name, data_type, is_nullable, default_value) in col_rows {
+                        let is_primary_key = pk_columns.contains(&(table_name.clone(), column_name.clone()));
+                        columns_by_table
+                            .entry(table_name)
+                            .or_default()
+                            .push(DbColumnMeta {
+                                name: column_name,
+                                data_type,
+                                is_nullable: is_nullable == "YES",
+                                is_primary_key,
+                                default_value,
+                            });
+                    }
 
-                                columns.push(DbColumnMeta {
-                                    name,
-                                    data_type,
-                                    is_nullable: is_null_str == "YES",
-                                    is_primary_key: key_str == "PRI",
-                                    default_value: default_val,
-                                });
-                            }
-                        }
-
+                    for (table_name, table_kind) in t_rows {
                         tables.push(DbTableMeta {
-                            name: t_name,
+                            columns: columns_by_table.remove(&table_name).unwrap_or_default(),
+                            name: table_name,
                             schema: Some(active_db.clone()),
-                            table_type: if t_type.contains("VIEW") {
+                            table_type: if table_kind.contains("VIEW") {
                                 "VIEW".to_string()
                             } else {
                                 "TABLE".to_string()
                             },
                             row_count: None,
-                            columns,
                         });
                     }
                 }
 
-                pool.close().await;
                 Ok(DbSchemaOverview {
                     databases,
                     current_database: cur_db,
@@ -466,13 +559,8 @@ impl DbmsManager {
                     cfg.database = Some(db.clone());
                 }
                 let url = Self::build_pg_url(&cfg);
-                let pool = sqlx::postgres::PgPoolOptions::new()
-                    .max_connections(1)
-                    .connect(&url)
-                    .await
-                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+                let pool = self.pg_pool(&url).await?;
 
-                // List databases
                 let db_rows: Vec<(String,)> = sqlx::query_as(
                     "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
                 )
@@ -484,68 +572,92 @@ impl DbmsManager {
                 let cur_db = cfg.database.clone().or_else(|| databases.first().cloned());
                 let mut tables = Vec::new();
 
-                let t_rows: Vec<(String, String, String)> = sqlx::query_as(
-                    "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_name",
+                let metadata_rows: Vec<(
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    bool,
+                )> = sqlx::query_as(
+                    "SELECT t.table_schema,
+                            t.table_name,
+                            t.table_type,
+                            c.column_name,
+                            c.data_type,
+                            c.is_nullable,
+                            c.column_default,
+                            EXISTS (
+                                SELECT 1
+                                FROM information_schema.table_constraints tc
+                                JOIN information_schema.key_column_usage kcu
+                                  ON tc.constraint_catalog = kcu.constraint_catalog
+                                 AND tc.constraint_schema = kcu.constraint_schema
+                                 AND tc.constraint_name = kcu.constraint_name
+                                WHERE tc.constraint_type = 'PRIMARY KEY'
+                                  AND tc.table_schema = t.table_schema
+                                  AND tc.table_name = t.table_name
+                                  AND kcu.column_name = c.column_name
+                            ) AS is_primary_key
+                     FROM information_schema.tables t
+                     LEFT JOIN information_schema.columns c
+                       ON c.table_schema = t.table_schema
+                      AND c.table_name = t.table_name
+                     WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
+                     ORDER BY t.table_name, t.table_schema, c.ordinal_position",
                 )
                 .fetch_all(&pool)
                 .await
                 .unwrap_or_default();
+                let mut table_indexes: HashMap<String, usize> = HashMap::new();
 
-                for (schema_name, t_name, t_type) in t_rows {
-                    let pk_rows: Vec<(String,)> = sqlx::query_as(
-                        "SELECT kcu.column_name
-                         FROM information_schema.table_constraints tc
-                         JOIN information_schema.key_column_usage kcu
-                           ON tc.constraint_name = kcu.constraint_name
-                          AND tc.constraint_type = 'PRIMARY KEY'
-                          AND tc.table_schema = kcu.table_schema
-                         WHERE tc.table_schema = $1 AND tc.table_name = $2",
-                    )
-                    .bind(&schema_name)
-                    .bind(&t_name)
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
-                    let pk_columns: std::collections::HashSet<String> =
-                        pk_rows.into_iter().map(|r| r.0).collect();
+                for (
+                    schema_name,
+                    table_name,
+                    table_kind,
+                    column_name,
+                    data_type,
+                    is_nullable,
+                    default_value,
+                    is_primary_key,
+                ) in metadata_rows
+                {
+                    let table_key = format!("{}\0{}", schema_name, table_name);
+                    let table_index = match table_indexes.get(&table_key) {
+                        Some(index) => *index,
+                        None => {
+                            let index = tables.len();
+                            table_indexes.insert(table_key, index);
+                            tables.push(DbTableMeta {
+                                name: table_name.clone(),
+                                schema: Some(schema_name),
+                                table_type: if table_kind.contains("VIEW") {
+                                    "VIEW".to_string()
+                                } else {
+                                    "TABLE".to_string()
+                                },
+                                row_count: None,
+                                columns: Vec::new(),
+                            });
+                            index
+                        }
+                    };
 
-                    let col_rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-                        "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
-                    )
-                    .bind(&schema_name)
-                    .bind(&t_name)
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
-
-                    let columns = col_rows
-                        .into_iter()
-                        .map(|(c_name, d_type, is_null, def_val)| {
-                            let is_pk = pk_columns.contains(&c_name);
-                            DbColumnMeta {
-                                name: c_name,
-                                 data_type: d_type,
-                                 is_nullable: is_null == "YES" && !is_pk,
-                                is_primary_key: is_pk,
-                                default_value: def_val,
-                            }
-                        })
-                        .collect();
-
-                    tables.push(DbTableMeta {
-                        name: t_name,
-                        schema: Some(schema_name),
-                        table_type: if t_type.contains("VIEW") {
-                            "VIEW".to_string()
-                        } else {
-                            "TABLE".to_string()
-                        },
-                        row_count: None,
-                        columns,
-                    });
+                    if let (Some(column_name), Some(data_type), Some(is_nullable)) =
+                        (column_name, data_type, is_nullable)
+                    {
+                        tables[table_index].columns.push(DbColumnMeta {
+                            name: column_name,
+                            data_type,
+                            is_nullable: is_nullable == "YES" && !is_primary_key,
+                            is_primary_key,
+                            default_value,
+                        });
+                    }
                 }
 
-                pool.close().await;
                 Ok(DbSchemaOverview {
                     databases,
                     current_database: cur_db,
@@ -558,58 +670,44 @@ impl DbmsManager {
                     .as_deref()
                     .ok_or_else(|| "Path SQLite belum ditentukan".to_string())?;
                 let url = format!("sqlite://{}", path);
-                let pool = sqlx::sqlite::SqlitePoolOptions::new()
-                    .max_connections(1)
-                    .connect(&url)
-                    .await
-                    .map_err(|e| format!("SQLite error: {}", e))?;
+                let pool = self.sqlite_pool(&url).await?;
 
-                let t_rows: Vec<(String, String)> = sqlx::query_as(
-                    "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
-                )
-                .fetch_all(&pool)
-                .await
-                .unwrap_or_default();
-
+                let metadata_rows = fetch_sqlite_metadata(&pool).await.unwrap_or_default();
+                let mut table_indexes: HashMap<String, usize> = HashMap::new();
                 let mut tables = Vec::new();
 
-                for (t_name, t_type) in t_rows {
-                    let pragma_sql = format!("PRAGMA table_info(\"{}\")", t_name);
-                    let mut columns = Vec::new();
-
-                    if let Ok(rows) = sqlx::query(&pragma_sql).fetch_all(&pool).await {
-                        use sqlx::Row;
-                        for r in rows {
-                            let name: String = r.try_get("name").unwrap_or_default();
-                            let data_type: String = r.try_get("type").unwrap_or_default();
-                            let not_null: i64 = r.try_get("notnull").unwrap_or(0);
-                            let pk: i64 = r.try_get("pk").unwrap_or(0);
-                            let def_val: Option<String> = r.try_get("dflt_value").ok();
-
-                            columns.push(DbColumnMeta {
-                                name,
-                                data_type,
-                                is_nullable: not_null == 0,
-                                is_primary_key: pk > 0,
-                                default_value: def_val,
+                for (table_name, table_kind, column_name, data_type, not_null, pk, default_value) in
+                    metadata_rows
+                {
+                    let table_index = match table_indexes.get(&table_name) {
+                        Some(index) => *index,
+                        None => {
+                            let index = tables.len();
+                            table_indexes.insert(table_name.clone(), index);
+                            tables.push(DbTableMeta {
+                                name: table_name,
+                                schema: None,
+                                table_type: if table_kind == "view" {
+                                    "VIEW".to_string()
+                                } else {
+                                    "TABLE".to_string()
+                                },
+                                row_count: None,
+                                columns: Vec::new(),
                             });
+                            index
                         }
-                    }
+                    };
 
-                    tables.push(DbTableMeta {
-                        name: t_name,
-                        schema: None,
-                        table_type: if t_type == "view" {
-                            "VIEW".to_string()
-                        } else {
-                            "TABLE".to_string()
-                        },
-                        row_count: None,
-                        columns,
+                    tables[table_index].columns.push(DbColumnMeta {
+                        name: column_name,
+                        data_type,
+                        is_nullable: not_null == 0,
+                        is_primary_key: pk > 0,
+                        default_value,
                     });
                 }
 
-                pool.close().await;
                 Ok(DbSchemaOverview {
                     databases: vec!["main".to_string()],
                     current_database: Some("main".to_string()),
@@ -1849,6 +1947,33 @@ mod tests {
     #[test]
     fn percent_encode_leaves_unreserved_alone() {
         assert_eq!(percent_encode("abcXYZ019-_.~"), "abcXYZ019-_.~");
+    }
+
+    #[test]
+    fn quote_mysql_identifier_escapes_backticks() {
+        assert_eq!(quote_mysql_identifier("users"), "`users`");
+        assert_eq!(quote_mysql_identifier("odd`name"), "`odd``name`");
+    }
+
+    #[tokio::test]
+    async fn sqlite_metadata_query_batches_tables_and_columns() {
+        let pool = sqlx::sqlite::SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        sqlx::query("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .expect("table should be created");
+        sqlx::query("CREATE VIEW active_users AS SELECT id, name FROM users")
+            .execute(&pool)
+            .await
+            .expect("view should be created");
+
+        let rows = fetch_sqlite_metadata(&pool)
+            .await
+            .expect("metadata query should succeed");
+        assert!(rows.iter().any(|row| row.0 == "users" && row.2 == "id" && row.5 == 1));
+        assert!(rows.iter().any(|row| row.0 == "active_users" && row.1 == "view"));
     }
 
     #[test]

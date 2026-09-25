@@ -5,7 +5,7 @@
       <div class="flex items-center space-x-2">
         <Icon icon="lucide:network" class="w-4 h-4 text-sky-400" />
         <span class="font-bold text-slate-200">Interactive ERD Diagram</span>
-        <span class="text-[11px] text-slate-500">({{ filteredTables.length }} Tabel, {{ foreignKeys.length }} Relasi FK)</span>
+        <span class="text-[11px] text-slate-500">({{ filteredTables.length }} Tabel, {{ computedLines.length }}<template v-if="lineResult.unresolved.length > 0">/{{ foreignKeys.length }}</template> Relasi FK)</span>
       </div>
 
       <div class="flex items-center space-x-2">
@@ -110,7 +110,6 @@
       ref="canvasRef"
       @mousedown="handleCanvasMouseDown"
       @wheel="handleCanvasWheel"
-      @scroll="updateRelationLines"
       :class="[
         'flex-1 overflow-auto bg-[radial-gradient(#1e293b_1.2px,transparent_1.2px)] [background-size:20px_20px] relative select-none',
         isPanning ? 'cursor-grabbing' : 'cursor-grab'
@@ -119,8 +118,10 @@
     >
       <!-- Scaled Virtual Canvas Container -->
       <div
-        class="relative min-w-[3400px] min-h-[2600px] origin-top-left"
+        class="relative origin-top-left"
         :style="{
+          minWidth: canvasSize.minWidth,
+          minHeight: canvasSize.minHeight,
           transform: `scale(${zoom})`,
           transformOrigin: '0 0'
         }"
@@ -128,11 +129,11 @@
         <!-- SVG Overlay for Dynamic Relation Connector Lines -->
         <svg
           v-if="showLines && computedLines.length > 0"
-          class="absolute inset-0 pointer-events-none z-10 w-full h-full"
+          class="absolute inset-0 pointer-events-none z-10 w-full h-full overflow-visible"
         >
           <defs>
             <marker
-              id="erd-arrow"
+              :id="`${uid}-arrow`"
               viewBox="0 0 10 10"
               refX="6"
               refY="5"
@@ -143,7 +144,7 @@
               <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
             </marker>
             <marker
-              id="erd-arrow-active"
+              :id="`${uid}-arrow-active`"
               viewBox="0 0 10 10"
               refX="6"
               refY="5"
@@ -163,35 +164,56 @@
             :stroke="activeRelationId === line.id ? '#34d399' : '#0284c7'"
             :stroke-width="activeRelationId === line.id ? 3.5 : 1.8"
             :stroke-dasharray="activeRelationId === line.id ? 'none' : '5,4'"
-            :marker-end="activeRelationId === line.id ? 'url(#erd-arrow-active)' : 'url(#erd-arrow)'"
+            :marker-end="activeRelationId === line.id ? `url(#${uid}-arrow-active)` : `url(#${uid}-arrow)`"
             class="transition-all duration-100"
           />
         </svg>
 
-        <div v-if="loading" class="pt-32 text-center text-slate-500 text-xs font-mono">
-          Memuat metadata relasi & foreign keys...
+        <div
+          v-if="loadError"
+          class="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg bg-boba-950/95 border border-amber-700/60 text-amber-300 text-xs font-mono"
+        >
+          Gagal memuat foreign key: {{ loadError }}
         </div>
 
-        <div v-else-if="filteredTables.length === 0" class="pt-32 text-center text-slate-500 text-xs font-mono">
+        <div
+          v-if="loading"
+          class="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg bg-boba-950/95 border border-boba-700 text-slate-400 text-xs font-mono"
+        >
+          Memuat metadata relasi &amp; foreign keys...
+        </div>
+
+        <div
+          v-else-if="filteredTables.length === 0"
+          class="absolute top-24 left-0 right-0 text-center text-slate-500 text-xs font-mono"
+        >
           Tidak ada tabel untuk ditampilkan di diagram.
         </div>
 
+        <div
+          v-else-if="foreignKeys.length === 0"
+          class="absolute top-12 left-0 right-0 px-8 text-center text-slate-500 text-xs font-mono"
+        >
+          Tidak ada relasi foreign key pada database {{ activeDb || '(default)' }} — relasi akan
+          muncul otomatis begitu skema selesai dimuat.
+        </div>
+
         <!-- Draggable Floating Entity Table Cards -->
-        <template v-else>
+        <template v-if="filteredTables.length > 0">
           <div
             v-for="tbl in filteredTables"
-            :key="tbl.name"
+            :key="tableKey(tbl)"
             :data-erd-table="tbl.name"
             :style="{
               position: 'absolute',
-              left: `${getTablePos(tbl.name).x}px`,
-              top: `${getTablePos(tbl.name).y}px`,
+              left: `${getTablePos(tbl).x}px`,
+              top: `${getTablePos(tbl).y}px`,
               width: '320px',
-              zIndex: draggingTableName === tbl.name ? 50 : (isTableHighlighted(tbl.name) ? 40 : 20)
+              zIndex: draggingTableKey === tableKey(tbl) ? 50 : (isTableHighlighted(tbl.name) ? 40 : 20)
             }"
             :class="[
               'bg-[#111726] border rounded-xl shadow-2xl overflow-hidden flex flex-col select-none transition-shadow cursor-default',
-              draggingTableName === tbl.name ? 'ring-2 ring-sky-400 shadow-sky-500/30' : '',
+              draggingTableKey === tableKey(tbl) ? 'ring-2 ring-sky-400 shadow-sky-500/30' : '',
               isTableHighlighted(tbl.name)
                 ? 'border-emerald-400 ring-2 ring-emerald-500/60 shadow-emerald-500/20'
                 : 'border-boba-700 hover:border-sky-500/80 hover:shadow-sky-500/10'
@@ -199,13 +221,14 @@
           >
             <!-- Draggable Table Header -->
             <div
-              @mousedown.stop="startDragTable(tbl.name, $event)"
+              @mousedown.stop="startDragTable(tbl, $event)"
               class="px-3 py-2 bg-[#141b2d] border-b border-boba-700 flex items-center justify-between cursor-grab active:cursor-grabbing hover:bg-sky-950/60 transition"
               title="Tahan dan geser (Drag) untuk memindahkan posisi tabel ini"
             >
               <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
                 <Icon icon="lucide:table" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <span class="font-bold text-xs text-sky-200 font-mono truncate">{{ tbl.name }}</span>
+                <span v-if="tbl.schema" class="text-[9px] text-slate-600 font-mono shrink-0">{{ tbl.schema }}</span>
               </div>
               <span class="text-[9px] px-1.5 py-0.5 bg-boba-950 text-slate-400 rounded font-mono shrink-0 pointer-events-none border border-boba-800">
                 {{ tbl.columns.length }} cols
@@ -222,12 +245,12 @@
                 <!-- Column Name & Key Marker -->
                 <div class="flex items-center space-x-1.5 truncate min-w-0 flex-1 mr-2">
                   <Icon v-if="c.is_primary_key" icon="lucide:key" class="w-3 h-3 text-amber-400 shrink-0" title="Primary Key" />
-                  <Icon v-else-if="isFkColumn(tbl.name, c.name)" icon="lucide:link" class="w-3 h-3 text-sky-400 shrink-0" title="Foreign Key" />
+                  <Icon v-else-if="isFkColumnOf(tbl, c.name)" icon="lucide:link" class="w-3 h-3 text-sky-400 shrink-0" title="Foreign Key" />
                   <span v-else class="text-slate-600 text-xs shrink-0">•</span>
                   <span
                     :class="[
                       'truncate text-xs',
-                      c.is_primary_key ? 'font-bold text-amber-200' : (isFkColumn(tbl.name, c.name) ? 'font-semibold text-sky-300' : 'text-slate-300')
+                      c.is_primary_key ? 'font-bold text-amber-200' : (isFkColumnOf(tbl, c.name) ? 'font-semibold text-sky-300' : 'text-slate-300')
                     ]"
                     :title="c.name"
                   >
@@ -246,14 +269,14 @@
             </div>
 
             <!-- Outgoing Relations Footer Badge -->
-            <div v-if="getTableRelations(tbl.name).length > 0" class="p-2.5 bg-boba-950/90 border-t border-boba-800 space-y-1.5">
+            <div v-if="getTableRelations(tbl).length > 0" class="p-2.5 bg-boba-950/90 border-t border-boba-800 space-y-1.5">
               <div class="text-[9px] uppercase font-bold text-slate-500 font-mono flex items-center space-x-1">
                 <Icon icon="lucide:git-fork" class="w-3 h-3 text-slate-500" />
                 <span>Relasi Foreign Key:</span>
               </div>
               <div
-                v-for="rel in getTableRelations(tbl.name)"
-                :key="`${rel.from_column}_${rel.to_table}`"
+                v-for="rel in getTableRelations(tbl)"
+                :key="resolveLineId(rel)"
                 @mouseenter="highlightRelation(rel)"
                 @mouseleave="clearHighlight"
                 @click="focusTable(rel.to_table)"
@@ -273,10 +296,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
+import {
+  GRID_ORIGIN_X,
+  GRID_ORIGIN_Y,
+  buildErSvg,
+  buildPositions,
+  buildRelationLines,
+  computeExtent,
+  defaultPosition,
+  formatDataType,
+  isFkColumn,
+  relationsOf,
+  resolveLineId,
+  tableKey,
+  type ErdPoint,
+} from '../utils/erdLayout.js';
 import type { DbConnectionConfig, DbTableMeta, DbForeignKeyRelation } from '../types/index.js';
+
+const uid = `erd${Math.random().toString(36).slice(2, 8)}`;
 
 const props = defineProps<{
   dbConfig?: DbConnectionConfig | null;
@@ -285,6 +325,7 @@ const props = defineProps<{
 }>();
 
 const loading = ref(false);
+const loadError = ref<string | null>(null);
 const searchQuery = ref('');
 const foreignKeys = ref<DbForeignKeyRelation[]>([]);
 const showLines = ref(true);
@@ -298,22 +339,29 @@ const canvasRef = ref<HTMLElement | null>(null);
 const isPanning = ref(false);
 let panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
 
-// Position map: { tableName: { x, y } }
-const tablePositions = ref<Record<string, { x: number; y: number }>>({});
-const draggingTableName = ref<string | null>(null);
+// User-dragged positions only; every table always resolves to a coordinate
+// through `positions`, so relations never disappear because a layout is partial.
+const tablePositions = ref<Record<string, ErdPoint>>({});
+const draggingTableKey = ref<string | null>(null);
 let dragOffset = { x: 0, y: 0 };
 
 const activeRelationId = ref<string | null>(null);
 const highlightedTables = ref<string[]>([]);
 
-interface ComputedLine {
-  id: string;
-  d: string;
-  fromTable: string;
-  toTable: string;
-}
+const positions = computed(() => buildPositions(props.tables, tablePositions.value));
 
-const computedLines = ref<ComputedLine[]>([]);
+const lineResult = computed(() =>
+  buildRelationLines(foreignKeys.value, props.tables, positions.value)
+);
+
+const computedLines = computed(() => (showLines.value ? lineResult.value.lines : []));
+
+const extent = computed(() => computeExtent(props.tables, foreignKeys.value, positions.value));
+
+const canvasSize = computed(() => ({
+  minWidth: `${Math.max(1200, Math.round(extent.value.maxX + 200))}px`,
+  minHeight: `${Math.max(900, Math.round(extent.value.maxY + 200))}px`,
+}));
 
 const filteredTables = computed(() => {
   if (!searchQuery.value.trim()) return props.tables;
@@ -332,88 +380,30 @@ function handleSearchEnter() {
 
 function exportDiagramAsSvg() {
   if (props.tables.length === 0) return;
-  const tbls = props.tables;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const cardWidth = 320;
-
-  tbls.forEach(t => {
-    const pos = getTablePos(t.name);
-    const cardH = 38 + t.columns.length * 24 + 10;
-    if (pos.x < minX) minX = pos.x;
-    if (pos.y < minY) minY = pos.y;
-    if (pos.x + cardWidth > maxX) maxX = pos.x + cardWidth;
-    if (pos.y + cardH > maxY) maxY = pos.y + cardH;
-  });
-
-  const padding = 60;
-  const width = Math.max(1200, maxX - minX + padding * 2);
-  const height = Math.max(800, maxY - minY + padding * 2);
-  const offsetX = minX - padding;
-  const offsetY = minY - padding;
-
-  let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${offsetX} ${offsetY} ${width} ${height}" width="${width}" height="${height}" style="background-color: #0b0f19; font-family: ui-monospace, monospace, sans-serif;">
-    <defs>
-      <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-        <circle cx="2" cy="2" r="1.2" fill="#1e293b" />
-      </pattern>
-      <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
-      </marker>
-    </defs>
-    <rect x="${offsetX}" y="${offsetY}" width="${width}" height="${height}" fill="#0b0f19" />
-    <rect x="${offsetX}" y="${offsetY}" width="${width}" height="${height}" fill="url(#grid)" />
-  `;
-
-  // Connector lines
-  for (const line of computedLines.value) {
-    svgContent += `  <path d="${line.d}" fill="none" stroke="#0284c7" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrow)" />\n`;
+  if (foreignKeys.value.length === 0) {
+    console.warn('[ERD] Export tanpa relasi: belum ada foreign key yang dimuat untuk database ini.');
   }
 
-  // Table cards
-  tbls.forEach(t => {
-    const pos = getTablePos(t.name);
-    const cardH = 38 + t.columns.length * 24 + 10;
-    
-    svgContent += `
-    <g transform="translate(${pos.x}, ${pos.y})">
-      <rect width="320" height="${cardH}" rx="10" fill="#111726" stroke="#334155" stroke-width="1.5" />
-      <path d="M 0 10 Q 0 0 10 0 L 310 0 Q 320 0 320 10 L 320 36 L 0 36 Z" fill="#141b2d" />
-      <line x1="0" y1="36" x2="320" y2="36" stroke="#334155" stroke-width="1" />
-      <text x="14" y="23" fill="#bae6fd" font-size="12" font-weight="bold">${t.name}</text>
-      <text x="306" y="23" fill="#64748b" font-size="10" text-anchor="end">${t.columns.length} cols</text>
-    `;
-
-    t.columns.forEach((c, idx) => {
-      const y = 56 + idx * 24;
-      const keyMarker = c.is_primary_key ? 'PK ' : (isFkColumn(t.name, c.name) ? 'FK ' : '• ');
-      const nameColor = c.is_primary_key ? '#fde68a' : (isFkColumn(t.name, c.name) ? '#7dd3fc' : '#cbd5e1');
-      svgContent += `
-      <text x="14" y="${y}" fill="${nameColor}" font-size="11">${keyMarker}${c.name}</text>
-      <text x="306" y="${y}" fill="#64748b" font-size="10" text-anchor="end">${formatDataType(c.data_type)}</text>
-      `;
-    });
-
-    svgContent += `    </g>\n`;
+  const svgContent = buildErSvg({
+    tables: props.tables,
+    relations: foreignKeys.value,
+    positions: positions.value,
+    idPrefix: uid,
   });
-
-  svgContent += `</svg>`;
 
   const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `erd_${props.activeDb || 'diagram'}_${Date.now()}.svg`;
+  a.download = `erd_${(props.activeDb || 'diagram').replace(/[^\w.-]+/g, '_')}_${Date.now()}.svg`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 function setZoom(val: number) {
   zoom.value = Math.min(2.0, Math.max(0.3, Math.round(val * 100) / 100));
-  nextTick(() => {
-    updateRelationLines();
-  });
 }
 
 function zoomIn() {
@@ -492,30 +482,21 @@ function loadPositionsFromStorage() {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object') {
         tablePositions.value = parsed;
+        return;
       }
     }
   } catch (e) {
     console.debug('Failed to load ERD positions:', e);
   }
+  tablePositions.value = {};
 }
 
 function fitToScreen() {
   if (!canvasRef.value || props.tables.length === 0) return;
-  const tbls = props.tables;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const cardWidth = 320;
-  const cardHeight = 320;
+  const { minX, minY, width, height } = extent.value;
 
-  tbls.forEach(t => {
-    const pos = getTablePos(t.name);
-    if (pos.x < minX) minX = pos.x;
-    if (pos.y < minY) minY = pos.y;
-    if (pos.x + cardWidth > maxX) maxX = pos.x + cardWidth;
-    if (pos.y + cardHeight > maxY) maxY = pos.y + cardHeight;
-  });
-
-  const diagramWidth = (maxX - minX) + 160;
-  const diagramHeight = (maxY - minY) + 160;
+  const diagramWidth = width + 160;
+  const diagramHeight = height + 160;
 
   const viewWidth = canvasRef.value.clientWidth || 1000;
   const viewHeight = canvasRef.value.clientHeight || 700;
@@ -532,45 +513,25 @@ function fitToScreen() {
   });
 }
 
-function getTablePos(tableName: string): { x: number; y: number } {
-  if (!tablePositions.value[tableName]) {
-    // Default grid coordinate calculation
-    const index = props.tables.findIndex(t => t.name === tableName);
-    const validIdx = index >= 0 ? index : 0;
-    const cols = 4;
-    const col = validIdx % cols;
-    const row = Math.floor(validIdx / cols);
-    tablePositions.value[tableName] = {
-      x: 60 + col * 360,
-      y: 60 + row * 400,
-    };
-  }
-  return tablePositions.value[tableName];
+function getTablePos(table: DbTableMeta): ErdPoint {
+  return positions.value[tableKey(table)] || { x: GRID_ORIGIN_X, y: GRID_ORIGIN_Y };
 }
 
 function resetGridLayout() {
-  const newPositions: Record<string, { x: number; y: number }> = {};
-  const cols = 4;
+  const newPositions: Record<string, ErdPoint> = {};
   props.tables.forEach((tbl, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    newPositions[tbl.name] = {
-      x: 60 + col * 360,
-      y: 60 + row * 400,
-    };
+    newPositions[tableKey(tbl)] = defaultPosition(idx);
   });
   tablePositions.value = newPositions;
   savePositionsToStorage();
-  nextTick(() => {
-    updateRelationLines();
-  });
 }
 
 // Drag Handlers with Zoom Compensation
-function startDragTable(tableName: string, e: MouseEvent) {
+function startDragTable(table: DbTableMeta, e: MouseEvent) {
   if (e.button !== 0) return; // Only left mouse button
-  draggingTableName.value = tableName;
-  const pos = getTablePos(tableName);
+  const key = tableKey(table);
+  draggingTableKey.value = key;
+  const pos = getTablePos(table);
   dragOffset = {
     x: e.clientX - pos.x * zoom.value,
     y: e.clientY - pos.y * zoom.value,
@@ -581,105 +542,53 @@ function startDragTable(tableName: string, e: MouseEvent) {
 }
 
 function onDragMouseMove(e: MouseEvent) {
-  if (!draggingTableName.value) return;
-  const name = draggingTableName.value;
+  const key = draggingTableKey.value;
+  if (!key) return;
   const newX = Math.max(20, (e.clientX - dragOffset.x) / zoom.value);
   const newY = Math.max(20, (e.clientY - dragOffset.y) / zoom.value);
 
-  tablePositions.value[name] = { x: newX, y: newY };
-  requestAnimationFrame(updateRelationLines);
+  tablePositions.value[key] = { x: newX, y: newY };
 }
 
 function onDragMouseUp() {
-  draggingTableName.value = null;
+  draggingTableKey.value = null;
   window.removeEventListener('mousemove', onDragMouseMove);
   window.removeEventListener('mouseup', onDragMouseUp);
   savePositionsToStorage();
-  updateRelationLines();
 }
 
-function formatDataType(dataType: string): string {
-  if (!dataType) return '';
-  const trimmed = dataType.trim();
-  if (trimmed.toLowerCase().startsWith('enum(')) {
-    return 'enum(...)';
-  }
-  if (trimmed.toLowerCase().startsWith('set(')) {
-    return 'set(...)';
-  }
-  return trimmed;
-}
+let fkRequestId = 0;
 
 async function loadForeignKeys() {
-  if (!props.dbConfig) return;
-  loading.value = true;
-
-  try {
-    const list = await tauriBridge.dbmsGetForeignKeys(props.dbConfig, props.activeDb);
-    foreignKeys.value = list;
-    await nextTick();
-    updateRelationLines();
-  } catch (err: any) {
-    console.error('Failed to load foreign keys:', err);
-  } finally {
-    loading.value = false;
-  }
-}
-
-function updateRelationLines() {
-  if (!showLines.value) {
-    computedLines.value = [];
+  const config = props.dbConfig;
+  if (!config) {
+    foreignKeys.value = [];
+    loadError.value = null;
     return;
   }
 
-  const lines: ComputedLine[] = [];
+  const requestId = ++fkRequestId;
+  loading.value = true;
+  loadError.value = null;
 
-  for (const rel of foreignKeys.value) {
-    const fromPos = tablePositions.value[rel.from_table];
-    const toPos = tablePositions.value[rel.to_table];
-
-    if (fromPos && toPos) {
-      const cardWidth = 320;
-      let startX: number, startY: number, endX: number, endY: number;
-
-      // Determine cleanest side to connect (left or right)
-      if (fromPos.x + cardWidth < toPos.x) {
-        // from is to the left of to
-        startX = fromPos.x + cardWidth;
-        startY = fromPos.y + 40;
-        endX = toPos.x;
-        endY = toPos.y + 40;
-      } else if (toPos.x + cardWidth < fromPos.x) {
-        // from is to the right of to
-        startX = fromPos.x;
-        startY = fromPos.y + 40;
-        endX = toPos.x + cardWidth;
-        endY = toPos.y + 40;
-      } else {
-        // stacked vertically
-        startX = fromPos.x + cardWidth / 2;
-        startY = fromPos.y + 50;
-        endX = toPos.x + cardWidth / 2;
-        endY = toPos.y + 50;
-      }
-
-      const dx = Math.abs(endX - startX) * 0.5;
-      const d = `M ${startX} ${startY} C ${startX + dx} ${startY}, ${endX - dx} ${endY}, ${endX} ${endY}`;
-
-      lines.push({
-        id: `${rel.from_table}_${rel.from_column}_${rel.to_table}`,
-        d,
-        fromTable: rel.from_table,
-        toTable: rel.to_table,
-      });
+  try {
+    const list = await tauriBridge.dbmsGetForeignKeys(config, props.activeDb);
+    if (requestId !== fkRequestId) return;
+    foreignKeys.value = list;
+  } catch (err: any) {
+    if (requestId !== fkRequestId) return;
+    foreignKeys.value = [];
+    loadError.value = String(err?.message || err);
+    console.error('Failed to load foreign keys:', err);
+  } finally {
+    if (requestId === fkRequestId) {
+      loading.value = false;
     }
   }
-
-  computedLines.value = lines;
 }
 
 function highlightRelation(rel: DbForeignKeyRelation) {
-  activeRelationId.value = `${rel.from_table}_${rel.from_column}_${rel.to_table}`;
+  activeRelationId.value = resolveLineId(rel);
   highlightedTables.value = [rel.from_table, rel.to_table];
 }
 
@@ -689,41 +598,52 @@ function clearHighlight() {
 }
 
 function isTableHighlighted(tableName: string): boolean {
-  return highlightedTables.value.includes(tableName);
+  const lower = tableName.toLowerCase();
+  return highlightedTables.value.some(t => t.toLowerCase() === lower);
 }
 
 function focusTable(tableName: string) {
-  const pos = getTablePos(tableName);
+  const target = props.tables.find(t => t.name.toLowerCase() === tableName.toLowerCase());
+  if (!target) return;
+  const pos = getTablePos(target);
   if (canvasRef.value) {
     canvasRef.value.scrollTo({
       left: Math.max(0, pos.x * zoom.value - 100),
       top: Math.max(0, pos.y * zoom.value - 80),
       behavior: 'smooth',
     });
-    highlightedTables.value = [tableName];
+    highlightedTables.value = [target.name];
     setTimeout(() => {
       highlightedTables.value = [];
     }, 2000);
   }
 }
 
-function isFkColumn(tableName: string, columnName: string): boolean {
-  return foreignKeys.value.some(
-    fk => fk.from_table.toLowerCase() === tableName.toLowerCase() && fk.from_column.toLowerCase() === columnName.toLowerCase()
-  );
+function isFkColumnOf(table: DbTableMeta, columnName: string): boolean {
+  return isFkColumn(foreignKeys.value, table, columnName);
 }
 
-function getTableRelations(tableName: string): DbForeignKeyRelation[] {
-  return foreignKeys.value.filter(
-    fk => fk.from_table.toLowerCase() === tableName.toLowerCase()
-  );
+function getTableRelations(table: DbTableMeta): DbForeignKeyRelation[] {
+  return relationsOf(foreignKeys.value, table);
 }
 
-watch([() => props.tables, () => filteredTables.value, showLines, zoom], () => {
-  nextTick(() => {
-    updateRelationLines();
-  });
-});
+const tablesSignature = computed(() =>
+  props.tables.map(t => `${tableKey(t)}:${t.columns.length}`).join('|')
+);
+
+watch(
+  [() => props.dbConfig?.id, () => props.activeDb, tablesSignature],
+  () => {
+    loadForeignKeys();
+  },
+);
+
+watch(
+  [() => props.dbConfig?.id, () => props.activeDb],
+  () => {
+    loadPositionsFromStorage();
+  },
+);
 
 onMounted(() => {
   loadPositionsFromStorage();

@@ -107,9 +107,10 @@
           Tidak ada tabel / objek ditemukan.
         </div>
 
-        <div
-          v-for="tbl in filteredTables"
-          :key="tbl.name"
+        <template v-else>
+          <div
+            v-for="tbl in filteredTables"
+            :key="tbl.name"
           @click="handleSelectTable(tbl)"
           @contextmenu.prevent.stop="openTableContextMenu($event, tbl)"
           :class="[
@@ -134,6 +135,7 @@
             {{ tbl.table_type }}
           </span>
         </div>
+        </template>
       </div>
     </div>
 
