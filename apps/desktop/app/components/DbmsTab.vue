@@ -293,8 +293,9 @@
           <div class="flex items-center space-x-1.5">
             <button
               v-if="activeTable && activeTable.columns.length > 0 && activeViewTab === 'data'"
-              @click="isInsertModalOpen = true"
+              @click="insertDraftRow()"
               class="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
+              title="Tambah baris baru langsung di tabel (Draft inline)"
             >
               <span>+ Tambah Baris</span>
             </button>
@@ -445,15 +446,18 @@
           </div>
         </div>
 
-        <!-- Unsaved Pending Edits Banner (Commit / Rollback Controls) -->
+        <!-- Unsaved Pending Edits & Draft Rows Banner (Commit / Rollback Controls) -->
         <div
-          v-if="pendingEditsCount > 0 && activeViewTab === 'data'"
+          v-if="(pendingEditsCount > 0 || pendingNewRows.length > 0) && activeViewTab === 'data'"
           class="px-3.5 py-2 bg-gradient-to-r from-amber-950 to-orange-950/90 border-b border-amber-500/60 flex items-center justify-between text-xs font-sans shadow-md animate-in fade-in shrink-0 select-none"
         >
           <div class="flex items-center space-x-2.5 text-amber-200">
             <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
             <span class="font-bold">
-              Ada {{ pendingEditsCount }} sel data yang diubah (belum disimpan ke database).
+              <span v-if="pendingEditsCount > 0">{{ pendingEditsCount }} sel diedit</span>
+              <span v-if="pendingEditsCount > 0 && pendingNewRows.length > 0"> & </span>
+              <span v-if="pendingNewRows.length > 0">{{ pendingNewRows.length }} baris draft baru</span>
+              (belum di-commit ke database).
             </span>
           </div>
 
@@ -495,12 +499,13 @@
                   >
                     {{ col }}
                   </th>
-                  <th v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-3 py-1.5 text-slate-400 select-none w-20 text-center">
+                  <th v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-3 py-1.5 text-slate-400 select-none w-24 text-center">
                     Aksi
                   </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-boba-850">
+                <!-- Existing Saved Rows -->
                 <tr
                   v-for="(row, rIdx) in queryResult.rows"
                   :key="rIdx"
@@ -556,11 +561,18 @@
                     </template>
                   </td>
                   <td v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-2 py-1 text-center select-none whitespace-nowrap">
-                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1 transition">
+                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1.5 transition">
+                      <button
+                        @click="cloneRow(row)"
+                        title="Clone / Duplikat Baris ke Baris Baru"
+                        class="p-1 hover:bg-sky-900/60 rounded text-sky-400 hover:text-sky-200 transition text-xs"
+                      >
+                        ⧉
+                      </button>
                       <button
                         @click="openEditRowModal(row)"
                         title="Edit baris data (Modal)"
-                        class="p-1 hover:bg-sky-900/60 rounded text-sky-400 hover:text-sky-200 transition text-xs"
+                        class="p-1 hover:bg-amber-900/60 rounded text-amber-400 hover:text-amber-200 transition text-xs"
                       >
                         ✎
                       </button>
@@ -572,6 +584,37 @@
                         🗑️
                       </button>
                     </div>
+                  </td>
+                </tr>
+
+                <!-- Draft Pending Insert / Cloned Rows -->
+                <tr
+                  v-for="(nRow, nIdx) in pendingNewRows"
+                  :key="nRow.tempId"
+                  class="bg-emerald-950/30 hover:bg-emerald-950/50 transition border-b border-emerald-800/60 ring-1 ring-emerald-500/40"
+                >
+                  <td class="px-2 py-1 text-[9px] text-emerald-300 border-r border-emerald-800/60 text-center select-none font-bold font-sans">
+                    + BARU
+                  </td>
+                  <td
+                    v-for="col in queryResult.columns"
+                    :key="col"
+                    class="px-2 py-0.5 border-r border-emerald-800/60 text-emerald-200 whitespace-nowrap"
+                  >
+                    <input
+                      v-model="nRow.values[col]"
+                      :placeholder="activeTable?.columns.find(c => c.name === col)?.default_value ? `Default: ${activeTable?.columns.find(c => c.name === col)?.default_value}` : 'NULL'"
+                      class="w-full bg-[#070f0c] border border-emerald-600/70 focus:border-emerald-400 text-emerald-200 px-1.5 py-0.5 rounded text-xs font-mono outline-none shadow-inner"
+                    />
+                  </td>
+                  <td class="px-2 py-1 text-center select-none whitespace-nowrap">
+                    <button
+                      @click="removeDraftRow(nRow.tempId)"
+                      title="Batalkan baris draft baru ini"
+                      class="px-2 py-0.5 hover:bg-rose-950 rounded text-slate-400 hover:text-rose-300 transition text-[11px] font-bold"
+                    >
+                      ✕ Hapus
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -960,6 +1003,13 @@
         <span>Edit Seluruh Baris (Modal)</span>
       </button>
       <button
+        @click="handleCellContextAction('clone')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>⧉</span>
+        <span>Duplikat / Clone Baris Ini</span>
+      </button>
+      <button
         @click="handleCellContextAction('copy')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
@@ -1101,6 +1151,11 @@ export interface PendingCellEdit {
   rowSnapshot: any[];
 }
 
+export interface PendingNewRow {
+  tempId: string;
+  values: Record<string, any>;
+}
+
 interface SubQueryTab {
   id: string;
   title: string;
@@ -1116,6 +1171,7 @@ interface SubQueryTab {
   activeViewTab: 'data' | 'structure' | 'ddl';
   filterState: FilterState;
   pendingEdits: Record<string, PendingCellEdit>;
+  pendingNewRows: PendingNewRow[];
 }
 
 function createDefaultTab(
@@ -1152,6 +1208,7 @@ function createDefaultTab(
       active: false,
     },
     pendingEdits: {},
+    pendingNewRows: [],
   };
 }
 
@@ -1243,12 +1300,63 @@ const pendingEdits = computed({
   },
 });
 
+const pendingNewRows = computed({
+  get: () => activeQueryTab.value?.pendingNewRows || [],
+  set: (val: PendingNewRow[]) => {
+    if (activeQueryTab.value) activeQueryTab.value.pendingNewRows = val;
+  },
+});
+
 const pendingEditsCount = computed(() => {
   return Object.keys(pendingEdits.value).length;
 });
 
 function isCellPending(rIdx: number, cIdx: number): boolean {
   return `${rIdx}_${cIdx}` in pendingEdits.value;
+}
+
+function insertDraftRow() {
+  if (!activeTable.value || !queryResult.value) return;
+  const tempId = `draft_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`;
+  const initialValues: Record<string, any> = {};
+
+  activeTable.value.columns.forEach(c => {
+    if (c.default_value) {
+      initialValues[c.name] = c.default_value;
+    } else {
+      initialValues[c.name] = '';
+    }
+  });
+
+  pendingNewRows.value.push({
+    tempId,
+    values: initialValues,
+  });
+}
+
+function cloneRow(row: any[]) {
+  if (!activeTable.value || !queryResult.value) return;
+  const tempId = `clone_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`;
+  const initialValues: Record<string, any> = {};
+
+  queryResult.value.columns.forEach((colName, cIdx) => {
+    const val = row[cIdx];
+    initialValues[colName] = val === null ? '' : String(val);
+  });
+
+  const pk = getTablePrimaryKey(activeTable.value);
+  if (pk && typeof initialValues[pk.name] === 'string' && isNaN(Number(initialValues[pk.name]))) {
+    initialValues[pk.name] = `${initialValues[pk.name]}_copy`;
+  }
+
+  pendingNewRows.value.push({
+    tempId,
+    values: initialValues,
+  });
+}
+
+function removeDraftRow(tempId: string) {
+  pendingNewRows.value = pendingNewRows.value.filter(r => r.tempId !== tempId);
 }
 
 const committingEdits = ref(false);
@@ -1754,7 +1862,7 @@ function closeAllContextMenus() {
   closeCellContextMenu();
 }
 
-async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'copy' | 'detail' | 'delete') {
+async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clone' | 'copy' | 'detail' | 'delete') {
   const { rIdx, cIdx, row, value, column } = cellContextMenu.value;
   closeCellContextMenu();
 
@@ -1762,6 +1870,8 @@ async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'cop
     startInlineCellEdit(rIdx, cIdx, value);
   } else if (action === 'edit_row') {
     openEditRowModal(row);
+  } else if (action === 'clone') {
+    cloneRow(row);
   } else if (action === 'copy') {
     const textToCopy = value === null ? 'NULL' : (typeof value === 'object' ? JSON.stringify(value) : String(value));
     await navigator.clipboard.writeText(textToCopy);
@@ -1938,13 +2048,19 @@ function handleCommitEdit() {
 }
 
 async function commitPendingEdits() {
-  if (!activeTable.value || !queryResult.value || pendingEditsCount.value === 0) return;
+  if (
+    !activeTable.value ||
+    !queryResult.value ||
+    (pendingEditsCount.value === 0 && pendingNewRows.value.length === 0)
+  )
+    return;
   committingEdits.value = true;
   errorMessage.value = null;
 
   try {
     const pk = getTablePrimaryKey(activeTable.value);
-    // Group pending edits by row index (rIdx)
+
+    // 1. Process modified existing rows (UPDATE)
     const editsByRow: Record<number, PendingCellEdit[]> = {};
     Object.values(pendingEdits.value).forEach(edit => {
       if (!editsByRow[edit.rIdx]) editsByRow[edit.rIdx] = [];
@@ -2002,11 +2118,45 @@ async function commitPendingEdits() {
       );
     }
 
-    // Clear pending edits on success
+    // 2. Process new / cloned draft rows (INSERT)
+    for (const draftRow of pendingNewRows.value) {
+      const cols: string[] = [];
+      const vals: string[] = [];
+
+      for (const [colName, rawVal] of Object.entries(draftRow.values)) {
+        if (rawVal !== undefined && String(rawVal).trim() !== '') {
+          const valStr = String(rawVal).trim();
+          cols.push(`\`${colName}\``);
+          if (valStr.toUpperCase() === 'NULL') {
+            vals.push('NULL');
+          } else if (!isNaN(Number(valStr))) {
+            vals.push(valStr);
+          } else {
+            vals.push(`'${valStr.replace(/'/g, "''")}'`);
+          }
+        }
+      }
+
+      if (cols.length > 0) {
+        const insertSql = `INSERT INTO \`${activeTable.value.name}\` (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
+        await tauriBridge.dbmsExecuteQuery(
+          props.tab.dbConnection!,
+          activeDatabase.value || undefined,
+          insertSql
+        );
+      }
+    }
+
+    // Clear staging buffers on success
     pendingEdits.value = {};
+    pendingNewRows.value = [];
+
+    // Reload table data
+    handlePageChange(currentPage.value);
+
     await dialogStore.alert({
       title: 'Perubahan Berhasil Disimpan',
-      description: 'Semua perubahan data telah berhasil di-commit ke database.',
+      description: 'Semua perubahan baris dan data baru telah berhasil di-commit ke database.',
       variant: 'success',
     });
   } catch (err: any) {
@@ -2021,13 +2171,15 @@ async function commitPendingEdits() {
 }
 
 function rollbackPendingEdits() {
-  if (!queryResult.value || pendingEditsCount.value === 0) return;
+  if (!queryResult.value) return;
+  // Revert edited cells
   Object.values(pendingEdits.value).forEach(edit => {
     if (queryResult.value && queryResult.value.rows[edit.rIdx]) {
       queryResult.value.rows[edit.rIdx][edit.cIdx] = edit.oldVal;
     }
   });
   pendingEdits.value = {};
+  pendingNewRows.value = [];
 }
 
 async function handleDeleteRow(row: any[]) {
