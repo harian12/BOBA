@@ -202,7 +202,7 @@
               Waktu: <strong class="text-slate-200">{{ lastExecutionTime }}ms</strong>
             </span>
             <span v-if="queryResult" class="text-slate-400">
-              Baris: <strong class="text-emerald-400">{{ queryResult.rows.length }}</strong>
+              Baris: <strong class="text-emerald-400">{{ queryResult.rows?.length ?? 0 }}</strong>
               <span v-if="queryResult.affected_rows > 0"> (Affected: {{ queryResult.affected_rows }})</span>
             </span>
             <button
@@ -274,14 +274,14 @@
               📊 Data
             </button>
             <button
-              v-if="activeTable && activeTable.columns.length > 0"
+              v-if="activeTable?.columns && activeTable.columns.length > 0"
               @click="activeViewTab = 'structure'"
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'structure' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
               📐 Struktur ({{ activeTable.columns.length }} Kolom)
             </button>
             <button
-              v-if="activeTable && activeTable.columns.length > 0"
+              v-if="activeTable?.columns && activeTable.columns.length > 0"
               @click="activeViewTab = 'ddl'"
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'ddl' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
@@ -292,7 +292,7 @@
           <!-- Actions: Insert Row & Export Tools -->
           <div class="flex items-center space-x-1.5">
             <button
-              v-if="activeTable && activeTable.columns.length > 0 && activeViewTab === 'data'"
+              v-if="activeTable?.columns && activeTable.columns.length > 0 && activeViewTab === 'data'"
               @click="insertDraftRow()"
               class="px-2.5 py-1 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 rounded text-[11px] font-medium border border-emerald-700/50 transition flex items-center space-x-1"
               title="Tambah baris baru langsung di tabel (Draft inline)"
@@ -300,7 +300,7 @@
               <span>+ Tambah Baris</span>
             </button>
 
-            <template v-if="queryResult && queryResult.columns.length > 0 && activeViewTab === 'data'">
+            <template v-if="queryResult?.columns && queryResult.columns.length > 0 && activeViewTab === 'data'">
               <button
                 @click="exportData('csv')"
                 title="Ekspor ke CSV"
@@ -328,7 +328,7 @@
 
         <!-- Multi-Query Result Set Switcher Bar -->
         <div
-          v-if="queryResults.length > 1 && activeViewTab === 'data'"
+          v-if="queryResults && queryResults.length > 1 && activeViewTab === 'data'"
           class="px-3 py-1.5 bg-[#141a29] border-b border-boba-800 flex items-center space-x-2 text-xs font-mono select-none overflow-x-auto shrink-0 shadow-inner"
         >
           <span class="text-[11px] text-slate-400 font-sans font-bold shrink-0">Hasil Query ({{ queryResults.length }} Query):</span>
@@ -344,10 +344,10 @@
             ]"
           >
             <span>Result {{ rIdx + 1 }}</span>
-            <span class="text-[10px] text-sky-200 font-sans" v-if="res.rows && res.rows.length > 0">
+            <span class="text-[10px] text-sky-200 font-sans" v-if="res?.rows && res.rows.length > 0">
               ({{ res.rows.length }} baris)
             </span>
-            <span class="text-[10px] text-emerald-200 font-sans" v-else-if="res.affected_rows > 0">
+            <span class="text-[10px] text-emerald-200 font-sans" v-else-if="res && res.affected_rows > 0">
               ({{ res.affected_rows }} affected)
             </span>
           </button>
@@ -355,7 +355,7 @@
 
         <!-- Fitur 1: Visual Multi-Filter Bar with Per-Condition AND / OR -->
         <div
-          v-if="activeTable && activeViewTab === 'data' && activeTable.columns.length > 0"
+          v-if="activeTable?.columns && activeTable.columns.length > 0 && activeViewTab === 'data'"
           class="bg-[#0e131f] border-b border-boba-800 flex flex-col px-3 py-2 space-y-2 text-xs font-mono shrink-0"
         >
           <!-- Multi-Filter Header Controls -->
@@ -364,10 +364,10 @@
               <span class="text-slate-300 text-[11px] font-sans font-bold flex items-center space-x-1.5">
                 <span>🔍 Multi-Filter Query</span>
                 <span
-                  v-if="filterState.active"
+                  v-if="filterState?.active"
                   class="px-1.5 py-0.2 bg-emerald-950 border border-emerald-600/70 text-emerald-300 rounded text-[9px] font-mono"
                 >
-                  Aktif ({{ filterState.rules.length }} Aturan)
+                  Aktif ({{ filterState.rules?.length ?? 0 }} Aturan)
                 </span>
               </span>
             </div>
@@ -386,7 +386,7 @@
                 Terapkan Filter
               </button>
               <button
-                v-if="filterState.active"
+                v-if="filterState?.active"
                 @click="resetMultiFilter"
                 class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-[11px] transition"
               >
@@ -396,7 +396,7 @@
           </div>
 
           <!-- Dynamic Filter Conditions Rows (Per-Filter Conjunction) -->
-          <div class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+          <div v-if="filterState?.rules && filterState.rules.length > 0" class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
             <div
               v-for="(rule, rIdx) in filterState.rules"
               :key="rule.id"
@@ -426,7 +426,7 @@
                 class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none min-w-[140px]"
               >
                 <option value="">-- Pilih Kolom --</option>
-                <option v-for="c in activeTable.columns" :key="c.name" :value="c.name">
+                <option v-for="c in (activeTable?.columns ?? [])" :key="c.name" :value="c.name">
                   {{ c.name }} ({{ c.data_type }})
                 </option>
               </select>
@@ -475,15 +475,15 @@
 
         <!-- Unsaved Pending Edits & Draft Rows Banner (Commit / Rollback Controls) -->
         <div
-          v-if="(pendingEditsCount > 0 || pendingNewRows.length > 0) && activeViewTab === 'data'"
+          v-if="(pendingEditsCount > 0 || (pendingNewRows && pendingNewRows.length > 0)) && activeViewTab === 'data'"
           class="px-3.5 py-2 bg-gradient-to-r from-amber-950 to-orange-950/90 border-b border-amber-500/60 flex items-center justify-between text-xs font-sans shadow-md animate-in fade-in shrink-0 select-none"
         >
           <div class="flex items-center space-x-2.5 text-amber-200">
             <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
             <span class="font-bold">
               <span v-if="pendingEditsCount > 0">{{ pendingEditsCount }} sel diedit</span>
-              <span v-if="pendingEditsCount > 0 && pendingNewRows.length > 0"> & </span>
-              <span v-if="pendingNewRows.length > 0">{{ pendingNewRows.length }} baris draft baru</span>
+              <span v-if="pendingEditsCount > 0 && pendingNewRows?.length > 0"> & </span>
+              <span v-if="pendingNewRows?.length > 0">{{ pendingNewRows.length }} baris draft baru</span>
               (belum di-commit ke database).
             </span>
           </div>
@@ -515,7 +515,7 @@
         <!-- VIEW 1: Interactive Data Table Grid -->
         <div v-if="activeViewTab === 'data'" class="flex-1 flex flex-col overflow-hidden bg-[#07090e] relative font-mono text-xs select-text">
           <div class="flex-1 overflow-auto">
-            <table v-if="queryResult && queryResult.columns.length > 0" class="w-full text-left border-collapse">
+            <table v-if="queryResult?.columns && queryResult.columns.length > 0" class="w-full text-left border-collapse">
               <thead class="bg-[#141a29] sticky top-0 z-10 border-b border-boba-800 shadow-sm text-slate-300">
                 <tr>
                   <th class="px-2 py-1.5 text-[10px] text-slate-500 font-mono border-r border-boba-800 w-10 text-center">#</th>
@@ -534,7 +534,7 @@
               <tbody class="divide-y divide-boba-850">
                 <!-- Existing Saved Rows -->
                 <tr
-                  v-for="(row, rIdx) in queryResult.rows"
+                  v-for="(row, rIdx) in (queryResult?.rows ?? [])"
                   :key="rIdx"
                   class="hover:bg-boba-800/40 transition group"
                 >
@@ -616,7 +616,7 @@
 
                 <!-- Draft Pending Insert / Cloned Rows -->
                 <tr
-                  v-for="(nRow, nIdx) in pendingNewRows"
+                  v-for="(nRow, nIdx) in (pendingNewRows ?? [])"
                   :key="nRow.tempId"
                   class="bg-emerald-950/30 hover:bg-emerald-950/50 transition border-b border-emerald-800/60 ring-1 ring-emerald-500/40"
                 >
@@ -624,7 +624,7 @@
                     + BARU
                   </td>
                   <td
-                    v-for="col in queryResult.columns"
+                    v-for="col in (queryResult?.columns ?? [])"
                     :key="col"
                     class="px-2 py-0.5 border-r border-emerald-800/60 text-emerald-200 whitespace-nowrap"
                   >
@@ -689,7 +689,7 @@
               </button>
               <button
                 @click="handlePageChange(currentPage + 1)"
-                :disabled="!queryResult || queryResult.rows.length < pageSize"
+                :disabled="!queryResult?.rows || queryResult.rows.length < pageSize"
                 class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 disabled:opacity-40 rounded text-[11px] text-slate-200 transition"
               >
                 Next ▶
@@ -700,7 +700,7 @@
 
         <!-- VIEW 2: Table Structure / Column Meta -->
         <div v-else-if="activeViewTab === 'structure'" class="flex-1 overflow-auto bg-[#07090e] p-3 font-mono text-xs select-text">
-          <table v-if="activeTable && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
+          <table v-if="activeTable?.columns && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
             <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
               <tr>
                 <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
@@ -767,7 +767,7 @@
         </div>
 
         <!-- Optimizer Suggestions -->
-        <div v-if="explainResult.suggestions.length > 0" class="space-y-1.5">
+        <div v-if="explainResult.suggestions && explainResult.suggestions.length > 0" class="space-y-1.5">
           <div class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">💡 Saran Optimasi Indeks:</div>
           <ul class="space-y-1 bg-emerald-950/30 border border-emerald-900/50 p-3 rounded-lg text-xs text-emerald-200 list-disc list-inside">
             <li v-for="(sug, idx) in explainResult.suggestions" :key="idx">{{ sug }}</li>
