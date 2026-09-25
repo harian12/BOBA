@@ -78,16 +78,21 @@
       </div>
     </div>
 
-    <!-- Free-Floating Draggable Canvas Area (Supports Zoom & Ctrl+Scroll) -->
+    <!-- Free-Floating Draggable & Pannable Canvas Area (Left Click Canvas to Pan, Ctrl+Scroll to Zoom) -->
     <div
       ref="canvasRef"
+      @mousedown="handleCanvasMouseDown"
       @wheel="handleCanvasWheel"
       @scroll="updateRelationLines"
-      class="flex-1 overflow-auto bg-[radial-gradient(#1e293b_1.2px,transparent_1.2px)] [background-size:20px_20px] relative cursor-default"
+      :class="[
+        'flex-1 overflow-auto bg-[radial-gradient(#1e293b_1.2px,transparent_1.2px)] [background-size:20px_20px] relative select-none',
+        isPanning ? 'cursor-grabbing' : 'cursor-grab'
+      ]"
+      title="Klik kiri & geser di area kosong untuk menggeser canvas (Pan). Ctrl+Scroll untuk Zoom."
     >
       <!-- Scaled Virtual Canvas Container -->
       <div
-        class="relative min-w-[3200px] min-h-[2400px] origin-top-left"
+        class="relative min-w-[3400px] min-h-[2600px] origin-top-left"
         :style="{
           transform: `scale(${zoom})`,
           transformOrigin: '0 0'
@@ -158,7 +163,7 @@
               zIndex: draggingTableName === tbl.name ? 50 : (isTableHighlighted(tbl.name) ? 40 : 20)
             }"
             :class="[
-              'bg-[#111726] border rounded-xl shadow-2xl overflow-hidden flex flex-col select-none transition-shadow',
+              'bg-[#111726] border rounded-xl shadow-2xl overflow-hidden flex flex-col select-none transition-shadow cursor-default',
               draggingTableName === tbl.name ? 'ring-2 ring-sky-400 shadow-sky-500/30' : '',
               isTableHighlighted(tbl.name)
                 ? 'border-emerald-400 ring-2 ring-emerald-500/60 shadow-emerald-500/20'
@@ -167,9 +172,9 @@
           >
             <!-- Draggable Table Header -->
             <div
-              @mousedown="startDragTable(tbl.name, $event)"
+              @mousedown.stop="startDragTable(tbl.name, $event)"
               class="px-3 py-2 bg-[#141b2d] border-b border-boba-700 flex items-center justify-between cursor-grab active:cursor-grabbing hover:bg-sky-950/60 transition"
-              title="Tahan dan geser (Drag) untuk memindahkan posisi tabel"
+              title="Tahan dan geser (Drag) untuk memindahkan posisi tabel ini"
             >
               <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
                 <Icon icon="lucide:table" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
@@ -262,6 +267,10 @@ const zoom = ref(1.0);
 
 const canvasRef = ref<HTMLElement | null>(null);
 
+// Panning State (Click & Drag on empty canvas background)
+const isPanning = ref(false);
+let panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
+
 // Position map: { tableName: { x, y } }
 const tablePositions = ref<Record<string, { x: number; y: number }>>({});
 const draggingTableName = ref<string | null>(null);
@@ -312,6 +321,41 @@ function handleCanvasWheel(e: WheelEvent) {
   }
 }
 
+// Canvas Panning Handlers (Left-click & Drag Canvas)
+function handleCanvasMouseDown(e: MouseEvent) {
+  if (e.button !== 0 && e.button !== 1) return; // Left or middle click
+  const target = e.target as HTMLElement | null;
+  if (target && (target.closest('[data-erd-table]') || target.closest('button, input, select, textarea'))) {
+    return;
+  }
+
+  if (!canvasRef.value) return;
+  isPanning.value = true;
+  panStart = {
+    x: e.clientX,
+    y: e.clientY,
+    scrollLeft: canvasRef.value.scrollLeft,
+    scrollTop: canvasRef.value.scrollTop,
+  };
+
+  window.addEventListener('mousemove', onCanvasPanMouseMove);
+  window.addEventListener('mouseup', onCanvasPanMouseUp);
+}
+
+function onCanvasPanMouseMove(e: MouseEvent) {
+  if (!isPanning.value || !canvasRef.value) return;
+  const dx = e.clientX - panStart.x;
+  const dy = e.clientY - panStart.y;
+  canvasRef.value.scrollLeft = panStart.scrollLeft - dx;
+  canvasRef.value.scrollTop = panStart.scrollTop - dy;
+}
+
+function onCanvasPanMouseUp() {
+  isPanning.value = false;
+  window.removeEventListener('mousemove', onCanvasPanMouseMove);
+  window.removeEventListener('mouseup', onCanvasPanMouseUp);
+}
+
 function getTablePos(tableName: string): { x: number; y: number } {
   if (!tablePositions.value[tableName]) {
     // Default grid coordinate calculation
@@ -321,8 +365,8 @@ function getTablePos(tableName: string): { x: number; y: number } {
     const col = validIdx % cols;
     const row = Math.floor(validIdx / cols);
     tablePositions.value[tableName] = {
-      x: 50 + col * 360,
-      y: 50 + row * 400,
+      x: 60 + col * 360,
+      y: 60 + row * 400,
     };
   }
   return tablePositions.value[tableName];
@@ -335,8 +379,8 @@ function resetGridLayout() {
     const col = idx % cols;
     const row = Math.floor(idx / cols);
     newPositions[tbl.name] = {
-      x: 50 + col * 360,
-      y: 50 + row * 400,
+      x: 60 + col * 360,
+      y: 60 + row * 400,
     };
   });
   tablePositions.value = newPositions;
@@ -511,5 +555,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('mousemove', onDragMouseMove);
   window.removeEventListener('mouseup', onDragMouseUp);
+  window.removeEventListener('mousemove', onCanvasPanMouseMove);
+  window.removeEventListener('mouseup', onCanvasPanMouseUp);
 });
 </script>
