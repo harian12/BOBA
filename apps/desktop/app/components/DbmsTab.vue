@@ -351,10 +351,11 @@
             class="w-full bg-[#07090e] border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 placeholder-slate-600 focus:outline-none focus:border-sky-500/80 resize-y leading-relaxed"
           ></textarea>
 
-          <!-- Floating IntelliSense Suggestions Box (Positioned Below Textarea) -->
+          <!-- Floating IntelliSense Suggestions Box (Positioned Below Cursor / Word) -->
           <div
             v-if="showSuggestions && filteredSuggestions.length > 0"
-            class="absolute z-50 bg-[#121724] border border-sky-500/70 rounded-lg shadow-2xl overflow-hidden font-mono text-xs w-80 max-h-56 overflow-y-auto left-2 top-full mt-1"
+            class="absolute z-50 bg-[#121724] border border-sky-500/70 rounded-lg shadow-2xl overflow-hidden font-mono text-xs w-72 max-h-52 overflow-y-auto pointer-events-auto"
+            :style="{ top: `${suggestionPos.top}px`, left: `${suggestionPos.left}px` }"
           >
             <div class="px-2 py-1 bg-[#0b0e17] border-b border-boba-800 text-[10px] text-slate-400 font-sans flex items-center justify-between">
               <span>Saran IntelliSense (Tab / Enter)</span>
@@ -2185,7 +2186,35 @@ interface SuggestionItem {
 const showSuggestions = ref(false);
 const suggestionQuery = ref('');
 const activeSuggestionIndex = ref(0);
+const suggestionPos = ref({ top: 38, left: 16 });
 const sqlEditorTextareaRef = ref<HTMLTextAreaElement | null>(null);
+
+function updateCursorPosition() {
+  const textarea = sqlEditorTextareaRef.value;
+  if (!textarea) return;
+
+  const cursorIndex = textarea.selectionStart;
+  const textBeforeCursor = textarea.value.slice(0, cursorIndex);
+  const lines = textBeforeCursor.split('\n');
+  const currentLineIndex = lines.length - 1;
+  const currentLineText = lines[currentLineIndex];
+
+  // Font character metrics for monospace text-xs (12px, line-height 20px, p-3 = 12px)
+  const charWidth = 7.4;
+  const lineHeight = 20;
+  const paddingLeft = 14;
+  const paddingTop = 14;
+
+  const colIndex = Math.max(0, currentLineText.length - (suggestionQuery.value.length || 0));
+  const maxLeft = Math.max(16, textarea.clientWidth - 300);
+  const left = Math.min(maxLeft, Math.max(paddingLeft, paddingLeft + colIndex * charWidth));
+  const top = paddingTop + (currentLineIndex + 1) * lineHeight - textarea.scrollTop;
+
+  suggestionPos.value = {
+    top: Math.max(32, top + 6),
+    left: Math.max(14, left)
+  };
+}
 
 const SQL_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'INSERT INTO', 'UPDATE', 'DELETE FROM', 'JOIN',
@@ -2241,6 +2270,7 @@ function handleEditorInput(e: Event) {
   if (match && match[1].length >= 1) {
     suggestionQuery.value = match[1];
     activeSuggestionIndex.value = 0;
+    updateCursorPosition();
     showSuggestions.value = true;
   } else {
     showSuggestions.value = false;
