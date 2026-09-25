@@ -97,32 +97,33 @@
 
     <!-- Right Pane: Split into Multi-Tab Query Editor + Data Grid -->
     <div class="flex-1 flex flex-col overflow-hidden bg-[#0a0d14]">
-      <!-- Multi-Tab Query Editor Sub-Tabs Bar (Fitur 6) -->
+      <!-- Multi-Tab Query Editor Sub-Tabs Bar (Fitur 6 - Auto Open on Table Click) -->
       <div class="h-8 bg-[#0b0e17] border-b border-boba-800 flex items-center px-1 shrink-0 select-none overflow-x-auto">
         <div
           v-for="(qTab, qIdx) in queryTabs"
           :key="qTab.id"
-          @click="activeQueryTabId = qTab.id"
+          @click="selectQueryTab(qTab)"
           :class="[
-            'flex items-center space-x-2 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1',
+            'flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[170px]',
             activeQueryTabId === qTab.id
               ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
               : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
           ]"
         >
-          <span>SQL {{ qIdx + 1 }}</span>
+          <span class="text-[11px] shrink-0">{{ qTab.tableName ? '📋' : '⚡' }}</span>
+          <span class="truncate text-[11px]">{{ qTab.title }}</span>
           <button
             v-if="queryTabs.length > 1"
             @click.stop="closeQueryTab(qTab.id)"
-            class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition"
+            class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition ml-1 shrink-0"
           >
             ✕
           </button>
         </div>
 
         <button
-          @click="addNewQueryTab"
-          title="Tambah Tab Query Baru"
+          @click="addNewQueryTab()"
+          title="Tambah Tab Query Kosong"
           class="px-2 py-0.5 text-slate-400 hover:text-white hover:bg-boba-800 rounded text-xs transition"
         >
           +
@@ -884,48 +885,169 @@ const loadingSchema = ref(false);
 const schemaOverview = ref<DbSchemaOverview | null>(null);
 const activeDatabase = ref<string>('');
 const tableFilter = ref('');
-const activeTable = ref<DbTableMeta | null>(null);
 
 // Fitur 6: Multi-Tab SQL Queries
-const queryTabs = ref<Array<{ id: string; text: string }>>([
-  { id: 'qtab_1', text: '' },
-]);
+interface SubQueryTab {
+  id: string;
+  title: string;
+  tableName?: string;
+  text: string;
+  queryResult: DbQueryResult | null;
+  activeTable: DbTableMeta | null;
+  currentPage: number;
+  pageSize: number;
+  lastExecutionTime: number | null;
+  errorMessage: string | null;
+  activeViewTab: 'data' | 'structure' | 'ddl';
+  quickFilter: {
+    column: string;
+    operator: string;
+    value: string;
+    active: boolean;
+  };
+}
+
+function createDefaultTab(
+  id = 'qtab_1',
+  title = 'SQL 1',
+  text = '',
+  tableName?: string,
+  targetTable: DbTableMeta | null = null
+): SubQueryTab {
+  return {
+    id,
+    title,
+    tableName,
+    text,
+    queryResult: null,
+    activeTable: targetTable,
+    currentPage: 1,
+    pageSize: 100,
+    lastExecutionTime: null,
+    errorMessage: null,
+    activeViewTab: 'data',
+    quickFilter: {
+      column: '',
+      operator: '=',
+      value: '',
+      active: false,
+    },
+  };
+}
+
+const queryTabs = ref<SubQueryTab[]>([createDefaultTab()]);
 const activeQueryTabId = ref<string>('qtab_1');
 
+const activeQueryTab = computed(() => {
+  return queryTabs.value.find(t => t.id === activeQueryTabId.value) || queryTabs.value[0];
+});
+
 const currentQueryText = computed({
-  get: () => {
-    const cur = queryTabs.value.find(t => t.id === activeQueryTabId.value);
-    return cur ? cur.text : '';
-  },
+  get: () => activeQueryTab.value?.text || '',
   set: (val: string) => {
-    const cur = queryTabs.value.find(t => t.id === activeQueryTabId.value);
-    if (cur) cur.text = val;
+    if (activeQueryTab.value) activeQueryTab.value.text = val;
   },
 });
 
-function addNewQueryTab() {
-  const newId = `qtab_${Date.now()}`;
-  queryTabs.value.push({ id: newId, text: '' });
+const activeTable = computed({
+  get: () => activeQueryTab.value?.activeTable || null,
+  set: (val: DbTableMeta | null) => {
+    if (activeQueryTab.value) activeQueryTab.value.activeTable = val;
+  },
+});
+
+const queryResult = computed({
+  get: () => activeQueryTab.value?.queryResult || null,
+  set: (val: DbQueryResult | null) => {
+    if (activeQueryTab.value) activeQueryTab.value.queryResult = val;
+  },
+});
+
+const lastExecutionTime = computed({
+  get: () => activeQueryTab.value?.lastExecutionTime ?? null,
+  set: (val: number | null) => {
+    if (activeQueryTab.value) activeQueryTab.value.lastExecutionTime = val;
+  },
+});
+
+const errorMessage = computed({
+  get: () => activeQueryTab.value?.errorMessage ?? null,
+  set: (val: string | null) => {
+    if (activeQueryTab.value) activeQueryTab.value.errorMessage = val;
+  },
+});
+
+const currentPage = computed({
+  get: () => activeQueryTab.value?.currentPage || 1,
+  set: (val: number) => {
+    if (activeQueryTab.value) activeQueryTab.value.currentPage = val;
+  },
+});
+
+const pageSize = computed({
+  get: () => activeQueryTab.value?.pageSize || 100,
+  set: (val: number) => {
+    if (activeQueryTab.value) activeQueryTab.value.pageSize = val;
+  },
+});
+
+const activeViewTab = computed({
+  get: () => activeQueryTab.value?.activeViewTab || 'data',
+  set: (val: 'data' | 'structure' | 'ddl') => {
+    if (activeQueryTab.value) activeQueryTab.value.activeViewTab = val;
+  },
+});
+
+const quickFilter = computed({
+  get: () =>
+    activeQueryTab.value?.quickFilter || {
+      column: '',
+      operator: '=',
+      value: '',
+      active: false,
+    },
+  set: (val) => {
+    if (activeQueryTab.value) activeQueryTab.value.quickFilter = val;
+  },
+});
+
+function addNewQueryTab(
+  customTitle?: string,
+  customText?: string,
+  tableName?: string,
+  targetTable: DbTableMeta | null = null
+) {
+  const newId = `qtab_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`;
+  const title = customTitle || `SQL ${queryTabs.value.length + 1}`;
+  const newTab = createDefaultTab(newId, title, customText || '', tableName, targetTable);
+  queryTabs.value.push(newTab);
   activeQueryTabId.value = newId;
+  return newTab;
 }
 
-function closeQueryTab(id: string) {
-  if (queryTabs.value.length <= 1) return;
-  const idx = queryTabs.value.findIndex(t => t.id === id);
-  queryTabs.value = queryTabs.value.filter(t => t.id !== id);
-  if (activeQueryTabId.value === id) {
-    activeQueryTabId.value = queryTabs.value[Math.max(0, idx - 1)].id;
+function selectQueryTab(qTab: SubQueryTab) {
+  activeQueryTabId.value = qTab.id;
+  if (qTab.tableName && schemaOverview.value?.tables) {
+    const target = schemaOverview.value.tables.find(t => t.name === qTab.tableName);
+    if (target) qTab.activeTable = target;
   }
 }
 
-const activeViewTab = ref<'data' | 'structure' | 'ddl'>('data');
-const executing = ref(false);
-const errorMessage = ref<string | null>(null);
-const queryResult = ref<DbQueryResult | null>(null);
-const lastExecutionTime = ref<number | null>(null);
+function closeQueryTab(id: string) {
+  if (queryTabs.value.length <= 1) {
+    queryTabs.value = [createDefaultTab('qtab_1', 'SQL 1', '')];
+    activeQueryTabId.value = 'qtab_1';
+    return;
+  }
+  const idx = queryTabs.value.findIndex(t => t.id === id);
+  queryTabs.value = queryTabs.value.filter(t => t.id !== id);
+  if (activeQueryTabId.value === id) {
+    const nextTab = queryTabs.value[Math.max(0, idx - 1)];
+    selectQueryTab(nextTab);
+  }
+}
 
-const currentPage = ref(1);
-const pageSize = ref(100);
+const executing = ref(false);
 
 const showHistory = ref(false);
 const queryHistory = ref<string[]>([]);
@@ -934,19 +1056,6 @@ const aiPrompt = ref('');
 const aiGenerating = ref(false);
 
 const selectedCell = ref<{ column: string; value: any } | null>(null);
-
-// Fitur 1: Visual Quick Filter
-const quickFilter = ref<{
-  column: string;
-  operator: string;
-  value: string;
-  active: boolean;
-}>({
-  column: '',
-  operator: '=',
-  value: '',
-  active: false,
-});
 
 // Fitur 4: EXPLAIN Plan Result
 const explainResult = ref<DbExplainResult | null>(null);
@@ -1034,20 +1143,37 @@ function handleDatabaseChange() {
 }
 
 function handleSelectTable(tbl: DbTableMeta) {
-  activeTable.value = tbl;
-  currentPage.value = 1;
-  quickFilter.value = { column: '', operator: '=', value: '', active: false };
-  rowFormValues.value = {};
   const engine = props.tab.dbConnection?.engine.toLowerCase();
+  const generatedSql = engine === 'redis'
+    ? `GET ${tbl.name}`
+    : `SELECT * FROM ${tbl.name} LIMIT 100 OFFSET 0;`;
 
-  if (engine === 'redis') {
-    currentQueryText.value = `GET ${tbl.name}`;
+  // Cek apakah tab untuk tabel ini sudah terbuka
+  const existingTab = queryTabs.value.find(t => t.tableName === tbl.name || t.title === tbl.name);
+  if (existingTab) {
+    activeQueryTabId.value = existingTab.id;
+    existingTab.activeTable = tbl;
+    if (!existingTab.queryResult) {
+      if (!existingTab.text.trim()) existingTab.text = generatedSql;
+      executeQuery();
+    }
   } else {
-    currentQueryText.value = `SELECT * FROM ${tbl.name} LIMIT ${pageSize.value} OFFSET 0;`;
+    // Jika tab tunggal saat ini masih berupa tab default kosong "SQL 1", gunakan & beri nama tabel
+    if (queryTabs.value.length === 1 && queryTabs.value[0].title === 'SQL 1' && !queryTabs.value[0].text.trim() && !queryTabs.value[0].queryResult) {
+      queryTabs.value[0].title = tbl.name;
+      queryTabs.value[0].tableName = tbl.name;
+      queryTabs.value[0].text = generatedSql;
+      queryTabs.value[0].activeTable = tbl;
+      activeQueryTabId.value = queryTabs.value[0].id;
+      executeQuery();
+    } else {
+      // Buka tab query baru otomatis dengan nama tabel
+      const newTab = addNewQueryTab(tbl.name, generatedSql, tbl.name, tbl);
+      executeQuery();
+    }
   }
 
   activeViewTab.value = 'data';
-  executeQuery();
 }
 
 function handlePageChange(page: number) {
