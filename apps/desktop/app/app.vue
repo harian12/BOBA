@@ -58,22 +58,26 @@
               :class="[
                 'group flex items-center space-x-2 px-3 py-1.5 border-r border-boba-800 text-xs cursor-pointer font-mono transition h-full select-none',
                 sessionStore.activeTabId === tab.id
-                  ? 'bg-boba-950 text-slate-100 border-t-2 border-t-boba-accent'
-                  : 'bg-boba-900 text-slate-400 hover:bg-boba-850 hover:text-slate-200'
+                  ? ['bg-boba-950 text-slate-100 border-t-2 shadow-sm', getTabBadge(tab).activeBorder]
+                  : 'bg-boba-900 text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-2 border-t-transparent'
               ]"
             >
-              <!-- Tab Type Icon / Indicator -->
-              <span v-if="tab.type === 'editor'" class="text-xs shrink-0">
-                📄
-              </span>
-              <span v-else-if="tab.type === 'sftp'" class="text-xs shrink-0">
-                📁
-              </span>
-              <span v-else-if="tab.type === 'dbms'" class="text-xs shrink-0">
-                🗄️
-              </span>
+              <!-- Tab Type Icon -->
+              <Icon :icon="getTabIcon(tab)" class="w-3.5 h-3.5 shrink-0" />
+
+              <!-- Tab Category Badge (Distinct for SSH, DB, SFTP, FILE) -->
               <span
-                v-else
+                :class="[
+                  'text-[9px] px-1 py-0.2 rounded font-mono font-bold border shrink-0',
+                  getTabBadge(tab).color
+                ]"
+              >
+                {{ getTabBadge(tab).label }}
+              </span>
+
+              <!-- Live Connected Dot (for SSH) -->
+              <span
+                v-if="tab.type === 'terminal'"
                 :class="['w-1.5 h-1.5 rounded-full shrink-0', tab.connected ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400 animate-pulse']"
                 :title="tab.connected ? 'Connected' : 'Connecting/Disconnected'"
               ></span>
@@ -96,7 +100,7 @@
                   title="Duplicate Tab (Open second SSH session)"
                   class="opacity-0 group-hover:opacity-100 hover:text-sky-400 text-[11px] p-0.5 rounded hover:bg-boba-800 transition"
                 >
-                  ⧉
+                  <Icon icon="lucide:copy" class="w-3 h-3" />
                 </button>
 
                 <!-- Close Tab Button -->
@@ -110,7 +114,7 @@
                       : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 hover:bg-boba-800'
                   ]"
                 >
-                  ✕
+                  <Icon icon="lucide:x" class="w-3 h-3" />
                 </button>
               </div>
             </div>
@@ -359,6 +363,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, onErrorCaptured } from 'vue';
+import { Icon } from '@iconify/vue';
 import Sidebar from './components/Sidebar.vue';
 import TerminalTab from './components/TerminalTab.vue';
 import EditorTab from './components/EditorTab.vue';
@@ -393,6 +398,68 @@ const dialogStore = useDialogStore();
 const queueStore = useTransferQueueStore();
 const aiAgentStore = useAiAgentStore();
 const dbmsStore = useDbmsStore();
+
+function getTabBadge(tab: ActiveTab) {
+  if (tab.type === 'terminal') {
+    return {
+      label: 'SSH',
+      color: 'bg-emerald-950/90 text-emerald-400 border-emerald-700/60',
+      activeBorder: 'border-t-emerald-500'
+    };
+  }
+  if (tab.type === 'dbms') {
+    const engine = tab.dbConnection?.engine?.toUpperCase() || 'DB';
+    return {
+      label: engine,
+      color: 'bg-indigo-950/90 text-indigo-300 border-indigo-700/60',
+      activeBorder: 'border-t-indigo-500'
+    };
+  }
+  if (tab.type === 'sftp') {
+    return {
+      label: 'SFTP',
+      color: 'bg-sky-950/90 text-sky-300 border-sky-700/60',
+      activeBorder: 'border-t-sky-500'
+    };
+  }
+  if (tab.type === 'editor') {
+    return {
+      label: 'FILE',
+      color: 'bg-amber-950/90 text-amber-300 border-amber-700/60',
+      activeBorder: 'border-t-amber-500'
+    };
+  }
+  return {
+    label: 'TAB',
+    color: 'bg-slate-800 text-slate-300 border-slate-700',
+    activeBorder: 'border-t-sky-500'
+  };
+}
+
+function getTabIcon(tab: ActiveTab): string {
+  if (tab.type === 'terminal') return 'lucide:terminal';
+  if (tab.type === 'sftp') return 'lucide:folder-sync';
+  if (tab.type === 'editor') return 'lucide:file-code';
+  if (tab.type === 'dbms') {
+    switch (tab.dbConnection?.engine?.toLowerCase()) {
+      case 'mysql':
+      case 'mariadb':
+        return 'logos:mysql';
+      case 'postgres':
+      case 'postgresql':
+        return 'logos:postgresql';
+      case 'sqlite':
+        return 'logos:sqlite';
+      case 'redis':
+        return 'logos:redis';
+      case 'mongodb':
+        return 'logos:mongodb-icon';
+      default:
+        return 'lucide:database';
+    }
+  }
+  return 'lucide:terminal';
+}
 
 const isUpdateOpen = ref(false);
 const hasUpdateAvailable = ref(false);
