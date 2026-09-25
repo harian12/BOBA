@@ -300,30 +300,6 @@
           </div>
         </div>
 
-        <!-- AI SQL Assistant Bar (Strict Read-Only Guardrail) -->
-        <div class="px-3 py-1.5 bg-purple-950/20 border-b border-purple-900/30 flex items-center space-x-2">
-          <Icon icon="lucide:sparkles" class="w-3.5 h-3.5 text-purple-400 shrink-0" />
-          <span class="text-xs text-purple-400 font-mono font-semibold shrink-0">AI SQL:</span>
-          <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-mono flex items-center space-x-1 shrink-0" title="AI SQL hanya melayani query BACA (SELECT / Read-Only)">
-            <Icon icon="lucide:shield-check" class="w-2.5 h-2.5" />
-            <span>Read-Only</span>
-          </span>
-          <input
-            v-model="aiPrompt"
-            @keydown.enter="handleAiGenerateSql"
-            type="text"
-            placeholder="Instruksi SQL read-only... (contoh: 'tampilkan 20 data terbaru yang aktif')"
-            class="flex-1 bg-boba-950/80 border border-purple-900/50 focus:border-purple-400 rounded px-2.5 py-1 text-xs text-purple-200 placeholder-purple-400/50 focus:outline-none font-sans"
-          />
-          <button
-            @click="handleAiGenerateSql"
-            :disabled="aiGenerating || !aiPrompt.trim()"
-            class="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded text-xs font-medium transition shrink-0"
-          >
-            {{ aiGenerating ? 'Memproses...' : 'Generate' }}
-          </button>
-        </div>
-
         <!-- Query History Dropdown -->
         <div v-if="showHistory" class="p-2 bg-boba-950 border-b border-boba-800 max-h-36 overflow-y-auto space-y-1 font-mono text-[11px]">
           <div v-if="queryHistory.length === 0" class="text-slate-500 text-center py-2 text-xs">
@@ -1831,9 +1807,6 @@ const executing = ref(false);
 const showHistory = ref(false);
 const queryHistory = ref<string[]>([]);
 
-const aiPrompt = ref('');
-const aiGenerating = ref(false);
-
 const selectedCell = ref<{ column: string; value: any } | null>(null);
 
 // Fitur 4: EXPLAIN Plan Result
@@ -2892,72 +2865,6 @@ async function handleDeleteRow(row: any[]) {
     await executeQuery(sql);
     handlePageChange(currentPage.value);
   }
-}
-
-function isMutationQuery(sql: string): boolean {
-  const sanitized = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-  const forbiddenPatterns = [
-    /\bUPDATE\b/i,
-    /\bDELETE\b/i,
-    /\bDROP\b/i,
-    /\bTRUNCATE\b/i,
-    /\bALTER\b/i,
-    /\bINSERT\b/i,
-    /\bCREATE\b/i,
-    /\bGRANT\b/i,
-    /\bREVOKE\b/i,
-    /\bREPLACE\b/i,
-    /\bRENAME\b/i,
-  ];
-  return forbiddenPatterns.some(pat => pat.test(sanitized));
-}
-
-async function handleAiGenerateSql() {
-  if (!aiPrompt.value.trim()) return;
-  const prompt = aiPrompt.value.trim();
-
-  // Check user prompt intent against mutating keywords
-  const forbiddenKeywords = ['update', 'delete', 'hapus', 'ubah', 'drop', 'truncate', 'insert', 'tambah', 'alter', 'ganti', 'remove', 'modify'];
-  const hasMutationIntent = forbiddenKeywords.some(kw => {
-    const re = new RegExp(`\\b${kw}\\b`, 'i');
-    return re.test(prompt);
-  });
-
-  if (hasMutationIntent) {
-    await dialogStore.alert({
-      title: 'Operasi Modifikasi Ditolak (Security Guard)',
-      description: 'Demi integritas dan keamanan database, fitur AI SQL dibatasi secara ketat hanya untuk operasi BACA (Read-Only / SELECT). Perintah modifikasi seperti UPDATE, DELETE, DROP, TRUNCATE, dan INSERT diblokir.',
-      variant: 'warning'
-    });
-    return;
-  }
-
-  aiGenerating.value = true;
-  const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
-  let generatedSql = '';
-
-  if (prompt.toLowerCase().includes('semua') || prompt.toLowerCase().includes('all')) {
-    generatedSql = `SELECT * FROM \`${targetTable}\` LIMIT ${pageSize.value};`;
-  } else if (prompt.toLowerCase().includes('hitung') || prompt.toLowerCase().includes('count') || prompt.toLowerCase().includes('jumlah')) {
-    generatedSql = `SELECT COUNT(*) AS total_count FROM \`${targetTable}\`;`;
-  } else {
-    generatedSql = `-- AI Generated (Read-Only): "${prompt}"\nSELECT * FROM \`${targetTable}\` ORDER BY 1 DESC LIMIT 50;`;
-  }
-
-  // Strict output validation guardrail
-  if (isMutationQuery(generatedSql)) {
-    await dialogStore.alert({
-      title: 'Query Ditolak oleh Guardrail',
-      description: 'Hasil query terdeteksi mengandung operasi perubahan data. Sistem memblokir eksekusi ini demi keamanan.',
-      variant: 'error'
-    });
-    aiGenerating.value = false;
-    return;
-  }
-
-  currentQueryText.value = generatedSql;
-  aiGenerating.value = false;
-  aiPrompt.value = '';
 }
 
 function exportData(type: 'csv' | 'json' | 'sql' | 'excel') {
