@@ -1,7 +1,7 @@
 <template>
   <div
     class="h-full w-full flex bg-[#0d1117] text-slate-100 font-sans overflow-hidden select-none"
-    @click="closeTableContextMenu"
+    @click="closeAllContextMenus"
   >
     <!-- Left Pane: Schema & Object Explorer -->
     <div class="w-64 border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full">
@@ -325,57 +325,124 @@
           </div>
         </div>
 
-        <!-- Fitur 1: Visual Quick Filter Bar (No-Code Search) -->
+        <!-- Fitur 1: Visual Multi-Filter Bar with Per-Condition AND / OR -->
         <div
           v-if="activeTable && activeViewTab === 'data' && activeTable.columns.length > 0"
-          class="px-3 py-1.5 bg-[#0e131f] border-b border-boba-800 flex items-center space-x-2 text-xs font-mono shrink-0"
+          class="bg-[#0e131f] border-b border-boba-800 flex flex-col px-3 py-2 space-y-2 text-xs font-mono shrink-0"
         >
-          <span class="text-slate-400 text-[11px] font-sans font-semibold">🔍 Filter:</span>
-          <select
-            v-model="quickFilter.column"
-            class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
-          >
-            <option value="">-- Pilih Kolom --</option>
-            <option v-for="c in activeTable.columns" :key="c.name" :value="c.name">
-              {{ c.name }} ({{ c.data_type }})
-            </option>
-          </select>
+          <!-- Multi-Filter Header Controls -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="text-slate-300 text-[11px] font-sans font-bold flex items-center space-x-1.5">
+                <span>🔍 Multi-Filter Query</span>
+                <span
+                  v-if="filterState.active"
+                  class="px-1.5 py-0.2 bg-emerald-950 border border-emerald-600/70 text-emerald-300 rounded text-[9px] font-mono"
+                >
+                  Aktif ({{ filterState.rules.length }} Aturan)
+                </span>
+              </span>
+            </div>
 
-          <select
-            v-model="quickFilter.operator"
-            class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
-          >
-            <option value="=">=</option>
-            <option value="LIKE">LIKE (Mengandung)</option>
-            <option value=">">&gt; Lebih besar</option>
-            <option value="<">&lt; Lebih kecil</option>
-            <option value="!=">!= Tidak sama</option>
-            <option value="IS NULL">IS NULL</option>
-            <option value="IS NOT NULL">IS NOT NULL</option>
-          </select>
+            <div class="flex items-center space-x-1.5">
+              <button
+                @click="addFilterRule"
+                class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-[11px] transition flex items-center space-x-1 border border-boba-700"
+              >
+                <span>+ Tambah Kondisi</span>
+              </button>
+              <button
+                @click="applyMultiFilter"
+                class="px-3.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-[11px] font-semibold shadow transition"
+              >
+                Terapkan Filter
+              </button>
+              <button
+                v-if="filterState.active"
+                @click="resetMultiFilter"
+                class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-[11px] transition"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
 
-          <input
-            v-if="!['IS NULL', 'IS NOT NULL'].includes(quickFilter.operator)"
-            v-model="quickFilter.value"
-            @keydown.enter="applyQuickFilter"
-            type="text"
-            placeholder="Nilai pencarian..."
-            class="flex-1 max-w-xs bg-boba-950 border border-boba-700 focus:border-boba-accent rounded px-2.5 py-1 text-xs text-slate-100 focus:outline-none font-mono"
-          />
+          <!-- Dynamic Filter Conditions Rows (Per-Filter Conjunction) -->
+          <div class="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+            <div
+              v-for="(rule, rIdx) in filterState.rules"
+              :key="rule.id"
+              class="flex items-center space-x-2 bg-[#121826]/60 p-1 rounded-md border border-boba-800/80"
+            >
+              <!-- First row shows WHERE, subsequent rows show individual AND / OR selector -->
+              <div class="w-18 shrink-0 flex justify-center">
+                <span
+                  v-if="rIdx === 0"
+                  class="px-2 py-1 bg-boba-900 border border-boba-700 text-slate-400 rounded text-[10px] font-bold font-mono"
+                >
+                  WHERE
+                </span>
+                <select
+                  v-else
+                  v-model="rule.conjunction"
+                  class="bg-sky-950 border border-sky-600/60 rounded px-1.5 py-0.5 text-xs text-sky-300 font-bold focus:outline-none cursor-pointer"
+                >
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              </div>
 
-          <button
-            @click="applyQuickFilter"
-            class="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold shadow transition"
-          >
-            Terapkan
-          </button>
-          <button
-            v-if="quickFilter.active"
-            @click="resetQuickFilter"
-            class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
-          >
-            Reset
-          </button>
+              <!-- Column Selector -->
+              <select
+                v-model="rule.column"
+                class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none min-w-[140px]"
+              >
+                <option value="">-- Pilih Kolom --</option>
+                <option v-for="c in activeTable.columns" :key="c.name" :value="c.name">
+                  {{ c.name }} ({{ c.data_type }})
+                </option>
+              </select>
+
+              <!-- Operator Selector -->
+              <select
+                v-model="rule.operator"
+                class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none min-w-[125px]"
+              >
+                <option value="=">= (Sama)</option>
+                <option value="!=">!= (Tidak sama)</option>
+                <option value="LIKE">LIKE (Mengandung)</option>
+                <option value="STARTS WITH">STARTS WITH (Awalan)</option>
+                <option value="ENDS WITH">ENDS WITH (Akhiran)</option>
+                <option value=">">&gt; Lebih besar</option>
+                <option value=">=">&gt;= Lebih besar sama</option>
+                <option value="<">&lt; Lebih kecil</option>
+                <option value="<=">&lt;= Lebih kecil sama</option>
+                <option value="IS NULL">IS NULL (Kosong)</option>
+                <option value="IS NOT NULL">IS NOT NULL (Ada isi)</option>
+              </select>
+
+              <!-- Value Field -->
+              <input
+                v-if="!['IS NULL', 'IS NOT NULL'].includes(rule.operator)"
+                v-model="rule.value"
+                @keydown.enter="applyMultiFilter"
+                type="text"
+                placeholder="Nilai filter..."
+                class="flex-1 min-w-[120px] bg-boba-950 border border-boba-700 focus:border-boba-accent rounded px-2.5 py-1 text-xs text-slate-100 focus:outline-none font-mono"
+              />
+              <div v-else class="flex-1"></div>
+
+              <!-- Remove Rule Button -->
+              <button
+                v-if="filterState.rules.length > 1"
+                @click="removeFilterRule(rule.id)"
+                title="Hapus kondisi ini"
+                class="w-6 h-6 flex items-center justify-center rounded hover:bg-rose-950/80 text-slate-500 hover:text-rose-300 text-xs transition shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Query Error Banner -->
@@ -415,24 +482,47 @@
                   <td
                     v-for="(val, cIdx) in row"
                     :key="cIdx"
-                    @dblclick="openCellDetail(queryResult.columns[cIdx], val)"
-                    class="px-3 py-1 border-r border-boba-850 text-slate-300 whitespace-nowrap max-w-xs truncate cursor-pointer hover:bg-sky-950/50"
+                    @dblclick="startInlineCellEdit(rIdx, cIdx, val)"
+                    @contextmenu.prevent.stop="openCellContextMenu($event, rIdx, cIdx, row, val)"
+                    :class="[
+                      'px-3 py-1 border-r border-boba-850 text-slate-300 whitespace-nowrap max-w-xs truncate cursor-pointer transition-colors relative',
+                      editingCell?.rIdx === rIdx && editingCell?.cIdx === cIdx
+                        ? 'p-0.5 bg-sky-950 ring-1 ring-sky-400'
+                        : 'hover:bg-sky-950/40',
+                      justUpdatedCell === `${rIdx}_${cIdx}`
+                        ? 'bg-emerald-950/80 text-emerald-200 ring-1 ring-emerald-400'
+                        : ''
+                    ]"
                     :title="typeof val === 'object' ? JSON.stringify(val) : String(val)"
                   >
-                    <span v-if="val === null" class="text-slate-600 italic">NULL</span>
-                    <span v-else-if="typeof val === 'boolean'" :class="val ? 'text-emerald-400' : 'text-rose-400'">
-                      {{ val ? 'TRUE' : 'FALSE' }}
-                    </span>
-                    <span v-else-if="typeof val === 'object'" class="text-purple-400">
-                      {{ JSON.stringify(val) }}
-                    </span>
-                    <span v-else>{{ val }}</span>
+                    <!-- Active Inline Cell Input -->
+                    <input
+                      v-if="editingCell?.rIdx === rIdx && editingCell?.cIdx === cIdx"
+                      ref="inlineInputRef"
+                      v-model="editingCell.tempValue"
+                      @keydown.enter.prevent="saveInlineCellEdit(rIdx, cIdx)"
+                      @keydown.esc.prevent="cancelInlineCellEdit"
+                      @blur="saveInlineCellEdit(rIdx, cIdx)"
+                      class="w-full bg-[#070a12] border border-sky-400 text-sky-200 px-1.5 py-0.5 rounded text-xs font-mono outline-none shadow-inner"
+                    />
+
+                    <!-- Render Cell Value -->
+                    <template v-else>
+                      <span v-if="val === null" class="text-slate-600 italic">NULL</span>
+                      <span v-else-if="typeof val === 'boolean'" :class="val ? 'text-emerald-400' : 'text-rose-400'">
+                        {{ val ? 'TRUE' : 'FALSE' }}
+                      </span>
+                      <span v-else-if="typeof val === 'object'" class="text-purple-400">
+                        {{ JSON.stringify(val) }}
+                      </span>
+                      <span v-else>{{ val }}</span>
+                    </template>
                   </td>
                   <td v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-2 py-1 text-center select-none whitespace-nowrap">
                     <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1 transition">
                       <button
                         @click="openEditRowModal(row)"
-                        title="Edit baris data"
+                        title="Edit baris data (Modal)"
                         class="p-1 hover:bg-sky-900/60 rounded text-sky-400 hover:text-sky-200 transition text-xs"
                       >
                         ✎
@@ -808,6 +898,53 @@
       </button>
     </div>
 
+    <!-- Cell & Row Context Menu Floating Overlay -->
+    <div
+      v-if="cellContextMenu.visible"
+      :style="{ top: `${cellContextMenu.y}px`, left: `${cellContextMenu.x}px` }"
+      class="fixed z-[99999] bg-[#161a26] border border-[#2b354b] shadow-2xl rounded py-1 w-52 text-[11px] text-slate-200 select-none font-sans"
+      @click.stop
+    >
+      <div class="px-2.5 py-1 text-[10px] text-slate-400 font-semibold truncate border-b border-[#232b3d] mb-0.5 font-mono">
+        Kolom: {{ cellContextMenu.column }}
+      </div>
+      <button
+        @click="handleCellContextAction('edit_inline')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>✎</span>
+        <span>Edit Nilai Cell Langsung (Inline)</span>
+      </button>
+      <button
+        @click="handleCellContextAction('edit_row')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>📝</span>
+        <span>Edit Seluruh Baris (Modal)</span>
+      </button>
+      <button
+        @click="handleCellContextAction('copy')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>📋</span>
+        <span>Salin Nilai Cell</span>
+      </button>
+      <button
+        @click="handleCellContextAction('detail')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1 mb-1"
+      >
+        <span>🔍</span>
+        <span>Lihat Detail Lengkap (Viewer)</span>
+      </button>
+      <button
+        @click="handleCellContextAction('delete')"
+        class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
+      >
+        <span>🗑️</span>
+        <span>Hapus Baris Ini</span>
+      </button>
+    </div>
+
     <!-- Insert / Edit Row Modal -->
     <div
       v-if="(isInsertModalOpen || isEditModalOpen) && activeTable"
@@ -905,6 +1042,19 @@ const activeDatabase = ref<string>('');
 const tableFilter = ref('');
 
 // Fitur 6: Multi-Tab SQL Queries
+export interface FilterRule {
+  id: string;
+  conjunction: 'AND' | 'OR';
+  column: string;
+  operator: string;
+  value: string;
+}
+
+export interface FilterState {
+  rules: FilterRule[];
+  active: boolean;
+}
+
 interface SubQueryTab {
   id: string;
   title: string;
@@ -918,12 +1068,7 @@ interface SubQueryTab {
   lastExecutionTime: number | null;
   errorMessage: string | null;
   activeViewTab: 'data' | 'structure' | 'ddl';
-  quickFilter: {
-    column: string;
-    operator: string;
-    value: string;
-    active: boolean;
-  };
+  filterState: FilterState;
 }
 
 function createDefaultTab(
@@ -947,10 +1092,16 @@ function createDefaultTab(
     lastExecutionTime: null,
     errorMessage: null,
     activeViewTab: 'data',
-    quickFilter: {
-      column: '',
-      operator: '=',
-      value: '',
+    filterState: {
+      rules: [
+        {
+          id: `rule_${Date.now()}_1`,
+          conjunction: 'AND',
+          column: '',
+          operator: '=',
+          value: '',
+        },
+      ],
       active: false,
     },
   };
@@ -1026,16 +1177,14 @@ const activeViewTab = computed({
   },
 });
 
-const quickFilter = computed({
+const filterState = computed({
   get: () =>
-    activeQueryTab.value?.quickFilter || {
-      column: '',
-      operator: '=',
-      value: '',
+    activeQueryTab.value?.filterState || {
+      rules: [{ id: 'rule_1', conjunction: 'AND', column: '', operator: '=', value: '' }],
       active: false,
     },
-  set: (val) => {
-    if (activeQueryTab.value) activeQueryTab.value.quickFilter = val;
+  set: (val: FilterState) => {
+    if (activeQueryTab.value) activeQueryTab.value.filterState = val;
   },
 });
 
@@ -1102,6 +1251,38 @@ const isInsertModalOpen = ref(false);
 const isEditModalOpen = ref(false);
 const editingRowOriginal = ref<any[] | null>(null);
 const rowFormValues = ref<Record<string, string>>({});
+
+// Inline Cell Editing State
+const editingCell = ref<{
+  rIdx: number;
+  cIdx: number;
+  tempValue: string;
+  originalVal: any;
+} | null>(null);
+
+const justUpdatedCell = ref<string | null>(null);
+const inlineInputRef = ref<HTMLInputElement[] | null>(null);
+
+// Cell Context Menu State
+const cellContextMenu = ref<{
+  visible: boolean;
+  x: number;
+  y: number;
+  rIdx: number;
+  cIdx: number;
+  column: string;
+  row: any[];
+  value: any;
+}>({
+  visible: false,
+  x: 0,
+  y: 0,
+  rIdx: 0,
+  cIdx: 0,
+  column: '',
+  row: [],
+  value: null,
+});
 
 const tableContextMenu = ref<{
   visible: boolean;
@@ -1211,9 +1392,13 @@ function handlePageChange(page: number) {
   currentPage.value = page;
   const offset = (page - 1) * pageSize.value;
   let sql = '';
-  if (quickFilter.value.active && quickFilter.value.column) {
+  if (filterState.value.active) {
     const whereClause = buildWhereClause();
-    sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET ${offset};`;
+    if (whereClause) {
+      sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET ${offset};`;
+    } else {
+      sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
+    }
   } else {
     sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
   }
@@ -1221,32 +1406,84 @@ function handlePageChange(page: number) {
   executeQuery(sql);
 }
 
-function buildWhereClause(): string {
-  const { column, operator, value } = quickFilter.value;
-  if (operator === 'IS NULL' || operator === 'IS NOT NULL') {
-    return `${column} ${operator}`;
-  }
-  if (operator === 'LIKE') {
-    return `${column} LIKE '%${value.replace(/'/g, "''")}%'`;
-  }
-  if (!isNaN(Number(value)) && value.trim() !== '') {
-    return `${column} ${operator} ${value}`;
-  }
-  return `${column} ${operator} '${value.replace(/'/g, "''")}'`;
+function addFilterRule() {
+  if (!filterState.value.rules) filterState.value.rules = [];
+  const defaultCol = activeTable.value?.columns[0]?.name || '';
+  filterState.value.rules.push({
+    id: `rule_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+    conjunction: 'AND',
+    column: defaultCol,
+    operator: '=',
+    value: '',
+  });
 }
 
-function applyQuickFilter() {
-  if (!activeTable.value || !quickFilter.value.column) return;
-  quickFilter.value.active = true;
-  currentPage.value = 1;
+function removeFilterRule(ruleId: string) {
+  filterState.value.rules = filterState.value.rules.filter(r => r.id !== ruleId);
+  if (filterState.value.rules.length === 0) {
+    addFilterRule();
+    resetMultiFilter();
+  }
+}
+
+function buildWhereClause(): string {
+  const { rules } = filterState.value;
+  const validRules = rules.filter(
+    r => r.column && (['IS NULL', 'IS NOT NULL'].includes(r.operator) || r.value.trim() !== '')
+  );
+  if (validRules.length === 0) return '';
+
+  let clause = '';
+  validRules.forEach((r, idx) => {
+    const col = `\`${r.column}\``;
+    const val = r.value.trim();
+    let expr = '';
+    if (r.operator === 'IS NULL' || r.operator === 'IS NOT NULL') {
+      expr = `${col} ${r.operator}`;
+    } else if (r.operator === 'LIKE') {
+      expr = `${col} LIKE '%${val.replace(/'/g, "''")}%'`;
+    } else if (r.operator === 'STARTS WITH') {
+      expr = `${col} LIKE '${val.replace(/'/g, "''")}%'`;
+    } else if (r.operator === 'ENDS WITH') {
+      expr = `${col} LIKE '%${val.replace(/'/g, "''")}'`;
+    } else if (!isNaN(Number(val)) && val !== '') {
+      expr = `${col} ${r.operator} ${val}`;
+    } else {
+      expr = `${col} ${r.operator} '${val.replace(/'/g, "''")}'`;
+    }
+
+    if (idx === 0) {
+      clause = expr;
+    } else {
+      const conj = r.conjunction || 'AND';
+      clause += ` ${conj} ${expr}`;
+    }
+  });
+
+  return clause;
+}
+
+function applyMultiFilter() {
+  if (!activeTable.value) return;
   const whereClause = buildWhereClause();
+  if (!whereClause) {
+    resetMultiFilter();
+    return;
+  }
+  filterState.value.active = true;
+  currentPage.value = 1;
   const sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET 0;`;
   currentQueryText.value = sql;
   executeQuery(sql);
 }
 
-function resetQuickFilter() {
-  quickFilter.value = { column: '', operator: '=', value: '', active: false };
+function resetMultiFilter() {
+  filterState.value.active = false;
+  if (filterState.value.rules) {
+    filterState.value.rules.forEach(r => {
+      r.value = '';
+    });
+  }
   currentPage.value = 1;
   if (activeTable.value) {
     const sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET 0;`;
@@ -1361,6 +1598,153 @@ function formatQuickSql() {
 
 function openCellDetail(column: string, value: any) {
   selectedCell.value = { column, value };
+}
+
+function startInlineCellEdit(rIdx: number, cIdx: number, val: any) {
+  if (val === null || val === undefined) {
+    editingCell.value = { rIdx, cIdx, tempValue: '', originalVal: null };
+  } else if (typeof val === 'object') {
+    editingCell.value = { rIdx, cIdx, tempValue: JSON.stringify(val), originalVal: val };
+  } else {
+    editingCell.value = { rIdx, cIdx, tempValue: String(val), originalVal: val };
+  }
+
+  setTimeout(() => {
+    if (inlineInputRef.value && inlineInputRef.value.length > 0) {
+      inlineInputRef.value[0]?.focus();
+      inlineInputRef.value[0]?.select();
+    }
+  }, 50);
+}
+
+function cancelInlineCellEdit() {
+  editingCell.value = null;
+}
+
+async function saveInlineCellEdit(rIdx: number, cIdx: number) {
+  if (!editingCell.value || !activeTable.value || !queryResult.value) return;
+  const { tempValue, originalVal } = editingCell.value;
+  const colName = queryResult.value.columns[cIdx];
+  const row = queryResult.value.rows[rIdx];
+
+  // Compare if changed
+  const origStr = originalVal === null ? '' : (typeof originalVal === 'object' ? JSON.stringify(originalVal) : String(originalVal));
+  if (tempValue === origStr) {
+    editingCell.value = null;
+    return;
+  }
+
+  // Build WHERE clause
+  const pk = getTablePrimaryKey(activeTable.value);
+  let whereClause = '';
+  if (pk) {
+    const pkIdx = queryResult.value.columns.indexOf(pk.name);
+    if (pkIdx !== -1) {
+      const pkVal = row[pkIdx];
+      whereClause = typeof pkVal === 'number' ? `\`${pk.name}\` = ${pkVal}` : `\`${pk.name}\` = '${String(pkVal).replace(/'/g, "''")}'`;
+    }
+  }
+
+  if (!whereClause) {
+    // Match by all previous column values
+    const conditions: string[] = [];
+    queryResult.value.columns.forEach((col, idx) => {
+      const v = row[idx];
+      if (v === null) {
+        conditions.push(`\`${col}\` IS NULL`);
+      } else if (typeof v === 'number') {
+        conditions.push(`\`${col}\` = ${v}`);
+      } else {
+        conditions.push(`\`${col}\` = '${String(v).replace(/'/g, "''")}'`);
+      }
+    });
+    whereClause = conditions.slice(0, 4).join(' AND ');
+  }
+
+  // Format new value
+  let formattedVal = '';
+  if (tempValue.trim().toUpperCase() === 'NULL' || tempValue.trim() === '') {
+    formattedVal = 'NULL';
+  } else if (!isNaN(Number(tempValue)) && tempValue.trim() !== '') {
+    formattedVal = tempValue.trim();
+  } else {
+    formattedVal = `'${tempValue.replace(/'/g, "''")}'`;
+  }
+
+  const updateSql = `UPDATE \`${activeTable.value.name}\` SET \`${colName}\` = ${formattedVal} WHERE ${whereClause};`;
+
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection!,
+      activeDatabase.value || undefined,
+      updateSql
+    );
+
+    // Update local table cell
+    let parsedVal: any = tempValue;
+    if (formattedVal === 'NULL') {
+      parsedVal = null;
+    } else if (!isNaN(Number(tempValue)) && tempValue.trim() !== '') {
+      parsedVal = Number(tempValue);
+    }
+    queryResult.value.rows[rIdx][cIdx] = parsedVal;
+
+    // Trigger flash animation
+    justUpdatedCell.value = `${rIdx}_${cIdx}`;
+    setTimeout(() => {
+      justUpdatedCell.value = null;
+    }, 1200);
+  } catch (err: any) {
+    await dialogStore.alert({
+      title: 'Gagal Memperbarui Cell',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    editingCell.value = null;
+  }
+}
+
+function openCellContextMenu(e: MouseEvent, rIdx: number, cIdx: number, row: any[], value: any) {
+  if (!queryResult.value) return;
+  const colName = queryResult.value.columns[cIdx];
+  cellContextMenu.value = {
+    visible: true,
+    x: Math.min(e.clientX, window.innerWidth - 220),
+    y: Math.min(e.clientY, window.innerHeight - 220),
+    rIdx,
+    cIdx,
+    column: colName,
+    row,
+    value,
+  };
+}
+
+function closeCellContextMenu() {
+  cellContextMenu.value.visible = false;
+}
+
+function closeAllContextMenus() {
+  closeTableContextMenu();
+  closeCellContextMenu();
+}
+
+async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'copy' | 'detail' | 'delete') {
+  const { rIdx, cIdx, row, value, column } = cellContextMenu.value;
+  closeCellContextMenu();
+
+  if (action === 'edit_inline') {
+    startInlineCellEdit(rIdx, cIdx, value);
+  } else if (action === 'edit_row') {
+    openEditRowModal(row);
+  } else if (action === 'copy') {
+    const textToCopy = value === null ? 'NULL' : (typeof value === 'object' ? JSON.stringify(value) : String(value));
+    await navigator.clipboard.writeText(textToCopy);
+  } else if (action === 'detail') {
+    openCellDetail(column, value);
+  } else if (action === 'delete') {
+    handleDeleteRow(row);
+  }
 }
 
 function openTableContextMenu(e: MouseEvent, tbl: DbTableMeta) {
