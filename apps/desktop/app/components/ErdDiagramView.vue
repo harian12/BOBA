@@ -4,11 +4,20 @@
     <div class="h-9 px-3 bg-[#0f1420] border-b border-boba-800 flex items-center justify-between text-xs shrink-0 font-mono">
       <div class="flex items-center space-x-2">
         <span class="text-sm">📊</span>
-        <span class="font-bold text-slate-200">Entity Relationship Diagram (ERD)</span>
+        <span class="font-bold text-slate-200">Interactive ERD Diagram</span>
         <span class="text-[11px] text-slate-500">({{ filteredTables.length }} Tabel, {{ foreignKeys.length }} Relasi FK)</span>
       </div>
 
       <div class="flex items-center space-x-2">
+        <!-- Reorganize / Reset Layout -->
+        <button
+          @click="resetGridLayout"
+          title="Tata Ulang Posisi Tabel ke Grid Rapi"
+          class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition flex items-center space-x-1"
+        >
+          <span>⟲ Reset Grid</span>
+        </button>
+
         <!-- Toggle Relation Lines Button -->
         <button
           @click="showLines = !showLines"
@@ -21,6 +30,7 @@
           <span>🔗 Garis Relasi: {{ showLines ? 'ON' : 'OFF' }}</span>
         </button>
 
+        <!-- Search input -->
         <input
           v-model="searchQuery"
           type="text"
@@ -39,139 +49,155 @@
       </div>
     </div>
 
-    <!-- Interactive Canvas Area with SVG Line Connectors -->
+    <!-- Free-Floating Draggable Canvas Area -->
     <div
       ref="canvasRef"
       @scroll="updateRelationLines"
-      class="flex-1 overflow-auto p-8 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] relative"
+      class="flex-1 overflow-auto bg-[radial-gradient(#1e293b_1.2px,transparent_1.2px)] [background-size:20px_20px] relative cursor-default"
     >
-      <!-- SVG Overlay for Relation Lines -->
-      <svg
-        v-if="showLines && computedLines.length > 0"
-        class="absolute inset-0 pointer-events-none z-10"
-        :style="{ width: `${canvasScrollWidth}px`, height: `${canvasScrollHeight}px` }"
+      <!-- Virtual Infinite Canvas Boundary -->
+      <div
+        class="relative min-w-[2600px] min-h-[1800px]"
       >
-        <defs>
-          <marker
-            id="erd-arrow"
-            viewBox="0 0 10 10"
-            refX="6"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
-          </marker>
-          <marker
-            id="erd-arrow-active"
-            viewBox="0 0 10 10"
-            refX="6"
-            refY="5"
-            markerWidth="8"
-            markerHeight="8"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
-          </marker>
-        </defs>
-
-        <path
-          v-for="line in computedLines"
-          :key="line.id"
-          :d="line.d"
-          fill="none"
-          :stroke="activeRelationId === line.id ? '#34d399' : '#0284c7'"
-          :stroke-width="activeRelationId === line.id ? 3 : 1.5"
-          :stroke-dasharray="activeRelationId === line.id ? 'none' : '4,3'"
-          :marker-end="activeRelationId === line.id ? 'url(#erd-arrow-active)' : 'url(#erd-arrow)'"
-          class="transition-all duration-150"
-        />
-      </svg>
-
-      <div v-if="loading" class="py-20 text-center text-slate-500 text-xs font-mono">
-        Memuat metadata relasi & foreign keys...
-      </div>
-
-      <div v-else-if="filteredTables.length === 0" class="py-20 text-center text-slate-500 text-xs font-mono">
-        Tidak ada tabel untuk ditampilkan di diagram.
-      </div>
-
-      <!-- Entity Table Cards Grid (Auto-Fill Responsive Grid) -->
-      <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-8 items-start relative z-20">
-        <div
-          v-for="tbl in filteredTables"
-          :key="tbl.name"
-          :data-erd-table="tbl.name"
-          :class="[
-            'bg-[#111726] border rounded-xl shadow-xl overflow-hidden flex flex-col transition-all',
-            isTableHighlighted(tbl.name)
-              ? 'border-emerald-400 ring-2 ring-emerald-500/50 shadow-emerald-500/20'
-              : 'border-boba-700 hover:border-sky-500/80 hover:shadow-sky-500/10'
-          ]"
+        <!-- SVG Overlay for Dynamic Relation Connector Lines -->
+        <svg
+          v-if="showLines && computedLines.length > 0"
+          class="absolute inset-0 pointer-events-none z-10 w-full h-full"
         >
-          <!-- Table Header -->
-          <div class="px-3 py-2 bg-gradient-to-r from-sky-950 to-indigo-950/80 border-b border-boba-700 flex items-center justify-between">
-            <div class="flex items-center space-x-1.5 truncate mr-2">
-              <span class="text-xs shrink-0">📋</span>
-              <span class="font-bold text-xs text-sky-200 font-mono truncate" :title="tbl.name">{{ tbl.name }}</span>
-            </div>
-            <span class="text-[9px] px-1.5 py-0.5 bg-boba-950/80 text-slate-400 rounded font-mono shrink-0">
-              {{ tbl.columns.length }} cols
-            </span>
-          </div>
-
-          <!-- Table Columns List -->
-          <div class="divide-y divide-boba-850 p-1 max-h-72 overflow-y-auto font-mono text-[11px]">
-            <div
-              v-for="c in tbl.columns"
-              :key="c.name"
-              class="px-2.5 py-1.5 flex items-center justify-between hover:bg-boba-800/40 rounded transition group"
+          <defs>
+            <marker
+              id="erd-arrow"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
             >
-              <!-- Column Name & Icon -->
-              <div class="flex items-center space-x-1.5 truncate min-w-0 flex-1 mr-2">
-                <span v-if="c.is_primary_key" class="text-amber-400 text-xs shrink-0" title="Primary Key">🔑</span>
-                <span v-else-if="isFkColumn(tbl.name, c.name)" class="text-sky-400 text-xs shrink-0" title="Foreign Key">🔗</span>
-                <span v-else class="text-slate-600 text-xs shrink-0">•</span>
-                <span
-                  :class="[
-                    'truncate text-xs',
-                    c.is_primary_key ? 'font-bold text-amber-200' : (isFkColumn(tbl.name, c.name) ? 'font-semibold text-sky-300' : 'text-slate-300')
-                  ]"
-                  :title="c.name"
-                >
-                  {{ c.name }}
-                </span>
-              </div>
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+            </marker>
+            <marker
+              id="erd-arrow-active"
+              viewBox="0 0 10 10"
+              refX="6"
+              refY="5"
+              markerWidth="8"
+              markerHeight="8"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+            </marker>
+          </defs>
 
-              <!-- Compact Clean Data Type Badge with Tooltip -->
-              <span
-                class="text-[10px] px-1.5 py-0.5 bg-boba-950/80 text-slate-400 rounded shrink-0 max-w-[130px] truncate border border-boba-800/50"
-                :title="c.data_type"
-              >
-                {{ formatDataType(c.data_type) }}
+          <path
+            v-for="line in computedLines"
+            :key="line.id"
+            :d="line.d"
+            fill="none"
+            :stroke="activeRelationId === line.id ? '#34d399' : '#0284c7'"
+            :stroke-width="activeRelationId === line.id ? 3.5 : 1.8"
+            :stroke-dasharray="activeRelationId === line.id ? 'none' : '5,4'"
+            :marker-end="activeRelationId === line.id ? 'url(#erd-arrow-active)' : 'url(#erd-arrow)'"
+            class="transition-all duration-100"
+          />
+        </svg>
+
+        <div v-if="loading" class="pt-32 text-center text-slate-500 text-xs font-mono">
+          Memuat metadata relasi & foreign keys...
+        </div>
+
+        <div v-else-if="filteredTables.length === 0" class="pt-32 text-center text-slate-500 text-xs font-mono">
+          Tidak ada tabel untuk ditampilkan di diagram.
+        </div>
+
+        <!-- Draggable Floating Entity Table Cards -->
+        <template v-else>
+          <div
+            v-for="tbl in filteredTables"
+            :key="tbl.name"
+            :data-erd-table="tbl.name"
+            :style="{
+              position: 'absolute',
+              left: `${getTablePos(tbl.name).x}px`,
+              top: `${getTablePos(tbl.name).y}px`,
+              width: '320px',
+              zIndex: draggingTableName === tbl.name ? 50 : (isTableHighlighted(tbl.name) ? 40 : 20)
+            }"
+            :class="[
+              'bg-[#111726] border rounded-xl shadow-2xl overflow-hidden flex flex-col select-none transition-shadow',
+              draggingTableName === tbl.name ? 'ring-2 ring-sky-400 shadow-sky-500/30' : '',
+              isTableHighlighted(tbl.name)
+                ? 'border-emerald-400 ring-2 ring-emerald-500/60 shadow-emerald-500/20'
+                : 'border-boba-700 hover:border-sky-500/80 hover:shadow-sky-500/10'
+            ]"
+          >
+            <!-- Draggable Table Header -->
+            <div
+              @mousedown="startDragTable(tbl.name, $event)"
+              class="px-3 py-2.5 bg-gradient-to-r from-sky-950 to-indigo-950/90 border-b border-boba-700 flex items-center justify-between cursor-grab active:cursor-grabbing hover:bg-sky-900/50 transition"
+              title="Tahan dan geser (Drag) untuk memindahkan posisi tabel"
+            >
+              <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
+                <span class="text-xs shrink-0">📋</span>
+                <span class="font-bold text-xs text-sky-200 font-mono truncate">{{ tbl.name }}</span>
+              </div>
+              <span class="text-[9px] px-1.5 py-0.5 bg-boba-950/80 text-slate-400 rounded font-mono shrink-0 pointer-events-none">
+                {{ tbl.columns.length }} cols
               </span>
             </div>
-          </div>
 
-          <!-- Outgoing Relations Footer Badge -->
-          <div v-if="getTableRelations(tbl.name).length > 0" class="p-2.5 bg-boba-950/60 border-t border-boba-800 space-y-1">
-            <div class="text-[9px] uppercase font-bold text-slate-500 font-mono">Relasi Foreign Key:</div>
-            <div
-              v-for="rel in getTableRelations(tbl.name)"
-              :key="`${rel.from_column}_${rel.to_table}`"
-              @mouseenter="highlightRelation(rel)"
-              @mouseleave="clearHighlight"
-              @click="focusTable(rel.to_table)"
-              class="text-[10px] text-sky-300 font-mono flex items-center space-x-1 truncate bg-sky-950/40 hover:bg-sky-900/60 px-2 py-0.5 rounded border border-sky-900/40 cursor-pointer transition"
-              :title="`Klik untuk fokus ke ${rel.to_table}.${rel.to_column}`"
-            >
-              <span class="text-slate-400 font-bold truncate max-w-[90px]">{{ rel.from_column }}</span>
-              <span class="text-slate-600 shrink-0">➔</span>
-              <span class="text-emerald-300 font-semibold truncate max-w-[120px]">{{ rel.to_table }}.{{ rel.to_column }}</span>
+            <!-- Table Columns List -->
+            <div class="divide-y divide-boba-850 p-1 max-h-72 overflow-y-auto font-mono text-[11px] bg-[#0c101c]">
+              <div
+                v-for="c in tbl.columns"
+                :key="c.name"
+                class="px-2.5 py-1.5 flex items-center justify-between hover:bg-boba-800/40 rounded transition group"
+              >
+                <!-- Column Name & Key Marker -->
+                <div class="flex items-center space-x-1.5 truncate min-w-0 flex-1 mr-2">
+                  <span v-if="c.is_primary_key" class="text-amber-400 text-xs shrink-0" title="Primary Key">🔑</span>
+                  <span v-else-if="isFkColumn(tbl.name, c.name)" class="text-sky-400 text-xs shrink-0" title="Foreign Key">🔗</span>
+                  <span v-else class="text-slate-600 text-xs shrink-0">•</span>
+                  <span
+                    :class="[
+                      'truncate text-xs',
+                      c.is_primary_key ? 'font-bold text-amber-200' : (isFkColumn(tbl.name, c.name) ? 'font-semibold text-sky-300' : 'text-slate-300')
+                    ]"
+                    :title="c.name"
+                  >
+                    {{ c.name }}
+                  </span>
+                </div>
+
+                <!-- Compact Clean Data Type Badge -->
+                <span
+                  class="text-[10px] px-1.5 py-0.5 bg-boba-950/80 text-slate-400 rounded shrink-0 max-w-[130px] truncate border border-boba-800/50"
+                  :title="c.data_type"
+                >
+                  {{ formatDataType(c.data_type) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Outgoing Relations Footer Badge -->
+            <div v-if="getTableRelations(tbl.name).length > 0" class="p-2.5 bg-boba-950/90 border-t border-boba-800 space-y-1.5">
+              <div class="text-[9px] uppercase font-bold text-slate-500 font-mono">Relasi Foreign Key:</div>
+              <div
+                v-for="rel in getTableRelations(tbl.name)"
+                :key="`${rel.from_column}_${rel.to_table}`"
+                @mouseenter="highlightRelation(rel)"
+                @mouseleave="clearHighlight"
+                @click="focusTable(rel.to_table)"
+                class="text-[10px] text-sky-300 font-mono flex items-center space-x-1 truncate bg-sky-950/50 hover:bg-sky-900/70 px-2 py-0.5 rounded border border-sky-900/50 cursor-pointer transition"
+                :title="`Klik untuk geser & fokus ke ${rel.to_table}.${rel.to_column}`"
+              >
+                <span class="text-slate-400 font-bold truncate max-w-[90px]">{{ rel.from_column }}</span>
+                <span class="text-slate-600 shrink-0">➔</span>
+                <span class="text-emerald-300 font-semibold truncate max-w-[120px]">{{ rel.to_table }}.{{ rel.to_column }}</span>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
     </div>
   </div>
@@ -194,8 +220,11 @@ const foreignKeys = ref<DbForeignKeyRelation[]>([]);
 const showLines = ref(true);
 
 const canvasRef = ref<HTMLElement | null>(null);
-const canvasScrollWidth = ref(1200);
-const canvasScrollHeight = ref(800);
+
+// Position map: { tableName: { x, y } }
+const tablePositions = ref<Record<string, { x: number; y: number }>>({});
+const draggingTableName = ref<string | null>(null);
+let dragOffset = { x: 0, y: 0 };
 
 const activeRelationId = ref<string | null>(null);
 const highlightedTables = ref<string[]>([]);
@@ -214,6 +243,70 @@ const filteredTables = computed(() => {
   const q = searchQuery.value.toLowerCase();
   return props.tables.filter(t => t.name.toLowerCase().includes(q));
 });
+
+function getTablePos(tableName: string): { x: number; y: number } {
+  if (!tablePositions.value[tableName]) {
+    // Default grid coordinate calculation
+    const index = props.tables.findIndex(t => t.name === tableName);
+    const validIdx = index >= 0 ? index : 0;
+    const cols = 4;
+    const col = validIdx % cols;
+    const row = Math.floor(validIdx / cols);
+    tablePositions.value[tableName] = {
+      x: 50 + col * 360,
+      y: 50 + row * 400,
+    };
+  }
+  return tablePositions.value[tableName];
+}
+
+function resetGridLayout() {
+  const newPositions: Record<string, { x: number; y: number }> = {};
+  const cols = 4;
+  props.tables.forEach((tbl, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    newPositions[tbl.name] = {
+      x: 50 + col * 360,
+      y: 50 + row * 400,
+    };
+  });
+  tablePositions.value = newPositions;
+  nextTick(() => {
+    updateRelationLines();
+  });
+}
+
+// Drag Handlers
+function startDragTable(tableName: string, e: MouseEvent) {
+  if (e.button !== 0) return; // Only left mouse button
+  draggingTableName.value = tableName;
+  const pos = getTablePos(tableName);
+  dragOffset = {
+    x: e.clientX - pos.x,
+    y: e.clientY - pos.y,
+  };
+
+  window.addEventListener('mousemove', onDragMouseMove);
+  window.addEventListener('mouseup', onDragMouseUp);
+}
+
+function onDragMouseMove(e: MouseEvent) {
+  if (!draggingTableName.value) return;
+  const name = draggingTableName.value;
+  const newX = Math.max(20, e.clientX - dragOffset.x);
+  const newY = Math.max(20, e.clientY - dragOffset.y);
+
+  tablePositions.value[name] = { x: newX, y: newY };
+  requestAnimationFrame(updateRelationLines);
+}
+
+function onDragMouseUp() {
+  draggingTableName.value = null;
+  window.removeEventListener('mousemove', onDragMouseMove);
+  window.removeEventListener('mouseup', onDragMouseUp);
+  updateRelationLines();
+}
 
 function formatDataType(dataType: string): string {
   if (!dataType) return '';
@@ -249,32 +342,39 @@ function updateRelationLines() {
     return;
   }
 
-  const canvas = canvasRef.value;
-  canvasScrollWidth.value = Math.max(canvas.scrollWidth, canvas.clientWidth);
-  canvasScrollHeight.value = Math.max(canvas.scrollHeight, canvas.clientHeight);
-
-  const canvasRect = canvas.getBoundingClientRect();
-  const scrollLeft = canvas.scrollLeft;
-  const scrollTop = canvas.scrollTop;
-
   const lines: ComputedLine[] = [];
 
   for (const rel of foreignKeys.value) {
-    const fromEl = canvas.querySelector(`[data-erd-table="${rel.from_table}"]`) as HTMLElement | null;
-    const toEl = canvas.querySelector(`[data-erd-table="${rel.to_table}"]`) as HTMLElement | null;
+    const fromPos = tablePositions.value[rel.from_table];
+    const toPos = tablePositions.value[rel.to_table];
 
-    if (fromEl && toEl) {
-      const fromRect = fromEl.getBoundingClientRect();
-      const toRect = toEl.getBoundingClientRect();
+    if (fromPos && toPos) {
+      const cardWidth = 320;
+      let startX: number, startY: number, endX: number, endY: number;
 
-      // Coordinates relative to canvas scroll container
-      const startX = fromRect.right - canvasRect.left + scrollLeft;
-      const startY = fromRect.top - canvasRect.top + scrollTop + 20;
-
-      const endX = toRect.left - canvasRect.left + scrollLeft;
-      const endY = toRect.top - canvasRect.top + scrollTop + 20;
+      // Determine cleanest side to connect (left or right)
+      if (fromPos.x + cardWidth < toPos.x) {
+        // from is to the left of to
+        startX = fromPos.x + cardWidth;
+        startY = fromPos.y + 40;
+        endX = toPos.x;
+        endY = toPos.y + 40;
+      } else if (toPos.x + cardWidth < fromPos.x) {
+        // from is to the right of to
+        startX = fromPos.x;
+        startY = fromPos.y + 40;
+        endX = toPos.x + cardWidth;
+        endY = toPos.y + 40;
+      } else {
+        // stacked vertically
+        startX = fromPos.x + cardWidth / 2;
+        startY = fromPos.y + 50;
+        endX = toPos.x + cardWidth / 2;
+        endY = toPos.y + 50;
+      }
 
       const dx = Math.abs(endX - startX) * 0.5;
+      const dy = Math.abs(endY - startY) * 0.5;
       const d = `M ${startX} ${startY} C ${startX + dx} ${startY}, ${endX - dx} ${endY}, ${endX} ${endY}`;
 
       lines.push({
@@ -304,10 +404,13 @@ function isTableHighlighted(tableName: string): boolean {
 }
 
 function focusTable(tableName: string) {
-  if (!canvasRef.value) return;
-  const el = canvasRef.value.querySelector(`[data-erd-table="${tableName}"]`) as HTMLElement | null;
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  const pos = getTablePos(tableName);
+  if (canvasRef.value) {
+    canvasRef.value.scrollTo({
+      left: Math.max(0, pos.x - 100),
+      top: Math.max(0, pos.y - 80),
+      behavior: 'smooth',
+    });
     highlightedTables.value = [tableName];
     setTimeout(() => {
       highlightedTables.value = [];
@@ -327,8 +430,6 @@ function getTableRelations(tableName: string): DbForeignKeyRelation[] {
   );
 }
 
-let resizeObserver: ResizeObserver | null = null;
-
 watch([() => props.tables, () => filteredTables.value, showLines], () => {
   nextTick(() => {
     updateRelationLines();
@@ -336,18 +437,12 @@ watch([() => props.tables, () => filteredTables.value, showLines], () => {
 });
 
 onMounted(() => {
+  resetGridLayout();
   loadForeignKeys();
-  if (window.ResizeObserver && canvasRef.value) {
-    resizeObserver = new ResizeObserver(() => {
-      updateRelationLines();
-    });
-    resizeObserver.observe(canvasRef.value);
-  }
 });
 
 onUnmounted(() => {
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-  }
+  window.removeEventListener('mousemove', onDragMouseMove);
+  window.removeEventListener('mouseup', onDragMouseUp);
 });
 </script>
