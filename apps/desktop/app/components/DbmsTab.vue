@@ -338,15 +338,54 @@
           </div>
         </div>
 
-        <!-- SQL Editor Textarea -->
-        <div class="p-2">
+        <!-- SQL Editor Textarea with IntelliSense Autocomplete -->
+        <div class="p-2 relative">
           <textarea
+            ref="sqlEditorTextareaRef"
             v-model="currentQueryText"
+            @input="handleEditorInput"
             @keydown="handleEditorKeyDown"
-            placeholder="Ketik query SQL di sini (atau klik tabel di navigasi kiri)..."
+            @blur="handleEditorBlur"
+            placeholder="Ketik query SQL di sini (Gunakan Tab / Enter untuk autocomplete, Ctrl+Enter untuk eksekusi)..."
             rows="4"
             class="w-full bg-[#07090e] border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 placeholder-slate-600 focus:outline-none focus:border-sky-500/80 resize-y leading-relaxed"
           ></textarea>
+
+          <!-- Floating IntelliSense Suggestions Box -->
+          <div
+            v-if="showSuggestions && filteredSuggestions.length > 0"
+            class="absolute z-50 bg-[#121724] border border-sky-500/70 rounded-lg shadow-2xl overflow-hidden font-mono text-xs w-72 max-h-52 overflow-y-auto left-4 bottom-4"
+          >
+            <div class="px-2 py-1 bg-[#0b0e17] border-b border-boba-800 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+              <span>Saran IntelliSense (Tab / Enter)</span>
+              <span class="text-[9px] text-slate-500">Esc tutup</span>
+            </div>
+            <div
+              v-for="(sug, sIdx) in filteredSuggestions"
+              :key="sug.value + sug.type"
+              @mousedown.prevent="insertSuggestion(sug)"
+              :class="[
+                'px-2.5 py-1.5 flex items-center justify-between cursor-pointer select-none transition border-b border-boba-850 last:border-b-0',
+                activeSuggestionIndex === sIdx ? 'bg-sky-600 text-white font-bold' : 'text-slate-300 hover:bg-boba-800'
+              ]"
+            >
+              <div class="flex items-center space-x-2 truncate mr-2">
+                <Icon
+                  :icon="sug.type === 'table' ? 'lucide:table' : (sug.type === 'column' ? 'lucide:columns' : 'lucide:zap')"
+                  :class="['w-3.5 h-3.5 shrink-0', sug.type === 'table' ? 'text-sky-400' : (sug.type === 'column' ? 'text-amber-400' : 'text-purple-400')]"
+                />
+                <span class="truncate">{{ sug.value }}</span>
+              </div>
+              <span
+                :class="[
+                  'text-[9px] px-1.5 py-0.2 rounded font-mono uppercase shrink-0',
+                  activeSuggestionIndex === sIdx ? 'bg-sky-800 text-sky-100' : 'bg-boba-950 text-slate-400 border border-boba-800'
+                ]"
+              >
+                {{ sug.type }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -410,6 +449,14 @@
                 <span>CSV</span>
               </button>
               <button
+                @click="exportData('excel')"
+                title="Ekspor ke File Excel (.xls)"
+                class="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-800 text-emerald-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1 border border-emerald-800/50"
+              >
+                <Icon icon="lucide:file-spreadsheet" class="w-3 h-3 text-emerald-400" />
+                <span>Excel</span>
+              </button>
+              <button
                 @click="exportData('json')"
                 title="Ekspor ke JSON"
                 class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
@@ -419,7 +466,7 @@
               </button>
               <button
                 @click="exportData('sql')"
-                title="Ekspor sebagai SQL INSERT Statements"
+                title="Ekspor sebagai SQL INSERT Statements (Dump)"
                 class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
               >
                 <Icon icon="lucide:database" class="w-3 h-3" />
@@ -2129,7 +2176,126 @@ function loadHistoryQuery(q: string) {
   executeQuery();
 }
 
+// IntelliSense Autocomplete State
+interface SuggestionItem {
+  value: string;
+  type: 'table' | 'column' | 'keyword';
+}
+
+const showSuggestions = ref(false);
+const suggestionQuery = ref('');
+const activeSuggestionIndex = ref(0);
+const sqlEditorTextareaRef = ref<HTMLTextAreaElement | null>(null);
+
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'INSERT INTO', 'UPDATE', 'DELETE FROM', 'JOIN',
+  'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'GROUP BY', 'ORDER BY',
+  'HAVING', 'LIMIT', 'OFFSET', 'DISTINCT', 'COUNT(*)', 'SUM()', 'AVG()',
+  'AND', 'OR', 'NOT', 'IN', 'LIKE', 'BETWEEN', 'IS NULL', 'IS NOT NULL',
+  'DESC', 'ASC', 'UNION ALL', 'CREATE TABLE', 'DROP TABLE', 'ALTER TABLE'
+];
+
+const allKnownColumns = computed<string[]>(() => {
+  const set = new Set<string>();
+  schemaOverview.value?.tables.forEach(t => {
+    t.columns.forEach(c => set.add(c.name));
+  });
+  return Array.from(set);
+});
+
+const filteredSuggestions = computed<SuggestionItem[]>(() => {
+  const q = suggestionQuery.value.trim().toLowerCase();
+  if (!q) return [];
+  const results: SuggestionItem[] = [];
+
+  // 1. Table names
+  schemaOverview.value?.tables.forEach(t => {
+    if (t.name.toLowerCase().includes(q)) {
+      results.push({ value: t.name, type: 'table' });
+    }
+  });
+
+  // 2. Column names
+  allKnownColumns.value.forEach(c => {
+    if (c.toLowerCase().includes(q) && !results.some(r => r.value.toLowerCase() === c.toLowerCase())) {
+      results.push({ value: c, type: 'column' });
+    }
+  });
+
+  // 3. SQL Keywords
+  SQL_KEYWORDS.forEach(kw => {
+    if (kw.toLowerCase().startsWith(q) && !results.some(r => r.value.toLowerCase() === kw.toLowerCase())) {
+      results.push({ value: kw, type: 'keyword' });
+    }
+  });
+
+  return results.slice(0, 8);
+});
+
+function handleEditorInput(e: Event) {
+  const textarea = sqlEditorTextareaRef.value;
+  if (!textarea) return;
+  const cursor = textarea.selectionStart;
+  const textBeforeCursor = textarea.value.slice(0, cursor);
+  const match = textBeforeCursor.match(/([a-zA-Z0-9_]+)$/);
+  if (match && match[1].length >= 1) {
+    suggestionQuery.value = match[1];
+    activeSuggestionIndex.value = 0;
+    showSuggestions.value = true;
+  } else {
+    showSuggestions.value = false;
+  }
+}
+
+function handleEditorBlur() {
+  setTimeout(() => {
+    showSuggestions.value = false;
+  }, 200);
+}
+
+function insertSuggestion(sug: SuggestionItem) {
+  const textarea = sqlEditorTextareaRef.value;
+  if (!textarea) return;
+  const cursor = textarea.selectionStart;
+  const textBeforeCursor = textarea.value.slice(0, cursor);
+  const textAfterCursor = textarea.value.slice(cursor);
+  const match = textBeforeCursor.match(/([a-zA-Z0-9_]+)$/);
+  if (match) {
+    const start = cursor - match[1].length;
+    const replacement = sug.value;
+    currentQueryText.value = textarea.value.slice(0, start) + replacement + textAfterCursor;
+    nextTick(() => {
+      textarea.selectionStart = textarea.selectionEnd = start + replacement.length;
+      textarea.focus();
+    });
+  }
+  showSuggestions.value = false;
+}
+
 function handleEditorKeyDown(e: KeyboardEvent) {
+  if (showSuggestions.value && filteredSuggestions.value.length > 0) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeSuggestionIndex.value = (activeSuggestionIndex.value + 1) % filteredSuggestions.value.length;
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeSuggestionIndex.value = (activeSuggestionIndex.value - 1 + filteredSuggestions.value.length) % filteredSuggestions.value.length;
+      return;
+    }
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.ctrlKey && !e.metaKey)) {
+      e.preventDefault();
+      insertSuggestion(filteredSuggestions.value[activeSuggestionIndex.value]);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      showSuggestions.value = false;
+      return;
+    }
+  }
+
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault();
     executeQuery();
@@ -2631,12 +2797,13 @@ async function handleAiGenerateSql() {
   aiPrompt.value = '';
 }
 
-function exportData(type: 'csv' | 'json' | 'sql') {
+function exportData(type: 'csv' | 'json' | 'sql' | 'excel') {
   if (!queryResult.value || queryResult.value.columns.length === 0) return;
 
   const cols = queryResult.value.columns;
   const rows = queryResult.value.rows;
   let content = '';
+  let mimeType = 'text/plain;charset=utf-8;';
   let filename = `${activeTable.value?.name || 'export'}_${Date.now()}`;
 
   if (type === 'csv') {
@@ -2665,9 +2832,29 @@ function exportData(type: 'csv' | 'json' | 'sql') {
       return `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${vals});`;
     }).join('\n');
     filename += '.sql';
+  } else if (type === 'excel') {
+    const tableName = activeTable.value?.name || 'Data';
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${tableName}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+    <body><table border="1"><thead><tr>`;
+    cols.forEach(c => {
+      html += `<th style="background-color:#1e293b;color:#ffffff;font-weight:bold;">${c}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+    rows.forEach(r => {
+      html += `<tr>`;
+      r.forEach(v => {
+        html += `<td>${v !== null && v !== undefined ? String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></body></html>`;
+    content = html;
+    mimeType = 'application/vnd.ms-excel;charset=utf-8;';
+    filename += '.xls';
   }
 
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+  const blob = new Blob([content], { type: mimeType });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = filename;
