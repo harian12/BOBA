@@ -526,7 +526,7 @@
                   >
                     {{ col }}
                   </th>
-                  <th v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-3 py-1.5 text-slate-400 select-none w-24 text-center">
+                  <th class="px-3 py-1.5 text-slate-400 select-none w-24 text-center">
                     Aksi
                   </th>
                 </tr>
@@ -587,8 +587,15 @@
                       <span v-else>{{ val }}</span>
                     </template>
                   </td>
-                  <td v-if="activeTable && getTablePrimaryKey(activeTable)" class="px-2 py-1 text-center select-none whitespace-nowrap">
+                  <td class="px-2 py-1 text-center select-none whitespace-nowrap">
                     <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1.5 transition">
+                      <button
+                        @click="copyRowAsJson(row)"
+                        title="Salin 1 Baris Lengkap ke Clipboard (JSON)"
+                        class="p-1 hover:bg-sky-900/60 rounded text-slate-400 hover:text-sky-300 transition text-xs"
+                      >
+                        📋
+                      </button>
                       <button
                         @click="cloneRow(row)"
                         title="Clone / Duplikat Baris ke Baris Baru"
@@ -657,26 +664,41 @@
             </div>
           </div>
 
-          <!-- Data Grid Pagination Footer -->
+          <!-- Data Grid Pagination Footer with Total Records Counter -->
           <div
-            v-if="activeTable && activeViewTab === 'data'"
-            class="px-3 py-1.5 bg-[#121724] border-t border-boba-800 flex items-center justify-between text-xs shrink-0 select-none"
+            v-if="queryResult?.columns && queryResult.columns.length > 0 && activeViewTab === 'data'"
+            class="px-3 py-1.5 bg-[#121724] border-t border-boba-800 flex items-center justify-between text-xs shrink-0 select-none font-mono"
           >
-            <div class="flex items-center space-x-2">
-              <span class="text-slate-400 text-[11px]">Halaman:</span>
-              <span class="font-bold text-sky-400 text-xs">{{ currentPage }}</span>
-              <span class="text-slate-500">|</span>
-              <span class="text-slate-400 text-[11px]">Limit:</span>
-              <select
-                v-model.number="pageSize"
-                @change="handlePageChange(1)"
-                class="bg-boba-950 border border-boba-700 rounded px-1.5 py-0.5 text-xs text-slate-200 focus:outline-none"
-              >
-                <option :value="50">50</option>
-                <option :value="100">100</option>
-                <option :value="250">250</option>
-                <option :value="500">500</option>
-              </select>
+            <div class="flex items-center space-x-3 text-slate-300">
+              <div class="flex items-center space-x-1.5">
+                <span class="text-slate-400 text-[11px] font-sans">Halaman:</span>
+                <span class="font-bold text-sky-400">{{ currentPage }}</span>
+              </div>
+              <span class="text-slate-600">|</span>
+              <div class="flex items-center space-x-1.5">
+                <span class="text-slate-400 text-[11px] font-sans">Limit:</span>
+                <select
+                  v-model.number="pageSize"
+                  @change="handlePageChange(1)"
+                  class="bg-boba-950 border border-boba-700 rounded px-1.5 py-0.5 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                  <option :value="250">250</option>
+                  <option :value="500">500</option>
+                </select>
+              </div>
+              <span class="text-slate-600">|</span>
+              <!-- Total Records Counter Display -->
+              <div class="flex items-center space-x-1.5 text-slate-300 text-[11px]">
+                <span class="text-slate-400 font-sans">Total Data:</span>
+                <span class="font-bold text-emerald-400">
+                  {{ totalTableRows !== null ? totalTableRows.toLocaleString() : (queryResult?.rows?.length ?? 0).toLocaleString() }}
+                </span>
+                <span class="text-slate-500 font-sans text-[10px]">
+                  (Menampilkan {{ (currentPage - 1) * pageSize + 1 }} - {{ (currentPage - 1) * pageSize + (queryResult?.rows?.length ?? 0) }})
+                </span>
+              </div>
             </div>
 
             <div class="flex items-center space-x-1.5">
@@ -1020,7 +1042,7 @@
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
         <span>✎</span>
-        <span>Edit Nilai Cell Langsung (Inline)</span>
+        <span>Edit Nilai Sel (Inline)</span>
       </button>
       <button
         @click="handleCellContextAction('edit_row')"
@@ -1036,16 +1058,31 @@
         <span>⧉</span>
         <span>Duplikat / Clone Baris Ini</span>
       </button>
+      <div class="h-px bg-[#232b3d] my-0.5"></div>
       <button
-        @click="handleCellContextAction('copy')"
+        @click="handleCellContextAction('copy_cell')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>📄</span>
+        <span>Salin Nilai Sel Ini</span>
+      </button>
+      <button
+        @click="handleCellContextAction('copy_row_json')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
         <span>📋</span>
-        <span>Salin Nilai Cell</span>
+        <span>Salin 1 Baris (JSON)</span>
+      </button>
+      <button
+        @click="handleCellContextAction('copy_row_sql')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>💾</span>
+        <span>Salin 1 Baris (SQL INSERT)</span>
       </button>
       <button
         @click="handleCellContextAction('detail')"
-        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1 mb-1"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1 mb-0.5"
       >
         <span>🔍</span>
         <span>Lihat Detail Lengkap (Viewer)</span>
@@ -1194,6 +1231,7 @@ interface SubQueryTab {
   activeTable: DbTableMeta | null;
   currentPage: number;
   pageSize: number;
+  totalTableRows: number | null;
   lastExecutionTime: number | null;
   errorMessage: string | null;
   activeViewTab: 'data' | 'structure' | 'ddl';
@@ -1221,6 +1259,7 @@ function createDefaultTab(
     activeTable: targetTable,
     currentPage: 1,
     pageSize: 100,
+    totalTableRows: null,
     lastExecutionTime: null,
     errorMessage: null,
     activeViewTab: 'data',
@@ -1331,6 +1370,13 @@ const pageSize = computed({
   get: () => activeQueryTab.value?.pageSize || 100,
   set: (val: number) => {
     if (activeQueryTab.value) activeQueryTab.value.pageSize = val;
+  },
+});
+
+const totalTableRows = computed({
+  get: () => activeQueryTab.value?.totalTableRows ?? null,
+  set: (val: number | null) => {
+    if (activeQueryTab.value) activeQueryTab.value.totalTableRows = val;
   },
 });
 
@@ -1579,11 +1625,34 @@ function handleDatabaseChange() {
   loadSchemaOverview();
 }
 
+async function fetchTableCount(tableName: string) {
+  if (!props.tab.dbConnection) return;
+  const engine = props.tab.dbConnection.engine.toLowerCase();
+  if (['mysql', 'mariadb', 'postgres', 'postgresql', 'sqlite'].includes(engine)) {
+    try {
+      const res = await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        `SELECT COUNT(*) AS total FROM \`${tableName}\`;`
+      );
+      if (res && res[0]?.rows?.[0]?.[0] !== undefined) {
+        totalTableRows.value = Number(res[0].rows[0][0]);
+      }
+    } catch {
+      totalTableRows.value = null;
+    }
+  } else {
+    totalTableRows.value = null;
+  }
+}
+
 function handleSelectTable(tbl: DbTableMeta) {
   const engine = props.tab.dbConnection?.engine.toLowerCase();
   const generatedSql = engine === 'redis'
     ? `GET ${tbl.name}`
     : `SELECT * FROM ${tbl.name} LIMIT 100 OFFSET 0;`;
+
+  fetchTableCount(tbl.name);
 
   // Cek apakah tab untuk tabel ini sudah terbuka
   const existingTab = queryTabs.value.find(t => t.tableName === tbl.name || t.title === tbl.name);
@@ -1920,7 +1989,17 @@ function closeAllContextMenus() {
   closeCellContextMenu();
 }
 
-async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clone' | 'copy' | 'detail' | 'delete') {
+async function copyRowAsJson(row: any[]) {
+  if (!queryResult.value?.columns) return;
+  const obj: Record<string, any> = {};
+  queryResult.value.columns.forEach((col, idx) => {
+    obj[col] = row[idx];
+  });
+  await navigator.clipboard.writeText(JSON.stringify(obj, null, 2));
+  dialogStore.showToast('1 Baris (JSON) berhasil disalin ke clipboard!', 'success', 2000);
+}
+
+async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clone' | 'copy_cell' | 'copy_row_json' | 'copy_row_sql' | 'detail' | 'delete') {
   const { rIdx, cIdx, row, value, column } = cellContextMenu.value;
   closeCellContextMenu();
 
@@ -1930,9 +2009,24 @@ async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clo
     openEditRowModal(row);
   } else if (action === 'clone') {
     cloneRow(row);
-  } else if (action === 'copy') {
+  } else if (action === 'copy_cell') {
     const textToCopy = value === null ? 'NULL' : (typeof value === 'object' ? JSON.stringify(value) : String(value));
     await navigator.clipboard.writeText(textToCopy);
+    dialogStore.showToast('Nilai sel berhasil disalin', 'success', 1500);
+  } else if (action === 'copy_row_json') {
+    await copyRowAsJson(row);
+  } else if (action === 'copy_row_sql') {
+    const tableName = activeTable.value?.name || getEffectiveTable()?.name || 'my_table';
+    const cols = queryResult.value?.columns || [];
+    const vals = row.map(v => {
+      if (v === null) return 'NULL';
+      if (typeof v === 'number') return v;
+      if (typeof v === 'boolean') return v ? '1' : '0';
+      return `'${String(v).replace(/'/g, "''")}'`;
+    });
+    const sql = `INSERT INTO \`${tableName}\` (${cols.map(c => `\`${c}\``).join(', ')}) VALUES (${vals.join(', ')});`;
+    await navigator.clipboard.writeText(sql);
+    dialogStore.showToast('1 Baris (SQL INSERT) disalin ke clipboard!', 'success', 2000);
   } else if (action === 'detail') {
     openCellDetail(column, value);
   } else if (action === 'delete') {
