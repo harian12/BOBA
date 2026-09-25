@@ -261,12 +261,14 @@ export function maskSensitiveData(text: string): string {
   return text
     // 1. Mask user:token or token in HTTP/HTTPS URLs (git remote -v, git clone, etc.)
     .replace(/(https?:\/\/)[^\s\/]+@/gi, (_, proto) => `${proto}***@`)
-    // 2. Mask GitHub Personal Access Tokens (classic, fine-grained, OAuth)
+    // 2. Mask database connection URI passwords (mysql://user:pass@host, postgres://user:pass@host, redis://:pass@host)
+    .replace(/(mysql|postgresql|postgres|mongodb|redis|sqlite):\/\/([^:]+):([^@]+)@/gi, (_, proto, user) => `${proto}://${user}:***@`)
+    // 3. Mask GitHub Personal Access Tokens (classic, fine-grained, OAuth)
     .replace(/\b(ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{30,255}\b/g, (_, prefix) => `${prefix}_***`)
     .replace(/\bgithub_pat_[a-zA-Z0-9_]{50,255}\b/g, 'github_pat_***')
-    // 3. Mask GitLab Personal Access Tokens
+    // 4. Mask GitLab Personal Access Tokens
     .replace(/\bglpat-[a-zA-Z0-9\-_]{20,255}\b/g, 'glpat-***')
-    // 4. Mask Authorization headers with Bearer tokens
+    // 5. Mask Authorization headers with Bearer tokens
     .replace(/(Authorization:\s*Bearer\s+)[a-zA-Z0-9\-_.]{16,}/gi, (_, prefix) => `${prefix}***`);
 }
 
