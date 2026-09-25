@@ -6,7 +6,8 @@
     <!-- Left Pane: Schema & Object Explorer -->
     <div class="w-64 border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full">
       <!-- Database Header & Selector -->
-      <div class="p-2.5 border-b border-boba-800 space-y-2">
+      <div class="p-2.5 border-b border-boba-800 space-y-2.5">
+        <!-- DB Connection Name & Refresh -->
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2 truncate">
             <span class="text-base">{{ getEngineIcon(tab.dbConnection?.engine) }}</span>
@@ -17,51 +18,58 @@
               </div>
             </div>
           </div>
-          <div class="flex items-center space-x-1">
-            <button
-              @click="isTableDesignerOpen = true"
-              title="Visual Table Designer (Buat Tabel Baru)"
-              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-indigo-400 transition text-xs"
-            >
-              🏗️
-            </button>
-            <button
-              @click="isImporterOpen = true"
-              title="Import Data & Script (.sql / .csv)"
-              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-emerald-400 transition text-xs"
-            >
-              📥
-            </button>
-            <button
-              @click="isProcesslistOpen = true"
-              title="Live Processlist & Query Killer"
-              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-rose-400 transition text-xs"
-            >
-              ⚡
-            </button>
-            <button
-              @click="isUserManagerOpen = true"
-              title="Database User & Privileges Manager"
-              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-amber-400 transition text-xs"
-            >
-              👥
-            </button>
-            <button
-              @click="openHealthMonitor"
-              title="Server Health & Performance Metrics"
-              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-sky-400 transition text-xs"
-            >
-              📊
-            </button>
-            <button
-              @click="loadSchemaOverview"
-              :disabled="loadingSchema"
-              title="Refresh Database Schema"
-              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-white transition text-xs"
-            >
-              <span :class="[loadingSchema ? 'animate-spin inline-block' : '']">🔄</span>
-            </button>
-          </div>
+          <button
+            @click="loadSchemaOverview"
+            :disabled="loadingSchema"
+            title="Refresh Database Schema"
+            class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-white transition text-xs shrink-0"
+          >
+            <span :class="[loadingSchema ? 'animate-spin inline-block' : '']">🔄</span>
+          </button>
+        </div>
+
+        <!-- Quick Action Buttons Grid (Arranged under Database Name) -->
+        <div class="grid grid-cols-5 gap-1 pt-1.5 border-t border-boba-800/80">
+          <button
+            @click="isTableDesignerOpen = true"
+            title="Visual Table Designer (Buat Tabel Baru)"
+            class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-indigo-500/60 rounded text-slate-300 hover:text-indigo-300 transition"
+          >
+            <span class="text-xs">🏗️</span>
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Tabel</span>
+          </button>
+          <button
+            @click="isImporterOpen = true"
+            title="Import Data & Script (.sql / .csv)"
+            class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-emerald-500/60 rounded text-slate-300 hover:text-emerald-300 transition"
+          >
+            <span class="text-xs">📥</span>
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Import</span>
+          </button>
+          <button
+            @click="isProcesslistOpen = true"
+            title="Live Processlist & Query Killer"
+            class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-rose-500/60 rounded text-slate-300 hover:text-rose-300 transition"
+          >
+            <span class="text-xs">⚡</span>
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Process</span>
+          </button>
+          <button
+            @click="isUserManagerOpen = true"
+            title="Database User & Privileges Manager"
+            class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-amber-500/60 rounded text-slate-300 hover:text-amber-300 transition"
+          >
+            <span class="text-xs">👥</span>
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Users</span>
+          </button>
+          <button
+            @click="openHealthMonitor"
+            title="Server Health & Performance Metrics"
+            class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-sky-500/60 rounded text-slate-300 hover:text-sky-300 transition"
+          >
+            <span class="text-xs">📊</span>
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Health</span>
+          </button>
         </div>
 
         <!-- Database/Schema Selector Dropdown (if multiple databases exist) -->
