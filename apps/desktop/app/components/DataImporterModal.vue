@@ -3,14 +3,9 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div class="flex items-center space-x-2.5">
-          <div class="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 text-base">
-            📥
-          </div>
-          <div>
-            <h3 class="text-base font-bold text-slate-100">Data & Script Importer Wizard</h3>
-            <p class="text-[11px] text-slate-400">Import file SQL Script (.sql) atau File Data CSV (.csv)</p>
-          </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-100">Data & Script Importer Wizard</h3>
+          <p class="text-[11px] text-slate-400">Import file SQL Script (.sql) atau File Data CSV (.csv)</p>
         </div>
         <button
           @click="$emit('close')"
@@ -32,7 +27,7 @@
               : 'text-slate-400 hover:text-slate-200 hover:bg-boba-900'
           ]"
         >
-          <span>📜 Import File SQL (.sql)</span>
+          <span>Import File SQL (.sql)</span>
         </button>
         <button
           type="button"
@@ -44,7 +39,7 @@
               : 'text-slate-400 hover:text-slate-200 hover:bg-boba-900'
           ]"
         >
-          <span>📊 Import File CSV (.csv)</span>
+          <span>Import File CSV (.csv)</span>
         </button>
       </div>
 

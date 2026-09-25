@@ -3,16 +3,11 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div class="flex items-center space-x-2.5">
-          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-base">
-            🗄️
-          </div>
-          <div>
-            <h3 class="text-base font-bold text-slate-100">
-              {{ form.id ? 'Edit Koneksi Database' : 'Koneksi Database Baru' }}
-            </h3>
-            <p class="text-[11px] text-slate-400">Tersimpan aman dengan E2EE Master Key</p>
-          </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-100">
+            {{ form.id ? 'Edit Koneksi Database' : 'Koneksi Database Baru' }}
+          </h3>
+          <p class="text-[11px] text-slate-400">Tersimpan aman dengan E2EE Master Key</p>
         </div>
         <button
           @click="$emit('close')"
@@ -38,7 +33,7 @@
                 : 'bg-boba-950 border-boba-800 text-slate-400 hover:bg-boba-850 hover:text-slate-200'
             ]"
           >
-            <span class="text-base">{{ eng.icon }}</span>
+            <span class="text-xs font-mono font-bold tracking-wide">{{ eng.badge }}</span>
             <span class="text-[10px] font-semibold tracking-tight">{{ eng.label }}</span>
           </button>
         </div>
@@ -167,7 +162,7 @@
       <!-- Test Connection Result Banner -->
       <div v-if="testResult" class="p-3 rounded-lg text-xs font-mono" :class="testResult.success ? 'bg-emerald-950/60 border border-emerald-800 text-emerald-300' : 'bg-rose-950/60 border border-rose-800 text-rose-300'">
         <div class="flex items-start space-x-2">
-          <span>{{ testResult.success ? '✅' : '❌' }}</span>
+          <span class="font-bold shrink-0">{{ testResult.success ? '[OK]' : '[ERR]' }}</span>
           <span class="break-all">{{ testResult.message }}</span>
         </div>
       </div>
@@ -181,7 +176,7 @@
           class="px-3.5 py-1.5 bg-boba-800 hover:bg-boba-700 disabled:opacity-50 text-slate-200 rounded-lg text-xs font-medium transition flex items-center space-x-1.5 border border-boba-700"
         >
           <span v-if="testing" class="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin"></span>
-          <span>{{ testing ? 'Menguji...' : '⚡ Test Koneksi' }}</span>
+          <span>{{ testing ? 'Menguji...' : 'Test Koneksi' }}</span>
         </button>
 
         <div class="flex items-center space-x-2">
@@ -225,11 +220,11 @@ const dbmsStore = useDbmsStore();
 const dialogStore = useDialogStore();
 
 const engines = [
-  { id: 'mysql', label: 'MySQL', icon: '🐬', defaultPort: 3306, defaultUser: 'root' },
-  { id: 'postgres', label: 'PostgreSQL', icon: '🐘', defaultPort: 5432, defaultUser: 'postgres' },
-  { id: 'sqlite', label: 'SQLite', icon: '🗃️', defaultPort: 0, defaultUser: '' },
-  { id: 'redis', label: 'Redis', icon: '⚡', defaultPort: 6379, defaultUser: '' },
-  { id: 'mongodb', label: 'MongoDB', icon: '🍃', defaultPort: 27017, defaultUser: '' },
+  { id: 'mysql', label: 'MySQL', badge: 'MY', defaultPort: 3306, defaultUser: 'root' },
+  { id: 'postgres', label: 'PostgreSQL', badge: 'PG', defaultPort: 5432, defaultUser: 'postgres' },
+  { id: 'sqlite', label: 'SQLite', badge: 'LT', defaultPort: 0, defaultUser: '' },
+  { id: 'redis', label: 'Redis', badge: 'RD', defaultPort: 6379, defaultUser: '' },
+  { id: 'mongodb', label: 'MongoDB', badge: 'MG', defaultPort: 27017, defaultUser: '' },
 ] as const;
 
 const form = ref<DbConnectionConfig>({

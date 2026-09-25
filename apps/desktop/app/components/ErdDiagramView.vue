@@ -3,7 +3,6 @@
     <!-- ERD Toolbar -->
     <div class="h-9 px-3 bg-[#0f1420] border-b border-boba-800 flex items-center justify-between text-xs shrink-0 font-mono">
       <div class="flex items-center space-x-2">
-        <span class="text-sm">📊</span>
         <span class="font-bold text-slate-200">Interactive ERD Diagram</span>
         <span class="text-[11px] text-slate-500">({{ filteredTables.length }} Tabel, {{ foreignKeys.length }} Relasi FK)</span>
       </div>
@@ -15,7 +14,7 @@
           title="Tata Ulang Posisi Tabel ke Grid Rapi"
           class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition flex items-center space-x-1"
         >
-          <span>⟲ Reset Grid</span>
+          <span>Reset Grid</span>
         </button>
 
         <!-- Toggle Relation Lines Button -->
@@ -27,7 +26,7 @@
           ]"
           title="Tampilkan / Sembunyikan Garis Konektor Relasi SVG"
         >
-          <span>🔗 Garis Relasi: {{ showLines ? 'ON' : 'OFF' }}</span>
+          <span>Garis Relasi: {{ showLines ? 'ON' : 'OFF' }}</span>
         </button>
 
         <!-- Search input -->
@@ -43,7 +42,7 @@
           :disabled="loading"
           class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-xs transition flex items-center space-x-1"
         >
-          <span :class="[loading ? 'animate-spin inline-block' : '']">🔄</span>
+          <span :class="[loading ? 'animate-spin inline-block' : '']">⟳</span>
           <span>Refresh</span>
         </button>
       </div>
@@ -134,14 +133,13 @@
             <!-- Draggable Table Header -->
             <div
               @mousedown="startDragTable(tbl.name, $event)"
-              class="px-3 py-2.5 bg-gradient-to-r from-sky-950 to-indigo-950/90 border-b border-boba-700 flex items-center justify-between cursor-grab active:cursor-grabbing hover:bg-sky-900/50 transition"
+              class="px-3 py-2 bg-[#141b2d] border-b border-boba-700 flex items-center justify-between cursor-grab active:cursor-grabbing hover:bg-sky-950/60 transition"
               title="Tahan dan geser (Drag) untuk memindahkan posisi tabel"
             >
               <div class="flex items-center space-x-2 truncate mr-2 pointer-events-none">
-                <span class="text-xs shrink-0">📋</span>
                 <span class="font-bold text-xs text-sky-200 font-mono truncate">{{ tbl.name }}</span>
               </div>
-              <span class="text-[9px] px-1.5 py-0.5 bg-boba-950/80 text-slate-400 rounded font-mono shrink-0 pointer-events-none">
+              <span class="text-[9px] px-1.5 py-0.5 bg-boba-950 text-slate-400 rounded font-mono shrink-0 pointer-events-none border border-boba-800">
                 {{ tbl.columns.length }} cols
               </span>
             </div>
@@ -155,8 +153,8 @@
               >
                 <!-- Column Name & Key Marker -->
                 <div class="flex items-center space-x-1.5 truncate min-w-0 flex-1 mr-2">
-                  <span v-if="c.is_primary_key" class="text-amber-400 text-xs shrink-0" title="Primary Key">🔑</span>
-                  <span v-else-if="isFkColumn(tbl.name, c.name)" class="text-sky-400 text-xs shrink-0" title="Foreign Key">🔗</span>
+                  <span v-if="c.is_primary_key" class="text-[9px] px-1 py-0.2 bg-amber-950 border border-amber-700/60 text-amber-300 rounded font-mono font-bold shrink-0">PK</span>
+                  <span v-else-if="isFkColumn(tbl.name, c.name)" class="text-[9px] px-1 py-0.2 bg-sky-950 border border-sky-700/60 text-sky-300 rounded font-mono font-bold shrink-0">FK</span>
                   <span v-else class="text-slate-600 text-xs shrink-0">•</span>
                   <span
                     :class="[
@@ -192,7 +190,7 @@
                 :title="`Klik untuk geser & fokus ke ${rel.to_table}.${rel.to_column}`"
               >
                 <span class="text-slate-400 font-bold truncate max-w-[90px]">{{ rel.from_column }}</span>
-                <span class="text-slate-600 shrink-0">➔</span>
+                <span class="text-slate-600 shrink-0">→</span>
                 <span class="text-emerald-300 font-semibold truncate max-w-[120px]">{{ rel.to_table }}.{{ rel.to_column }}</span>
               </div>
             </div>

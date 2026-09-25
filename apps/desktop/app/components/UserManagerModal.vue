@@ -3,14 +3,9 @@
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto font-sans">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-        <div class="flex items-center space-x-2.5">
-          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-base">
-            👥
-          </div>
-          <div>
-            <h3 class="text-base font-bold text-slate-100">Database User & Privileges Manager</h3>
-            <p class="text-[11px] text-slate-400">Kelola akun pengguna database dan hak akses izin (Privileges)</p>
-          </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-100">Database User & Privileges Manager</h3>
+          <p class="text-[11px] text-slate-400">Kelola akun pengguna database dan hak akses izin (Privileges)</p>
         </div>
         <div class="flex items-center space-x-2">
           <button
@@ -18,7 +13,7 @@
             :disabled="loading"
             class="px-3 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs transition flex items-center space-x-1"
           >
-            <span :class="[loading ? 'animate-spin inline-block' : '']">🔄</span>
+            <span :class="[loading ? 'animate-spin inline-block' : '']">⟳</span>
             <span>Refresh</span>
           </button>
           <button

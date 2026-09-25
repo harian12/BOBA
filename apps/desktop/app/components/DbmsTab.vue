@@ -10,7 +10,9 @@
         <!-- DB Connection Name & Refresh -->
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2 truncate">
-            <span class="text-base">{{ getEngineIcon(tab.dbConnection?.engine) }}</span>
+            <span class="px-1.5 py-0.5 rounded bg-sky-950/80 border border-sky-600/50 text-[10px] font-mono font-bold text-sky-300 shrink-0">
+              {{ getEngineBadge(tab.dbConnection?.engine) }}
+            </span>
             <div class="truncate">
               <div class="text-xs font-bold text-slate-100 truncate">{{ tab.dbConnection?.name }}</div>
               <div class="text-[10px] text-slate-400 font-mono truncate">
@@ -24,7 +26,7 @@
             title="Refresh Database Schema"
             class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-white transition text-xs shrink-0"
           >
-            <span :class="[loadingSchema ? 'animate-spin inline-block' : '']">🔄</span>
+            <span :class="[loadingSchema ? 'animate-spin inline-block' : '']">⟳</span>
           </button>
         </div>
 
@@ -35,40 +37,40 @@
             title="Visual Table Designer (Buat Tabel Baru)"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-indigo-500/60 rounded text-slate-300 hover:text-indigo-300 transition"
           >
-            <span class="text-xs">🏗️</span>
-            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Tabel</span>
+            <span class="text-[10px] font-bold">New</span>
+            <span class="text-[9px] text-slate-400 font-sans">Tabel</span>
           </button>
           <button
             @click="isImporterOpen = true"
             title="Import Data & Script (.sql / .csv)"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-emerald-500/60 rounded text-slate-300 hover:text-emerald-300 transition"
           >
-            <span class="text-xs">📥</span>
-            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Import</span>
+            <span class="text-[10px] font-bold">Imp</span>
+            <span class="text-[9px] text-slate-400 font-sans">Import</span>
           </button>
           <button
             @click="isProcesslistOpen = true"
             title="Live Processlist & Query Killer"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-rose-500/60 rounded text-slate-300 hover:text-rose-300 transition"
           >
-            <span class="text-xs">⚡</span>
-            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Process</span>
+            <span class="text-[10px] font-bold">Proc</span>
+            <span class="text-[9px] text-slate-400 font-sans">Process</span>
           </button>
           <button
             @click="isUserManagerOpen = true"
             title="Database User & Privileges Manager"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-amber-500/60 rounded text-slate-300 hover:text-amber-300 transition"
           >
-            <span class="text-xs">👥</span>
-            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Users</span>
+            <span class="text-[10px] font-bold">User</span>
+            <span class="text-[9px] text-slate-400 font-sans">Privs</span>
           </button>
           <button
             @click="openHealthMonitor"
             title="Server Health & Performance Metrics"
             class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-sky-500/60 rounded text-slate-300 hover:text-sky-300 transition"
           >
-            <span class="text-xs">📊</span>
-            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Health</span>
+            <span class="text-[10px] font-bold">Stat</span>
+            <span class="text-[9px] text-slate-400 font-sans">Health</span>
           </button>
         </div>
 
@@ -118,8 +120,8 @@
           ]"
         >
           <div class="flex items-center space-x-2 truncate mr-1.5">
-            <span class="text-xs shrink-0">
-              {{ tbl.table_type === 'VIEW' ? '👁️' : (tab.dbConnection?.engine === 'redis' ? '⚡' : '📋') }}
+            <span class="text-[10px] font-mono text-slate-500 shrink-0">
+              {{ tbl.table_type === 'VIEW' ? 'VIEW' : 'TBL' }}
             </span>
             <span class="truncate text-[11px]">{{ tbl.name }}</span>
           </div>
@@ -147,7 +149,7 @@
                 : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
             ]"
           >
-            <span class="text-[11px] shrink-0">{{ qTab.tableName ? '📋' : '⚡' }}</span>
+            <span class="text-[10px] text-slate-500 shrink-0">{{ qTab.tableName ? 'T' : 'Q' }}</span>
             <span class="truncate text-[11px]">{{ qTab.title }}</span>
             <button
               v-if="queryTabs.length > 1"
@@ -195,7 +197,7 @@
               class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-medium text-xs shadow transition flex items-center space-x-1.5"
             >
               <span v-if="executing" class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></span>
-              <span>{{ executing ? 'Menjalankan...' : '⚡ Jalankan (Ctrl+Enter)' }}</span>
+              <span>{{ executing ? 'Menjalankan...' : 'Jalankan (Ctrl+Enter)' }}</span>
             </button>
 
             <!-- Fitur 4: Visual EXPLAIN Button -->
@@ -205,7 +207,7 @@
               class="px-2.5 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded border border-sky-700/50 text-xs font-medium transition flex items-center space-x-1"
               title="Analisis Rencana Eksekusi Query (EXPLAIN / Bottleneck Detector)"
             >
-              <span>🔍 EXPLAIN</span>
+              <span>EXPLAIN</span>
             </button>
 
             <!-- Fitur 3: Saved Queries / Snippets Button -->
@@ -214,7 +216,7 @@
               class="px-2.5 py-1 bg-amber-950/60 hover:bg-amber-800 text-amber-300 hover:text-white rounded border border-amber-700/50 text-xs font-medium transition flex items-center space-x-1"
               title="Buka Snippets / Saved Queries (E2EE)"
             >
-              <span>⭐ Snippets</span>
+              <span>Snippets</span>
             </button>
 
             <button
@@ -246,19 +248,19 @@
               :class="['px-2 py-0.5 rounded transition text-[11px]', showHistory ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
               title="Lihat Riwayat Query"
             >
-              🕒 Riwayat
+              Riwayat
             </button>
           </div>
         </div>
 
         <!-- AI SQL Assistant Bar -->
         <div class="px-3 py-1.5 bg-purple-950/20 border-b border-purple-900/30 flex items-center space-x-2">
-          <span class="text-xs text-purple-400 shrink-0">✨ AI SQL:</span>
+          <span class="text-xs text-purple-400 font-mono font-semibold shrink-0">AI SQL:</span>
           <input
             v-model="aiPrompt"
             @keydown.enter="handleAiGenerateSql"
             type="text"
-            placeholder="Ketik instruksi SQL dalam bahasa natural... (contoh: 'tampilkan 20 data terbaru yang aktif')"
+            placeholder="Instruksi SQL dalam bahasa natural... (contoh: 'tampilkan 20 data terbaru yang aktif')"
             class="flex-1 bg-boba-950/80 border border-purple-900/50 focus:border-purple-400 rounded px-2.5 py-1 text-xs text-purple-200 placeholder-purple-400/50 focus:outline-none"
           />
           <button
@@ -266,7 +268,7 @@
             :disabled="aiGenerating || !aiPrompt.trim()"
             class="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded text-xs font-medium transition shrink-0"
           >
-            {{ aiGenerating ? 'AI Thinking...' : 'Generate' }}
+            {{ aiGenerating ? 'Memproses...' : 'Generate' }}
           </button>
         </div>
 
@@ -307,28 +309,28 @@
               @click="activeViewTab = 'data'"
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'data' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              📊 Data
+              Data
             </button>
             <button
               v-if="activeTable?.columns && activeTable.columns.length > 0"
               @click="activeViewTab = 'structure'"
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'structure' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              📐 Struktur ({{ activeTable.columns.length }} Kolom)
+              Struktur ({{ activeTable.columns.length }} Kolom)
             </button>
             <button
               v-if="activeTable?.columns && activeTable.columns.length > 0"
               @click="activeViewTab = 'ddl'"
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'ddl' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              📜 DDL Script
+              DDL Script
             </button>
             <button
               v-if="schemaOverview?.tables && schemaOverview.tables.length > 0"
               @click="activeViewTab = 'erd'"
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'erd' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
-              🌐 ERD Diagram
+              ERD Diagram
             </button>
           </div>
 
@@ -347,23 +349,23 @@
               <button
                 @click="exportData('csv')"
                 title="Ekspor ke CSV"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition"
               >
-                <span>📄 CSV</span>
+                CSV
               </button>
               <button
                 @click="exportData('json')"
                 title="Ekspor ke JSON"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition"
               >
-                <span>📦 JSON</span>
+                JSON
               </button>
               <button
                 @click="exportData('sql')"
                 title="Ekspor sebagai SQL INSERT Statements"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition"
               >
-                <span>💾 SQL Dump</span>
+                SQL Dump
               </button>
             </template>
           </div>
@@ -405,7 +407,7 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-2">
               <span class="text-slate-300 text-[11px] font-sans font-bold flex items-center space-x-1.5">
-                <span>🔍 Multi-Filter Query</span>
+                <span>Multi-Filter Query</span>
                 <span
                   v-if="filterState?.active"
                   class="px-1.5 py-0.2 bg-emerald-950 border border-emerald-600/70 text-emerald-300 rounded text-[9px] font-mono"
@@ -420,7 +422,7 @@
                 @click="addFilterRule"
                 class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-[11px] transition flex items-center space-x-1 border border-boba-700"
               >
-                <span>+ Tambah Kondisi</span>
+                <span>+ Kondisi</span>
               </button>
               <button
                 @click="applyMultiFilter"
@@ -519,10 +521,10 @@
         <!-- Unsaved Pending Edits & Draft Rows Banner (Commit / Rollback Controls) -->
         <div
           v-if="(pendingEditsCount > 0 || (pendingNewRows && pendingNewRows.length > 0)) && activeViewTab === 'data'"
-          class="px-3.5 py-2 bg-gradient-to-r from-amber-950 to-orange-950/90 border-b border-amber-500/60 flex items-center justify-between text-xs font-sans shadow-md animate-in fade-in shrink-0 select-none"
+          class="px-3.5 py-2 bg-[#1c1409] border-b border-amber-600/70 flex items-center justify-between text-xs font-sans shadow-md animate-in fade-in shrink-0 select-none"
         >
           <div class="flex items-center space-x-2.5 text-amber-200">
-            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
             <span class="font-bold">
               <span v-if="pendingEditsCount > 0">{{ pendingEditsCount }} sel diedit</span>
               <span v-if="pendingEditsCount > 0 && pendingNewRows?.length > 0"> & </span>
@@ -536,7 +538,7 @@
               @click="rollbackPendingEdits"
               class="px-3 py-1 bg-boba-900 hover:bg-boba-800 text-slate-300 hover:text-white rounded border border-boba-700 text-xs font-medium transition flex items-center space-x-1"
             >
-              <span>↩️ Batalkan (Reset)</span>
+              <span>Batalkan</span>
             </button>
             <button
               @click="commitPendingEdits"
@@ -544,14 +546,14 @@
               class="px-4 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-bold text-xs shadow-lg transition flex items-center space-x-1"
             >
               <span v-if="committingEdits" class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></span>
-              <span>{{ committingEdits ? 'Menyimpan...' : '💾 Simpan Perubahan (Commit)' }}</span>
+              <span>{{ committingEdits ? 'Menyimpan...' : 'Simpan Perubahan (Commit)' }}</span>
             </button>
           </div>
         </div>
 
         <!-- Query Error Banner -->
         <div v-if="errorMessage" class="p-3 bg-rose-950/60 border-b border-rose-800 text-rose-300 text-xs font-mono select-text flex items-start space-x-2">
-          <span class="text-sm shrink-0">⚠️</span>
+          <span class="text-xs text-rose-400 font-bold shrink-0">[ERR]</span>
           <div class="flex-1 break-all">{{ errorMessage }}</div>
         </div>
 
@@ -631,13 +633,13 @@
                     </template>
                   </td>
                   <td class="px-2 py-1 text-center select-none whitespace-nowrap">
-                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1.5 transition">
+                    <div class="opacity-0 group-hover:opacity-100 flex items-center justify-center space-x-1 transition">
                       <button
                         @click="copyRowAsJson(row)"
                         title="Salin 1 Baris Lengkap ke Clipboard (JSON)"
-                        class="p-1 hover:bg-sky-900/60 rounded text-slate-400 hover:text-sky-300 transition text-xs"
+                        class="p-1 hover:bg-sky-900/60 rounded text-slate-400 hover:text-sky-300 transition text-[11px] font-mono"
                       >
-                        📋
+                        JSON
                       </button>
                       <button
                         @click="cloneRow(row)"
@@ -658,7 +660,7 @@
                         title="Hapus baris data"
                         class="p-1 hover:bg-rose-900/60 rounded text-rose-400 hover:text-rose-200 transition text-xs"
                       >
-                        🗑️
+                        ✕
                       </button>
                     </div>
                   </td>
@@ -700,10 +702,10 @@
             <!-- Empty State Grid -->
             <div
               v-else-if="!executing && !errorMessage"
-              class="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 space-y-2"
+              class="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 space-y-1.5"
             >
-              <span class="text-3xl">🗄️</span>
-              <div class="text-xs">Pilih tabel di navigasi kiri atau ketik query SQL untuk melihat data.</div>
+              <div class="text-xs text-slate-400 font-medium">Belum ada data ditampilkan</div>
+              <div class="text-[11px] text-slate-600">Pilih tabel di navigasi kiri atau jalankan query SQL.</div>
             </div>
           </div>
 
@@ -780,7 +782,7 @@
                 <td class="px-3 py-1.5 font-bold text-sky-300 border-r border-boba-850">{{ col.name }}</td>
                 <td class="px-3 py-1.5 text-amber-300 border-r border-boba-850">{{ col.data_type }}</td>
                 <td class="px-3 py-1.5 border-r border-boba-850">
-                  <span v-if="col.is_primary_key" class="px-1.5 py-0.5 bg-amber-950 border border-amber-800 text-amber-300 rounded text-[10px]">PK 🔑</span>
+                  <span v-if="col.is_primary_key" class="px-1.5 py-0.5 bg-amber-950 border border-amber-800 text-amber-300 rounded text-[10px] font-bold">PRIMARY KEY</span>
                   <span v-else class="text-slate-600">-</span>
                 </td>
                 <td class="px-3 py-1.5 border-r border-boba-850">
@@ -820,7 +822,6 @@
       <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
         <div class="flex items-center justify-between border-b border-boba-800 pb-3">
           <div class="flex items-center space-x-2">
-            <span class="text-lg">⚡</span>
             <h3 class="text-base font-bold text-slate-100">Analisis Rencana Eksekusi (EXPLAIN)</h3>
           </div>
           <button @click="explainResult = null" class="text-slate-400 hover:text-white text-sm">✕</button>
@@ -831,9 +832,9 @@
           v-if="explainResult.has_full_table_scan"
           class="p-3.5 bg-amber-950/70 border border-amber-600/70 rounded-xl flex items-start space-x-3 text-amber-200 text-xs"
         >
-          <span class="text-lg shrink-0">⚠️</span>
+          <span class="text-xs font-bold text-amber-400 shrink-0">[WARN]</span>
           <div>
-            <strong class="font-bold">Peringatan: Full Table Scan Terdeteksi!</strong>
+            <strong class="font-bold">Full Table Scan Terdeteksi</strong>
             <p class="text-[11px] text-amber-300/90 mt-0.5">
               Query ini memindai seluruh baris tabel tanpa menggunakan indeks yang sesuai. Hal ini dapat menyebabkan beban CPU & I/O tinggi pada dataset besar.
             </p>
@@ -842,7 +843,7 @@
 
         <!-- Optimizer Suggestions -->
         <div v-if="explainResult.suggestions && explainResult.suggestions.length > 0" class="space-y-1.5">
-          <div class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">💡 Saran Optimasi Indeks:</div>
+          <div class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Saran Optimasi Indeks:</div>
           <ul class="space-y-1 bg-emerald-950/30 border border-emerald-900/50 p-3 rounded-lg text-xs text-emerald-200 list-disc list-inside">
             <li v-for="(sug, idx) in explainResult.suggestions" :key="idx">{{ sug }}</li>
           </ul>
@@ -872,12 +873,9 @@
     >
       <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
         <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-          <div class="flex items-center space-x-2">
-            <span class="text-lg">📊</span>
-            <div>
-              <h3 class="text-base font-bold text-slate-100">Database Server Health Monitor</h3>
-              <p class="text-[11px] text-slate-400">{{ tab.dbConnection?.name }} ({{ tab.dbConnection?.engine.toUpperCase() }})</p>
-            </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100">Database Server Health Monitor</h3>
+            <p class="text-[11px] text-slate-400">{{ tab.dbConnection?.name }} ({{ tab.dbConnection?.engine.toUpperCase() }})</p>
           </div>
           <button @click="isHealthModalOpen = false" class="text-slate-400 hover:text-white text-sm">✕</button>
         </div>
@@ -937,7 +935,7 @@
             @click="openHealthMonitor"
             class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded-lg text-xs"
           >
-            🔄 Refresh
+            Refresh
           </button>
           <button
             @click="isHealthModalOpen = false"
@@ -956,10 +954,7 @@
     >
       <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
         <div class="flex items-center justify-between border-b border-boba-800 pb-3">
-          <div class="flex items-center space-x-2">
-            <span class="text-lg">⭐</span>
-            <h3 class="text-base font-bold text-slate-100">SQL Snippets & Saved Queries</h3>
-          </div>
+          <h3 class="text-base font-bold text-slate-100">SQL Snippets & Saved Queries</h3>
           <button @click="isSnippetsDrawerOpen = false" class="text-slate-400 hover:text-white text-sm">✕</button>
         </div>
 
@@ -1000,13 +995,13 @@
                   @click="useSnippet(snip.query)"
                   class="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[10px] font-medium"
                 >
-                  Gunakan ↵
+                  Gunakan
                 </button>
                 <button
                   @click="dbmsStore.removeSavedQuery(snip.id)"
                   class="p-1 text-slate-500 hover:text-rose-400 rounded text-xs"
                 >
-                  🗑️
+                  ✕
                 </button>
               </div>
             </div>
@@ -1039,49 +1034,42 @@
         @click="handleContextAction('select')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>📊</span>
         <span>Lihat Data (100 Baris)</span>
       </button>
       <button
         @click="handleContextAction('structure')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>📐</span>
         <span>Lihat Struktur Kolom</span>
       </button>
       <button
         @click="handleContextAction('alter')"
         class="w-full text-left px-2.5 py-1 hover:bg-indigo-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>🏗️</span>
-        <span>Modifikasi Desain Tabel (GUI)</span>
+        <span>Modifikasi Desain Tabel</span>
       </button>
       <button
         @click="handleContextAction('copy_name')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>📋</span>
         <span>Salin Nama Tabel</span>
       </button>
       <button
         @click="handleContextAction('ddl')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1.5 mb-1"
       >
-        <span>📜</span>
         <span>Lihat Syntax DDL</span>
       </button>
       <button
         @click="handleContextAction('truncate')"
         class="w-full text-left px-2.5 py-1 hover:bg-amber-950/80 hover:text-amber-300 text-amber-400 flex items-center space-x-2 transition"
       >
-        <span>🧹</span>
         <span>Kosongkan Tabel (TRUNCATE)</span>
       </button>
       <button
         @click="handleContextAction('drop')"
         class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
       >
-        <span>🗑️</span>
         <span>Hapus Tabel (DROP)</span>
       </button>
     </div>
@@ -1100,57 +1088,49 @@
         @click="handleCellContextAction('edit_inline')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>✎</span>
         <span>Edit Nilai Sel (Inline)</span>
       </button>
       <button
         @click="handleCellContextAction('edit_row')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>📝</span>
-        <span>Edit Seluruh Baris (Modal)</span>
+        <span>Edit Baris (Modal)</span>
       </button>
       <button
         @click="handleCellContextAction('clone')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>⧉</span>
-        <span>Duplikat / Clone Baris Ini</span>
+        <span>Duplikat Baris Ini</span>
       </button>
       <div class="h-px bg-[#232b3d] my-0.5"></div>
       <button
         @click="handleCellContextAction('copy_cell')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>📄</span>
-        <span>Salin Nilai Sel Ini</span>
+        <span>Salin Nilai Sel</span>
       </button>
       <button
         @click="handleCellContextAction('copy_row_json')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>📋</span>
-        <span>Salin 1 Baris (JSON)</span>
+        <span>Salin Baris (JSON)</span>
       </button>
       <button
         @click="handleCellContextAction('copy_row_sql')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <span>💾</span>
-        <span>Salin 1 Baris (SQL INSERT)</span>
+        <span>Salin Baris (SQL INSERT)</span>
       </button>
       <button
         @click="handleCellContextAction('detail')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1 mb-0.5"
       >
-        <span>🔍</span>
-        <span>Lihat Detail Lengkap (Viewer)</span>
+        <span>Lihat Detail Lengkap</span>
       </button>
       <button
         @click="handleCellContextAction('delete')"
         class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
       >
-        <span>🗑️</span>
         <span>Hapus Baris Ini</span>
       </button>
     </div>
@@ -1690,22 +1670,22 @@ const tableContextMenu = ref<{
   table: null,
 });
 
-function getEngineIcon(engine?: string): string {
+function getEngineBadge(engine?: string): string {
   switch (engine?.toLowerCase()) {
     case 'mysql':
     case 'mariadb':
-      return '🐬';
+      return 'MY';
     case 'postgres':
     case 'postgresql':
-      return '🐘';
+      return 'PG';
     case 'sqlite':
-      return '🗃️';
+      return 'LT';
     case 'redis':
-      return '⚡';
+      return 'RD';
     case 'mongodb':
-      return '🍃';
+      return 'MG';
     default:
-      return '🗄️';
+      return 'DB';
   }
 }
 
