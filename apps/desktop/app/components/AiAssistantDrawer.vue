@@ -85,7 +85,7 @@
         >
           <option value="">-- Pilih Target SSH / Database --</option>
           <optgroup v-if="availableDatabases.length > 0" label="🗄️ Database Connections">
-            <option v-for="d in availableDatabases" :key="'db_' + d.id" :value="'db_' + d.id">
+            <option v-for="d in availableDatabases" :key="getDbTargetId(d.id)" :value="getDbTargetId(d.id)">
               🗄️ {{ d.name }} ({{ d.engine.toUpperCase() }} • {{ d.host || 'localhost' }})
             </option>
           </optgroup>
@@ -856,6 +856,7 @@ function toggleExecutionMode() {
 
 onMounted(() => {
   initWidth();
+  syncActiveTarget();
 });
 
 const currentSelectedModel = computed(() => {
@@ -881,6 +882,26 @@ function handleModelChange(e: Event) {
   }
 }
 
+function getDbTargetId(id?: string): string {
+  if (!id) return '';
+  return id.startsWith('db_') ? id : `db_${id}`;
+}
+
+function syncActiveTarget() {
+  const tab = sessionStore.activeTab;
+  if (tab?.type === 'dbms' && tab.dbConnection) {
+    aiStore.selectedSessionId = getDbTargetId(tab.dbConnection.id);
+  } else if (tab?.type === 'terminal' && tab.sessionConfig) {
+    aiStore.selectedSessionId = tab.sessionConfig.id;
+  } else if (!aiStore.selectedSessionId) {
+    if (availableDatabases.value.length > 0) {
+      aiStore.selectedSessionId = getDbTargetId(availableDatabases.value[0].id);
+    } else if (availableSessions.value.length > 0) {
+      aiStore.selectedSessionId = availableSessions.value[0].id;
+    }
+  }
+}
+
 const availableSessions = computed(() => {
   return vaultStore.vault.sessions || [];
 });
@@ -899,7 +920,7 @@ const isDbTarget = computed(() => {
 const currentTargetLabel = computed(() => {
   if (isDbTarget.value) {
     const rawId = aiStore.selectedSessionId?.replace(/^db_/, '');
-    const db = availableDatabases.value.find(d => d.id === rawId) || sessionStore.activeTab?.dbConnection;
+    const db = availableDatabases.value.find(d => getDbTargetId(d.id) === aiStore.selectedSessionId || d.id === rawId) || sessionStore.activeTab?.dbConnection;
     return db ? `${db.name} (${db.engine.toUpperCase()})` : 'Database Aktif';
   }
   const s = availableSessions.value.find(sess => sess.id === aiStore.selectedSessionId);
@@ -927,14 +948,9 @@ const starterChips = computed(() => {
 });
 
 watch(
-  () => sessionStore.activeTab,
-  (activeTab) => {
-    if (!activeTab) return;
-    if (activeTab.type === 'dbms' && activeTab.dbConnection) {
-      aiStore.selectedSessionId = `db_${activeTab.dbConnection.id}`;
-    } else if (activeTab.type === 'terminal' && activeTab.sessionConfig) {
-      aiStore.selectedSessionId = activeTab.sessionConfig.id;
-    }
+  () => [sessionStore.activeTabId, sessionStore.tabs.length, aiStore.isDrawerOpen],
+  () => {
+    syncActiveTarget();
   },
   { immediate: true }
 );
