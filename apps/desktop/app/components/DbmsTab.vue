@@ -98,40 +98,58 @@
     <!-- Right Pane: Split into Multi-Tab Query Editor + Data Grid -->
     <div class="flex-1 flex flex-col overflow-hidden bg-[#0a0d14]">
       <!-- Multi-Tab Query Editor Sub-Tabs Bar (Fitur 6 - Auto Open on Table Click) -->
-      <div class="h-8 bg-[#0b0e17] border-b border-boba-800 flex items-center px-1 shrink-0 select-none overflow-x-auto">
-        <div
-          v-for="(qTab, qIdx) in queryTabs"
-          :key="qTab.id"
-          @click="selectQueryTab(qTab)"
-          :class="[
-            'flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[170px]',
-            activeQueryTabId === qTab.id
-              ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
-              : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
-          ]"
-        >
-          <span class="text-[11px] shrink-0">{{ qTab.tableName ? '📋' : '⚡' }}</span>
-          <span class="truncate text-[11px]">{{ qTab.title }}</span>
-          <button
-            v-if="queryTabs.length > 1"
-            @click.stop="closeQueryTab(qTab.id)"
-            class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition ml-1 shrink-0"
+      <div class="h-8 bg-[#0b0e17] border-b border-boba-800 flex items-center px-1 shrink-0 select-none overflow-x-auto justify-between">
+        <div class="flex items-center overflow-x-auto no-scrollbar">
+          <div
+            v-for="(qTab, qIdx) in queryTabs"
+            :key="qTab.id"
+            @click="selectQueryTab(qTab)"
+            :class="[
+              'flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[170px]',
+              activeQueryTabId === qTab.id
+                ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
+                : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
+            ]"
           >
-            ✕
+            <span class="text-[11px] shrink-0">{{ qTab.tableName ? '📋' : '⚡' }}</span>
+            <span class="truncate text-[11px]">{{ qTab.title }}</span>
+            <button
+              v-if="queryTabs.length > 1"
+              @click.stop="closeQueryTab(qTab.id)"
+              class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition ml-1 shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+
+          <button
+            @click="addNewQueryTab()"
+            title="Tambah Tab Query Kosong"
+            class="px-2 py-0.5 text-slate-400 hover:text-white hover:bg-boba-800 rounded text-xs transition"
+          >
+            +
           </button>
         </div>
 
-        <button
-          @click="addNewQueryTab()"
-          title="Tambah Tab Query Kosong"
-          class="px-2 py-0.5 text-slate-400 hover:text-white hover:bg-boba-800 rounded text-xs transition"
-        >
-          +
-        </button>
+        <!-- Toggle SQL Query Editor Button -->
+        <div class="flex items-center space-x-1 ml-2 shrink-0 pr-1">
+          <button
+            @click="showQueryEditor = !showQueryEditor"
+            :class="[
+              'px-2 py-0.5 rounded text-[11px] font-mono transition border flex items-center space-x-1',
+              showQueryEditor
+                ? 'bg-sky-950/80 border-sky-600/60 text-sky-300 shadow-sm'
+                : 'bg-boba-950 border-boba-700 text-slate-400 hover:text-slate-200 hover:bg-boba-850'
+            ]"
+            title="Tampilkan / Sembunyikan Editor Query SQL di Atas"
+          >
+            <span>{{ showQueryEditor ? '▲ Sembunyikan Query' : '▼ Tampilkan Query' }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Top Section: SQL Query Editor & AI Copilot Bar -->
-      <div class="border-b border-boba-800 flex flex-col shrink-0 bg-[#0e121d]">
+      <!-- Top Section: SQL Query Editor & AI Copilot Bar (Toggled per Tab) -->
+      <div v-if="showQueryEditor" class="border-b border-boba-800 flex flex-col shrink-0 bg-[#0e121d] animate-in fade-in duration-100">
         <!-- Query Control Toolbar -->
         <div class="px-3 py-1.5 border-b border-boba-800 flex items-center justify-between text-xs bg-[#121724]">
           <div class="flex items-center space-x-2">
@@ -892,6 +910,7 @@ interface SubQueryTab {
   title: string;
   tableName?: string;
   text: string;
+  showQueryEditor: boolean;
   queryResult: DbQueryResult | null;
   activeTable: DbTableMeta | null;
   currentPage: number;
@@ -912,13 +931,15 @@ function createDefaultTab(
   title = 'SQL 1',
   text = '',
   tableName?: string,
-  targetTable: DbTableMeta | null = null
+  targetTable: DbTableMeta | null = null,
+  showQueryEditor = true
 ): SubQueryTab {
   return {
     id,
     title,
     tableName,
     text,
+    showQueryEditor,
     queryResult: null,
     activeTable: targetTable,
     currentPage: 1,
@@ -940,6 +961,13 @@ const activeQueryTabId = ref<string>('qtab_1');
 
 const activeQueryTab = computed(() => {
   return queryTabs.value.find(t => t.id === activeQueryTabId.value) || queryTabs.value[0];
+});
+
+const showQueryEditor = computed({
+  get: () => activeQueryTab.value?.showQueryEditor ?? true,
+  set: (val: boolean) => {
+    if (activeQueryTab.value) activeQueryTab.value.showQueryEditor = val;
+  },
 });
 
 const currentQueryText = computed({
@@ -1015,11 +1043,12 @@ function addNewQueryTab(
   customTitle?: string,
   customText?: string,
   tableName?: string,
-  targetTable: DbTableMeta | null = null
+  targetTable: DbTableMeta | null = null,
+  showEditor = true
 ) {
   const newId = `qtab_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`;
   const title = customTitle || `SQL ${queryTabs.value.length + 1}`;
-  const newTab = createDefaultTab(newId, title, customText || '', tableName, targetTable);
+  const newTab = createDefaultTab(newId, title, customText || '', tableName, targetTable, showEditor);
   queryTabs.value.push(newTab);
   activeQueryTabId.value = newId;
   return newTab;
@@ -1158,17 +1187,18 @@ function handleSelectTable(tbl: DbTableMeta) {
       executeQuery();
     }
   } else {
-    // Jika tab tunggal saat ini masih berupa tab default kosong "SQL 1", gunakan & beri nama tabel
+    // Jika tab tunggal saat ini masih berupa tab default kosong "SQL 1", gunakan & beri nama tabel (dan hide query editor)
     if (queryTabs.value.length === 1 && queryTabs.value[0].title === 'SQL 1' && !queryTabs.value[0].text.trim() && !queryTabs.value[0].queryResult) {
       queryTabs.value[0].title = tbl.name;
       queryTabs.value[0].tableName = tbl.name;
       queryTabs.value[0].text = generatedSql;
       queryTabs.value[0].activeTable = tbl;
+      queryTabs.value[0].showQueryEditor = false; // Sembunyikan query jika dibuka dari tabel
       activeQueryTabId.value = queryTabs.value[0].id;
       executeQuery();
     } else {
-      // Buka tab query baru otomatis dengan nama tabel
-      const newTab = addNewQueryTab(tbl.name, generatedSql, tbl.name, tbl);
+      // Buka tab query baru otomatis dengan nama tabel & sembunyikan query editor
+      addNewQueryTab(tbl.name, generatedSql, tbl.name, tbl, false);
       executeQuery();
     }
   }
