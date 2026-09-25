@@ -40,6 +40,8 @@ export interface DbSavedQuery {
   title: string;
   query: string;
   engine?: string;
+  db_connection_id?: string;
+  db_name?: string;
   description?: string;
   createdAt: number;
 }

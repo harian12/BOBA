@@ -1040,19 +1040,53 @@
           </div>
         </div>
 
+        <!-- Scope Filter Tabs -->
+        <div class="flex items-center space-x-2 border-b border-boba-800 pb-2 text-xs">
+          <button
+            @click="snippetScope = 'connection'"
+            :class="[
+              'px-2.5 py-1 rounded font-medium transition',
+              snippetScope === 'connection'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-boba-950 text-slate-400 hover:text-slate-200'
+            ]"
+          >
+            Koneksi Ini: {{ tab.dbConnection?.name }} ({{ currentConnectionSnippetsCount }})
+          </button>
+          <button
+            @click="snippetScope = 'all'"
+            :class="[
+              'px-2.5 py-1 rounded font-medium transition',
+              snippetScope === 'all'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-boba-950 text-slate-400 hover:text-slate-200'
+            ]"
+          >
+            Semua Snippet ({{ dbmsStore.savedQueries.length }})
+          </button>
+        </div>
+
         <!-- Saved Queries List -->
         <div class="space-y-2 max-h-64 overflow-y-auto">
-          <div v-if="dbmsStore.savedQueries.length === 0" class="py-6 text-center text-slate-500 text-xs">
-            Belum ada query tersimpan di Vault.
+          <div v-if="filteredSnippets.length === 0" class="py-6 text-center text-slate-500 text-xs">
+            Belum ada query tersimpan untuk {{ snippetScope === 'connection' ? 'koneksi ini' : 'vault' }}.
           </div>
           <div
-            v-for="snip in dbmsStore.savedQueries"
+            v-for="snip in filteredSnippets"
             :key="snip.id"
             class="p-3 bg-boba-950/70 border border-boba-800 rounded-xl hover:border-amber-500/50 transition space-y-1.5 group"
           >
             <div class="flex items-center justify-between">
-              <span class="font-bold text-xs text-slate-200">{{ snip.title }}</span>
-              <div class="flex items-center space-x-1">
+              <div class="flex items-center space-x-2 truncate mr-2">
+                <span class="font-bold text-xs text-slate-200 truncate">{{ snip.title }}</span>
+                <span v-if="snip.db_name" class="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-mono shrink-0">
+                  {{ snip.db_name }}
+                </span>
+                <span v-else class="text-[9px] px-1.5 py-0.2 rounded bg-boba-800 text-slate-400 font-mono shrink-0">
+                  Global
+                </span>
+              </div>
+              <div class="flex items-center space-x-1 shrink-0">
                 <button
                   @click="useSnippet(snip.query)"
                   class="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[10px] font-medium"
@@ -1719,6 +1753,20 @@ const serverMetrics = ref<DbServerMetrics | null>(null);
 // Fitur 3: Saved Queries / Snippets
 const isSnippetsDrawerOpen = ref(false);
 const newSnippetTitle = ref('');
+const snippetScope = ref<'connection' | 'all'>('connection');
+
+const filteredSnippets = computed(() => {
+  const list = dbmsStore.savedQueries || [];
+  if (snippetScope.value === 'connection') {
+    return list.filter(s => !s.db_connection_id || s.db_connection_id === props.tab.dbConnection?.id);
+  }
+  return list;
+});
+
+const currentConnectionSnippetsCount = computed(() => {
+  const list = dbmsStore.savedQueries || [];
+  return list.filter(s => !s.db_connection_id || s.db_connection_id === props.tab.dbConnection?.id).length;
+});
 
 const isInsertModalOpen = ref(false);
 const isEditModalOpen = ref(false);
@@ -2062,6 +2110,8 @@ function handleSaveSnippet() {
     title: newSnippetTitle.value.trim(),
     query: currentQueryText.value.trim(),
     engine: props.tab.dbConnection?.engine,
+    db_connection_id: props.tab.dbConnection?.id,
+    db_name: activeDatabase.value || props.tab.dbConnection?.database,
     createdAt: Date.now(),
   });
   newSnippetTitle.value = '';
