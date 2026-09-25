@@ -300,18 +300,20 @@
           </div>
         </div>
 
-        <!-- AI SQL Assistant Bar -->
+        <!-- AI SQL Assistant Bar (Strict Read-Only Guardrail) -->
         <div class="px-3 py-1.5 bg-purple-950/20 border-b border-purple-900/30 flex items-center space-x-2">
-          <svg class="w-3.5 h-3.5 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+          <Icon icon="lucide:sparkles" class="w-3.5 h-3.5 text-purple-400 shrink-0" />
           <span class="text-xs text-purple-400 font-mono font-semibold shrink-0">AI SQL:</span>
+          <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-mono flex items-center space-x-1 shrink-0" title="AI SQL hanya melayani query BACA (SELECT / Read-Only)">
+            <Icon icon="lucide:shield-check" class="w-2.5 h-2.5" />
+            <span>Read-Only</span>
+          </span>
           <input
             v-model="aiPrompt"
             @keydown.enter="handleAiGenerateSql"
             type="text"
-            placeholder="Instruksi SQL dalam bahasa natural... (contoh: 'tampilkan 20 data terbaru yang aktif')"
-            class="flex-1 bg-boba-950/80 border border-purple-900/50 focus:border-purple-400 rounded px-2.5 py-1 text-xs text-purple-200 placeholder-purple-400/50 focus:outline-none"
+            placeholder="Instruksi SQL read-only... (contoh: 'tampilkan 20 data terbaru yang aktif')"
+            class="flex-1 bg-boba-950/80 border border-purple-900/50 focus:border-purple-400 rounded px-2.5 py-1 text-xs text-purple-200 placeholder-purple-400/50 focus:outline-none font-sans"
           />
           <button
             @click="handleAiGenerateSql"
@@ -2892,21 +2894,68 @@ async function handleDeleteRow(row: any[]) {
   }
 }
 
+function isMutationQuery(sql: string): boolean {
+  const sanitized = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const forbiddenPatterns = [
+    /\bUPDATE\b/i,
+    /\bDELETE\b/i,
+    /\bDROP\b/i,
+    /\bTRUNCATE\b/i,
+    /\bALTER\b/i,
+    /\bINSERT\b/i,
+    /\bCREATE\b/i,
+    /\bGRANT\b/i,
+    /\bREVOKE\b/i,
+    /\bREPLACE\b/i,
+    /\bRENAME\b/i,
+  ];
+  return forbiddenPatterns.some(pat => pat.test(sanitized));
+}
+
 async function handleAiGenerateSql() {
   if (!aiPrompt.value.trim()) return;
-  aiGenerating.value = true;
-
   const prompt = aiPrompt.value.trim();
-  const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
 
-  if (prompt.toLowerCase().includes('semua') || prompt.toLowerCase().includes('all')) {
-    currentQueryText.value = `SELECT * FROM ${targetTable} LIMIT ${pageSize.value};`;
-  } else if (prompt.toLowerCase().includes('hitung') || prompt.toLowerCase().includes('count')) {
-    currentQueryText.value = `SELECT COUNT(*) AS total_count FROM ${targetTable};`;
-  } else {
-    currentQueryText.value = `-- AI Generated for: "${prompt}"\nSELECT * FROM ${targetTable} ORDER BY 1 DESC LIMIT 50;`;
+  // Check user prompt intent against mutating keywords
+  const forbiddenKeywords = ['update', 'delete', 'hapus', 'ubah', 'drop', 'truncate', 'insert', 'tambah', 'alter', 'ganti', 'remove', 'modify'];
+  const hasMutationIntent = forbiddenKeywords.some(kw => {
+    const re = new RegExp(`\\b${kw}\\b`, 'i');
+    return re.test(prompt);
+  });
+
+  if (hasMutationIntent) {
+    await dialogStore.alert({
+      title: 'Operasi Modifikasi Ditolak (Security Guard)',
+      description: 'Demi integritas dan keamanan database, fitur AI SQL dibatasi secara ketat hanya untuk operasi BACA (Read-Only / SELECT). Perintah modifikasi seperti UPDATE, DELETE, DROP, TRUNCATE, dan INSERT diblokir.',
+      variant: 'warning'
+    });
+    return;
   }
 
+  aiGenerating.value = true;
+  const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
+  let generatedSql = '';
+
+  if (prompt.toLowerCase().includes('semua') || prompt.toLowerCase().includes('all')) {
+    generatedSql = `SELECT * FROM \`${targetTable}\` LIMIT ${pageSize.value};`;
+  } else if (prompt.toLowerCase().includes('hitung') || prompt.toLowerCase().includes('count') || prompt.toLowerCase().includes('jumlah')) {
+    generatedSql = `SELECT COUNT(*) AS total_count FROM \`${targetTable}\`;`;
+  } else {
+    generatedSql = `-- AI Generated (Read-Only): "${prompt}"\nSELECT * FROM \`${targetTable}\` ORDER BY 1 DESC LIMIT 50;`;
+  }
+
+  // Strict output validation guardrail
+  if (isMutationQuery(generatedSql)) {
+    await dialogStore.alert({
+      title: 'Query Ditolak oleh Guardrail',
+      description: 'Hasil query terdeteksi mengandung operasi perubahan data. Sistem memblokir eksekusi ini demi keamanan.',
+      variant: 'error'
+    });
+    aiGenerating.value = false;
+    return;
+  }
+
+  currentQueryText.value = generatedSql;
   aiGenerating.value = false;
   aiPrompt.value = '';
 }
