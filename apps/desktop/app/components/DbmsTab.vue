@@ -351,10 +351,10 @@
             class="w-full bg-[#07090e] border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 placeholder-slate-600 focus:outline-none focus:border-sky-500/80 resize-y leading-relaxed"
           ></textarea>
 
-          <!-- Floating IntelliSense Suggestions Box -->
+          <!-- Floating IntelliSense Suggestions Box (Positioned Below Textarea) -->
           <div
             v-if="showSuggestions && filteredSuggestions.length > 0"
-            class="absolute z-50 bg-[#121724] border border-sky-500/70 rounded-lg shadow-2xl overflow-hidden font-mono text-xs w-72 max-h-52 overflow-y-auto left-4 bottom-4"
+            class="absolute z-50 bg-[#121724] border border-sky-500/70 rounded-lg shadow-2xl overflow-hidden font-mono text-xs w-80 max-h-56 overflow-y-auto left-2 top-full mt-1"
           >
             <div class="px-2 py-1 bg-[#0b0e17] border-b border-boba-800 text-[10px] text-slate-400 font-sans flex items-center justify-between">
               <span>Saran IntelliSense (Tab / Enter)</span>
