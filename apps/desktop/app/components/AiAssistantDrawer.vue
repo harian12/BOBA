@@ -72,18 +72,28 @@
       </div>
     </div>
 
-    <!-- Target Server Bar -->
+    <!-- Target Server / Database Bar -->
     <div class="px-3 py-1.5 bg-boba-900/70 border-b border-boba-800 flex items-center justify-between text-[11px] text-slate-400">
-      <span class="text-[10px] uppercase font-mono text-slate-400 font-semibold tracking-wider">Target Server:</span>
+      <div class="flex items-center space-x-1.5 shrink-0">
+        <Icon :icon="isDbTarget ? 'lucide:database' : 'lucide:server'" :class="['w-3.5 h-3.5', isDbTarget ? 'text-indigo-400' : 'text-sky-400']" />
+        <span class="text-[10px] uppercase font-mono text-slate-400 font-semibold tracking-wider">Target:</span>
+      </div>
       <div class="flex-1 ml-2">
         <select
           v-model="aiStore.selectedSessionId"
           class="w-full bg-boba-950 border border-boba-800 text-sky-300 rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-boba-accent focus:ring-1 focus:ring-boba-accent/30 font-mono cursor-pointer transition"
         >
-          <option value="">-- Pilih Server Sesi SSH --</option>
-          <option v-for="s in availableSessions" :key="s.id" :value="s.id">
-            {{ s.name }} ({{ s.username }}@{{ s.host }})
-          </option>
+          <option value="">-- Pilih Target SSH / Database --</option>
+          <optgroup v-if="availableDatabases.length > 0" label="🗄️ Database Connections">
+            <option v-for="d in availableDatabases" :key="'db_' + d.id" :value="'db_' + d.id">
+              🗄️ {{ d.name }} ({{ d.engine.toUpperCase() }} • {{ d.host || 'localhost' }})
+            </option>
+          </optgroup>
+          <optgroup v-if="availableSessions.length > 0" label="💻 SSH Remote Sessions">
+            <option v-for="s in availableSessions" :key="s.id" :value="s.id">
+              💻 {{ s.name }} ({{ s.username }}@{{ s.host }})
+            </option>
+          </optgroup>
         </select>
       </div>
     </div>
@@ -242,12 +252,18 @@
         class="h-full flex flex-col items-center justify-center text-center space-y-4 px-4 py-8 text-slate-400"
       >
         <div class="w-12 h-12 rounded-xl bg-boba-900 border border-boba-800 flex items-center justify-center text-2xl shadow-lg">
-          ✨
+          <Icon :icon="isDbTarget ? 'lucide:database' : 'lucide:sparkles'" :class="isDbTarget ? 'text-indigo-400' : 'text-amber-400'" class="w-6 h-6" />
         </div>
         <div class="space-y-1">
-          <h4 class="font-bold text-slate-100 text-sm">BOBA AI Server Copilot</h4>
-          <p class="text-[11px] text-slate-400 leading-relaxed max-w-xs">
-            Perintahkan AI untuk mengecek log, memperbaiki konfigurasi Nginx/Apache, memantau metrik, atau menjalankan diagnosa di server target.
+          <h4 class="font-bold text-slate-100 text-sm">
+            {{ isDbTarget ? 'BOBA AI Database Copilot' : 'BOBA AI Server Copilot' }}
+          </h4>
+          <p class="text-[11px] text-slate-400 leading-relaxed max-w-xs font-sans">
+            {{
+              isDbTarget
+                ? `Terhubung ke Database "${currentTargetLabel}". Perintahkan AI untuk menganalisis query SQL, memeriksa skema tabel, atau mencari data.`
+                : 'Perintahkan AI untuk mengecek log, memperbaiki konfigurasi Nginx/Apache, memantau metrik, atau menjalankan diagnosa di server target.'
+            }}
           </p>
         </div>
 
@@ -258,7 +274,7 @@
             v-for="chip in starterChips"
             :key="chip"
             @click="handleSendChip(chip)"
-            class="w-full text-left p-2.5 rounded-lg bg-boba-900 border border-boba-800 hover:border-boba-accent/60 hover:bg-boba-850 text-slate-300 hover:text-white text-[11px] transition flex items-center space-x-2.5 shadow-sm group"
+            class="w-full text-left p-2.5 rounded-lg bg-boba-900 border border-boba-800 hover:border-boba-accent/60 hover:bg-boba-850 text-slate-300 hover:text-white text-[11px] transition flex items-center space-x-2.5 shadow-sm group font-sans"
           >
             <Icon icon="lucide:lightbulb" class="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
             <span class="truncate">{{ chip }}</span>
@@ -842,15 +858,6 @@ onMounted(() => {
   initWidth();
 });
 
-const starterChips = [
-  '🛡️ Audit Keamanan Server (SSH, Port, Firewall, Cron, Users)',
-  '🚨 Cek Percobaan Login Ilegal (Brute-Force SSH Attacks)',
-  'Cek status Nginx dan error log terakhir',
-  'Cek penggunaan CPU, RAM, dan kapasitas Disk',
-  'Diagnosa port terbuka dan aturan firewall (UFW)',
-  'Cek versi Node.js, PHP, Python, dan Docker yang terpasang',
-];
-
 const currentSelectedModel = computed(() => {
   return aiStore.activeProvider?.model || '';
 });
@@ -878,10 +885,59 @@ const availableSessions = computed(() => {
   return vaultStore.vault.sessions || [];
 });
 
-const selectedServerName = computed(() => {
+const availableDatabases = computed(() => {
+  return vaultStore.vault.databases || [];
+});
+
+const isDbTarget = computed(() => {
+  return Boolean(
+    aiStore.selectedSessionId?.startsWith('db_') ||
+    (!aiStore.selectedSessionId && sessionStore.activeTab?.type === 'dbms')
+  );
+});
+
+const currentTargetLabel = computed(() => {
+  if (isDbTarget.value) {
+    const rawId = aiStore.selectedSessionId?.replace(/^db_/, '');
+    const db = availableDatabases.value.find(d => d.id === rawId) || sessionStore.activeTab?.dbConnection;
+    return db ? `${db.name} (${db.engine.toUpperCase()})` : 'Database Aktif';
+  }
   const s = availableSessions.value.find(sess => sess.id === aiStore.selectedSessionId);
   return s ? `${s.name} (${s.username}@${s.host})` : 'Server';
 });
+
+const starterChips = computed(() => {
+  if (isDbTarget.value) {
+    return [
+      '📊 Inspeksi seluruh tabel & skema kolom database',
+      '🔍 Cari data user & jelaskan rincian akunnya',
+      '📈 Hitung jumlah baris & ringkasan tiap tabel',
+      '⚡ Cek relasi foreign key & keterkaitan tabel',
+      '🛡️ Cek kesehatan server & performa query database',
+    ];
+  }
+  return [
+    '🛡️ Audit Keamanan Server (SSH, Port, Firewall, Cron, Users)',
+    '🚨 Cek Percobaan Login Ilegal (Brute-Force SSH Attacks)',
+    'Cek status Nginx dan error log terakhir',
+    'Cek penggunaan CPU, RAM, dan kapasitas Disk',
+    'Diagnosa port terbuka dan aturan firewall (UFW)',
+    'Cek versi Node.js, PHP, Python, dan Docker yang terpasang',
+  ];
+});
+
+watch(
+  () => sessionStore.activeTab,
+  (activeTab) => {
+    if (!activeTab) return;
+    if (activeTab.type === 'dbms' && activeTab.dbConnection) {
+      aiStore.selectedSessionId = `db_${activeTab.dbConnection.id}`;
+    } else if (activeTab.type === 'terminal' && activeTab.sessionConfig) {
+      aiStore.selectedSessionId = activeTab.sessionConfig.id;
+    }
+  },
+  { immediate: true }
+);
 
 const currentMessages = computed(() => {
   const sid = aiStore.selectedSessionId || 'default';
@@ -1054,8 +1110,18 @@ function handleSend() {
   const text = promptInput.value.trim();
   if (!text || aiStore.isThinking) return;
   if (!aiStore.selectedSessionId) {
-    dialogStore.showToast('Silakan pilih Target Server terlebih dahulu', 'warning', 2500);
-    return;
+    if (sessionStore.activeTab?.type === 'dbms' && sessionStore.activeTab.dbConnection) {
+      aiStore.selectedSessionId = `db_${sessionStore.activeTab.dbConnection.id}`;
+    } else if (sessionStore.activeTab?.type === 'terminal' && sessionStore.activeTab.sessionConfig) {
+      aiStore.selectedSessionId = sessionStore.activeTab.sessionConfig.id;
+    } else if (availableDatabases.value.length > 0) {
+      aiStore.selectedSessionId = `db_${availableDatabases.value[0].id}`;
+    } else if (availableSessions.value.length > 0) {
+      aiStore.selectedSessionId = availableSessions.value[0].id;
+    } else {
+      dialogStore.showToast('Silakan pilih Target SSH Server atau Database terlebih dahulu', 'warning', 2500);
+      return;
+    }
   }
   promptInput.value = '';
   aiStore.sendMessage(text);
