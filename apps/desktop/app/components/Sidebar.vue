@@ -8,8 +8,8 @@
       <!-- Top Modes: Sessions / Databases / SFTP -->
       <div class="flex flex-col items-center space-y-2.5 w-full">
         <!-- Brand Logo -->
-        <div class="p-1 mb-1">
-          <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30" />
+        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.1.5 (Klik untuk cek update)">
+          <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30 hover:border-sky-400 transition" />
         </div>
 
         <!-- Mode 1: SSH Sessions / Terminal -->

@@ -4,6 +4,13 @@
     <header class="h-9 bg-boba-950 border-b border-boba-800 flex items-center justify-between px-3 text-xs shrink-0">
       <div class="flex items-center space-x-2">
         <span class="font-bold text-slate-300">BOBA</span>
+        <button
+          @click="isUpdateOpen = true"
+          title="Versi Aplikasi BOBA (Klik untuk cek pembaruan)"
+          class="px-1.5 py-0.2 bg-boba-900 hover:bg-boba-800 text-slate-400 hover:text-sky-300 border border-boba-750 rounded text-[10px] font-mono transition"
+        >
+          v0.1.5
+        </button>
         <span class="text-slate-600">|</span>
         <span class="text-slate-400 text-[11px]">Windows Remote Terminal & SFTP Suite</span>
       </div>
