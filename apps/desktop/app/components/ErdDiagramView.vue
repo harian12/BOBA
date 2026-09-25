@@ -66,16 +66,33 @@
           title="Tampilkan / Sembunyikan Garis Konektor Relasi SVG"
         >
           <Icon icon="lucide:link" class="w-3.5 h-3.5" />
-          <span>Garis Relasi: {{ showLines ? 'ON' : 'OFF' }}</span>
+          <span>Garis: {{ showLines ? 'ON' : 'OFF' }}</span>
         </button>
 
-        <!-- Search input -->
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Cari tabel di ERD..."
-          class="bg-boba-950 border border-boba-700 rounded px-2.5 py-0.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-44 font-mono"
-        />
+        <!-- Export Diagram Button -->
+        <button
+          @click="exportDiagramAsSvg"
+          title="Export ERD Diagram ke Gambar Vektor SVG"
+          class="px-2.5 py-1 bg-emerald-950/80 hover:bg-emerald-800 text-emerald-300 hover:text-white rounded text-xs transition flex items-center space-x-1.5 border border-emerald-700/60"
+        >
+          <Icon icon="lucide:download" class="w-3.5 h-3.5 text-emerald-400" />
+          <span>Export SVG</span>
+        </button>
+
+        <!-- Search with Quick Jump / Auto-Focus -->
+        <div class="relative flex items-center">
+          <input
+            v-model="searchQuery"
+            @keydown.enter="handleSearchEnter"
+            list="erd-tables-datalist"
+            type="text"
+            placeholder="Cari & Lompat ke tabel..."
+            class="bg-boba-950 border border-boba-700 focus:border-sky-500 rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-48 font-mono"
+          />
+          <datalist id="erd-tables-datalist">
+            <option v-for="t in tables" :key="t.name" :value="t.name" />
+          </datalist>
+        </div>
 
         <button
           @click="loadForeignKeys"
@@ -303,6 +320,94 @@ const filteredTables = computed(() => {
   const q = searchQuery.value.toLowerCase();
   return props.tables.filter(t => t.name.toLowerCase().includes(q));
 });
+
+function handleSearchEnter() {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return;
+  const match = props.tables.find(t => t.name.toLowerCase() === q) || props.tables.find(t => t.name.toLowerCase().includes(q));
+  if (match) {
+    focusTable(match.name);
+  }
+}
+
+function exportDiagramAsSvg() {
+  if (props.tables.length === 0) return;
+  const tbls = props.tables;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const cardWidth = 320;
+
+  tbls.forEach(t => {
+    const pos = getTablePos(t.name);
+    const cardH = 38 + t.columns.length * 24 + 10;
+    if (pos.x < minX) minX = pos.x;
+    if (pos.y < minY) minY = pos.y;
+    if (pos.x + cardWidth > maxX) maxX = pos.x + cardWidth;
+    if (pos.y + cardH > maxY) maxY = pos.y + cardH;
+  });
+
+  const padding = 60;
+  const width = Math.max(1200, maxX - minX + padding * 2);
+  const height = Math.max(800, maxY - minY + padding * 2);
+  const offsetX = minX - padding;
+  const offsetY = minY - padding;
+
+  let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${offsetX} ${offsetY} ${width} ${height}" width="${width}" height="${height}" style="background-color: #0b0f19; font-family: ui-monospace, monospace, sans-serif;">
+    <defs>
+      <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+        <circle cx="2" cy="2" r="1.2" fill="#1e293b" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+      </marker>
+    </defs>
+    <rect x="${offsetX}" y="${offsetY}" width="${width}" height="${height}" fill="#0b0f19" />
+    <rect x="${offsetX}" y="${offsetY}" width="${width}" height="${height}" fill="url(#grid)" />
+  `;
+
+  // Connector lines
+  for (const line of computedLines.value) {
+    svgContent += `  <path d="${line.d}" fill="none" stroke="#0284c7" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrow)" />\n`;
+  }
+
+  // Table cards
+  tbls.forEach(t => {
+    const pos = getTablePos(t.name);
+    const cardH = 38 + t.columns.length * 24 + 10;
+    
+    svgContent += `
+    <g transform="translate(${pos.x}, ${pos.y})">
+      <rect width="320" height="${cardH}" rx="10" fill="#111726" stroke="#334155" stroke-width="1.5" />
+      <path d="M 0 10 Q 0 0 10 0 L 310 0 Q 320 0 320 10 L 320 36 L 0 36 Z" fill="#141b2d" />
+      <line x1="0" y1="36" x2="320" y2="36" stroke="#334155" stroke-width="1" />
+      <text x="14" y="23" fill="#bae6fd" font-size="12" font-weight="bold">${t.name}</text>
+      <text x="306" y="23" fill="#64748b" font-size="10" text-anchor="end">${t.columns.length} cols</text>
+    `;
+
+    t.columns.forEach((c, idx) => {
+      const y = 56 + idx * 24;
+      const keyMarker = c.is_primary_key ? 'PK ' : (isFkColumn(t.name, c.name) ? 'FK ' : '• ');
+      const nameColor = c.is_primary_key ? '#fde68a' : (isFkColumn(t.name, c.name) ? '#7dd3fc' : '#cbd5e1');
+      svgContent += `
+      <text x="14" y="${y}" fill="${nameColor}" font-size="11">${keyMarker}${c.name}</text>
+      <text x="306" y="${y}" fill="#64748b" font-size="10" text-anchor="end">${formatDataType(c.data_type)}</text>
+      `;
+    });
+
+    svgContent += `    </g>\n`;
+  });
+
+  svgContent += `</svg>`;
+
+  const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `erd_${props.activeDb || 'diagram'}_${Date.now()}.svg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 function setZoom(val: number) {
   zoom.value = Math.min(2.0, Math.max(0.3, Math.round(val * 100) / 100));

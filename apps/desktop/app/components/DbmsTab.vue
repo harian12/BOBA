@@ -155,14 +155,15 @@
             v-for="(qTab, qIdx) in queryTabs"
             :key="qTab.id"
             @click="selectQueryTab(qTab)"
+            @dblclick="startRenameTab(qTab)"
             @mousedown.middle.prevent="closeQueryTab(qTab.id)"
             :class="[
-              'group flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[170px]',
+              'group flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[190px]',
               activeQueryTabId === qTab.id
                 ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
                 : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
             ]"
-            title="Klik untuk memilih, Ctrl+W atau Klik Tengah untuk menutup"
+            title="Klik untuk memilih, Double click untuk ubah nama, Ctrl+W atau Klik Tengah untuk menutup"
           >
             <svg v-if="qTab.tableName" class="w-3 h-3 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
@@ -170,7 +171,20 @@
             <svg v-else class="w-3 h-3 text-emerald-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span class="truncate text-[11px]">{{ qTab.title }}</span>
+
+            <!-- Inline Tab Rename Input -->
+            <input
+              v-if="editingTabId === qTab.id"
+              v-model="editingTabTitle"
+              @blur="saveRenameTab(qTab)"
+              @keydown.enter="saveRenameTab(qTab)"
+              @keydown.esc="editingTabId = null"
+              @click.stop
+              v-focus
+              class="bg-boba-950 border border-sky-500 rounded px-1 py-0.2 text-[11px] text-sky-200 focus:outline-none w-24 font-mono"
+            />
+            <span v-else class="truncate text-[11px]">{{ qTab.title }}</span>
+
             <button
               @click.stop="closeQueryTab(qTab.id)"
               title="Tutup tab query ini (Ctrl+W)"
@@ -1330,6 +1344,25 @@ const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
 
 const isSidebarCollapsed = ref(false);
+
+const editingTabId = ref<string | null>(null);
+const editingTabTitle = ref('');
+
+const vFocus = {
+  mounted: (el: HTMLElement) => el.focus()
+};
+
+function startRenameTab(qTab: SubQueryTab) {
+  editingTabId.value = qTab.id;
+  editingTabTitle.value = qTab.title;
+}
+
+function saveRenameTab(qTab: SubQueryTab) {
+  if (editingTabTitle.value.trim()) {
+    qTab.title = editingTabTitle.value.trim();
+  }
+  editingTabId.value = null;
+}
 
 const isImporterOpen = ref(false);
 const isProcesslistOpen = ref(false);
