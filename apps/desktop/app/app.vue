@@ -106,7 +106,7 @@
                 <!-- Close Tab Button -->
                 <button
                   @click.stop="handleCloseTab(tab)"
-                  title="Close Tab (Ctrl+W atau Klik Tengah)"
+                  :title="tab.type === 'dbms' ? 'Close DBMS Tab (Ctrl+Shift+W atau Klik Tengah)' : 'Close Tab (Ctrl+W atau Klik Tengah)'"
                   :class="[
                     'text-[10px] p-0.5 rounded transition',
                     sessionStore.activeTabId === tab.id
@@ -118,16 +118,6 @@
                 </button>
               </div>
             </div>
-
-            <!-- Quick Duplicate Active Session Button -->
-            <button
-              v-if="sessionStore.activeTabId"
-              @click="sessionStore.duplicateTab(sessionStore.activeTabId)"
-              title="Duplicate Current Session to New Tab"
-              class="px-2 py-1 ml-1 text-slate-400 hover:text-white hover:bg-boba-800 rounded text-xs transition"
-            >
-              +
-            </button>
 
             <!-- Empty State Tab Hint -->
             <div v-if="sessionStore.tabs.length === 0" class="px-3 text-xs text-slate-500 font-mono">
@@ -623,13 +613,22 @@ function handleKeyDown(e: KeyboardEvent) {
   } else if (e.altKey && e.key === 'ArrowLeft') {
     e.preventDefault();
     sessionStore.prevTab();
-  } else if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) {
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
     if (!isSyncOpen.value && !isKeyManagerOpen.value && !isNewSessionOpen.value) {
       if (sessionStore.activeTabId) {
         e.preventDefault();
         const curTab = sessionStore.tabs.find(t => t.id === sessionStore.activeTabId);
         if (curTab) {
-          handleCloseTab(curTab);
+          if (e.shiftKey) {
+            // Ctrl+Shift+W: Selalu menutup tab sesi utama teratas (termasuk sesi DBMS)
+            handleCloseTab(curTab);
+          } else if (curTab.type === 'dbms') {
+            // Ctrl+W di DBMS: Menutup sub-tab query SQL yang sedang aktif di DBMS
+            window.dispatchEvent(new CustomEvent('boba:dbms-close-subtab', { detail: { tabId: curTab.id } }));
+          } else {
+            // Ctrl+W di luar DBMS (SSH, SFTP, File): Menutup tab sesi utama
+            handleCloseTab(curTab);
+          }
         }
       }
     }

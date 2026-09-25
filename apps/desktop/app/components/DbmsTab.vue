@@ -155,12 +155,14 @@
             v-for="(qTab, qIdx) in queryTabs"
             :key="qTab.id"
             @click="selectQueryTab(qTab)"
+            @mousedown.middle.prevent="closeQueryTab(qTab.id)"
             :class="[
-              'flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[170px]',
+              'group flex items-center space-x-1.5 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1 max-w-[170px]',
               activeQueryTabId === qTab.id
                 ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
                 : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
             ]"
+            title="Klik untuk memilih, Ctrl+W atau Klik Tengah untuk menutup"
           >
             <svg v-if="qTab.tableName" class="w-3 h-3 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
@@ -170,9 +172,9 @@
             </svg>
             <span class="truncate text-[11px]">{{ qTab.title }}</span>
             <button
-              v-if="queryTabs.length > 1"
               @click.stop="closeQueryTab(qTab.id)"
-              class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition ml-1 shrink-0"
+              title="Tutup tab query ini (Ctrl+W)"
+              class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition ml-1 shrink-0 opacity-0 group-hover:opacity-100 hover:bg-boba-800 p-0.5"
             >
               ✕
             </button>
@@ -1308,7 +1310,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
@@ -2607,7 +2609,17 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+function handleCloseSubTabEvent(e: any) {
+  if (e.detail?.tabId && e.detail.tabId !== props.tab.id) return;
+  closeQueryTab(activeQueryTabId.value);
+}
+
 onMounted(() => {
   loadSchemaOverview();
+  window.addEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
 });
 </script>
