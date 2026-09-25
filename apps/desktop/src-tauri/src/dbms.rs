@@ -49,6 +49,7 @@ pub struct DbSchemaOverview {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DbQueryResult {
+    pub statement: Option<String>,
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
     pub affected_rows: u64,
@@ -84,6 +85,46 @@ pub struct DbmsManager {
     _mysql_pools: Arc<Mutex<HashMap<String, sqlx::MySqlPool>>>,
     _pg_pools: Arc<Mutex<HashMap<String, sqlx::PgPool>>>,
     _sqlite_pools: Arc<Mutex<HashMap<String, sqlx::SqlitePool>>>,
+}
+
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut in_backtick = false;
+
+    for c in sql.chars() {
+        if c == '\'' && !in_double_quote && !in_backtick {
+            in_single_quote = !in_single_quote;
+            current.push(c);
+        } else if c == '"' && !in_single_quote && !in_backtick {
+            in_double_quote = !in_double_quote;
+            current.push(c);
+        } else if c == '`' && !in_single_quote && !in_double_quote {
+            in_backtick = !in_backtick;
+            current.push(c);
+        } else if c == ';' && !in_single_quote && !in_double_quote && !in_backtick {
+            let stmt = current.trim().to_string();
+            if !stmt.is_empty() {
+                statements.push(stmt);
+            }
+            current.clear();
+        } else {
+            current.push(c);
+        }
+    }
+
+    let leftover = current.trim().to_string();
+    if !leftover.is_empty() {
+        statements.push(leftover);
+    }
+
+    if statements.is_empty() && !sql.trim().is_empty() {
+        statements.push(sql.trim().to_string());
+    }
+
+    statements
 }
 
 impl DbmsManager {
@@ -529,9 +570,13 @@ impl DbmsManager {
         config: &DbConnectionConfig,
         selected_db: Option<String>,
         query: &str,
-    ) -> Result<DbQueryResult, String> {
-        let start = Instant::now();
-        let trimmed = query.trim();
+    ) -> Result<Vec<DbQueryResult>, String> {
+        let statements = split_sql_statements(query);
+        if statements.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut results = Vec::new();
 
         match config.engine.to_lowercase().as_str() {
             "mysql" | "mariadb" => {
@@ -550,98 +595,106 @@ impl DbmsManager {
                     let _ = sqlx::query(&format!("USE `{}`", db)).execute(&pool).await;
                 }
 
-                let is_select = trimmed.to_uppercase().starts_with("SELECT")
-                    || trimmed.to_uppercase().starts_with("SHOW")
-                    || trimmed.to_uppercase().starts_with("DESCRIBE")
-                    || trimmed.to_uppercase().starts_with("EXPLAIN");
+                for stmt in statements {
+                    let start = Instant::now();
+                    let trimmed = stmt.trim();
+                    let is_select = trimmed.to_uppercase().starts_with("SELECT")
+                        || trimmed.to_uppercase().starts_with("SHOW")
+                        || trimmed.to_uppercase().starts_with("DESCRIBE")
+                        || trimmed.to_uppercase().starts_with("EXPLAIN");
 
-                if is_select {
-                    use sqlx::Row;
-                    let rows = sqlx::query(trimmed)
-                        .fetch_all(&pool)
-                        .await
-                        .map_err(|e| format!("Query error: {}", e))?;
+                    if is_select {
+                        use sqlx::Row;
+                        let rows = sqlx::query(trimmed)
+                            .fetch_all(&pool)
+                            .await
+                            .map_err(|e| format!("Query error on '{}': {}", trimmed, e))?;
 
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
+                        let execution_time_ms = start.elapsed().as_millis() as u64;
 
-                    if rows.is_empty() {
-                        pool.close().await;
-                        return Ok(DbQueryResult {
-                            columns: vec![],
-                            rows: vec![],
+                        if rows.is_empty() {
+                            results.push(DbQueryResult {
+                                statement: Some(trimmed.to_string()),
+                                columns: vec![],
+                                rows: vec![],
+                                affected_rows: 0,
+                                execution_time_ms,
+                                error: None,
+                            });
+                            continue;
+                        }
+
+                        use sqlx::Column;
+                        let first_row = &rows[0];
+                        let columns: Vec<String> = first_row.columns().iter().map(|c| c.name().to_string()).collect();
+
+                        let mut json_rows = Vec::new();
+                        for r in rows {
+                            let mut row_vals = Vec::new();
+                            for (idx, _col) in r.columns().iter().enumerate() {
+                                let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
+                                    Value::String(s)
+                                } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
+                                    Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+                                    Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
+                                    Value::String(d.format("%Y-%m-%d").to_string())
+                                } else if let Ok(t) = r.try_get::<chrono::NaiveTime, _>(idx) {
+                                    Value::String(t.format("%H:%M:%S").to_string())
+                                } else if let Ok(i) = r.try_get::<i64, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i32, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(u) = r.try_get::<u64, _>(idx) {
+                                    Value::Number(u.into())
+                                } else if let Ok(f) = r.try_get::<f64, _>(idx) {
+                                    serde_json::Number::from_f64(f)
+                                        .map(Value::Number)
+                                        .unwrap_or(Value::Null)
+                                } else if let Ok(b) = r.try_get::<bool, _>(idx) {
+                                    Value::Bool(b)
+                                } else if let Ok(json_v) = r.try_get::<serde_json::Value, _>(idx) {
+                                    json_v
+                                } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
+                                    Value::String(String::from_utf8_lossy(&bytes).to_string())
+                                } else {
+                                    Value::Null
+                                };
+                                row_vals.push(val);
+                            }
+                            json_rows.push(row_vals);
+                        }
+
+                        results.push(DbQueryResult {
+                            statement: Some(trimmed.to_string()),
+                            columns,
+                            rows: json_rows,
                             affected_rows: 0,
                             execution_time_ms,
                             error: None,
                         });
+                    } else {
+                        let res = sqlx::query(trimmed)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| format!("Execution error on '{}': {}", trimmed, e))?;
+
+                        let execution_time_ms = start.elapsed().as_millis() as u64;
+
+                        results.push(DbQueryResult {
+                            statement: Some(trimmed.to_string()),
+                            columns: vec![],
+                            rows: vec![],
+                            affected_rows: res.rows_affected(),
+                            execution_time_ms,
+                            error: None,
+                        });
                     }
-
-                    use sqlx::Column;
-                    let first_row = &rows[0];
-                    let columns: Vec<String> = first_row.columns().iter().map(|c| c.name().to_string()).collect();
-
-                    let mut json_rows = Vec::new();
-                    for r in rows {
-                        let mut row_vals = Vec::new();
-                        for (idx, _col) in r.columns().iter().enumerate() {
-                            let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
-                                Value::String(s)
-                            } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
-                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
-                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
-                                Value::String(d.format("%Y-%m-%d").to_string())
-                            } else if let Ok(t) = r.try_get::<chrono::NaiveTime, _>(idx) {
-                                Value::String(t.format("%H:%M:%S").to_string())
-                            } else if let Ok(i) = r.try_get::<i64, _>(idx) {
-                                Value::Number(i.into())
-                            } else if let Ok(i) = r.try_get::<i32, _>(idx) {
-                                Value::Number(i.into())
-                            } else if let Ok(u) = r.try_get::<u64, _>(idx) {
-                                Value::Number(u.into())
-                            } else if let Ok(f) = r.try_get::<f64, _>(idx) {
-                                serde_json::Number::from_f64(f)
-                                    .map(Value::Number)
-                                    .unwrap_or(Value::Null)
-                            } else if let Ok(b) = r.try_get::<bool, _>(idx) {
-                                Value::Bool(b)
-                            } else if let Ok(json_v) = r.try_get::<serde_json::Value, _>(idx) {
-                                json_v
-                            } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
-                                Value::String(String::from_utf8_lossy(&bytes).to_string())
-                            } else {
-                                Value::Null
-                            };
-                            row_vals.push(val);
-                        }
-                        json_rows.push(row_vals);
-                    }
-
-                    pool.close().await;
-                    Ok(DbQueryResult {
-                        columns,
-                        rows: json_rows,
-                        affected_rows: 0,
-                        execution_time_ms,
-                        error: None,
-                    })
-                } else {
-                    let res = sqlx::query(trimmed)
-                        .execute(&pool)
-                        .await
-                        .map_err(|e| format!("Execution error: {}", e))?;
-
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
-                    pool.close().await;
-
-                    Ok(DbQueryResult {
-                        columns: vec![],
-                        rows: vec![],
-                        affected_rows: res.rows_affected(),
-                        execution_time_ms,
-                        error: None,
-                    })
                 }
+
+                pool.close().await;
+                Ok(results)
             }
             "postgres" | "postgresql" => {
                 let mut cfg = config.clone();
@@ -655,100 +708,108 @@ impl DbmsManager {
                     .await
                     .map_err(|e| format!("PostgreSQL connection error: {}", e))?;
 
-                let is_select = trimmed.to_uppercase().starts_with("SELECT")
-                    || trimmed.to_uppercase().starts_with("SHOW")
-                    || trimmed.to_uppercase().starts_with("EXPLAIN")
-                    || trimmed.to_uppercase().starts_with("WITH");
+                for stmt in statements {
+                    let start = Instant::now();
+                    let trimmed = stmt.trim();
+                    let is_select = trimmed.to_uppercase().starts_with("SELECT")
+                        || trimmed.to_uppercase().starts_with("SHOW")
+                        || trimmed.to_uppercase().starts_with("EXPLAIN")
+                        || trimmed.to_uppercase().starts_with("WITH");
 
-                if is_select {
-                    use sqlx::Row;
-                    let rows = sqlx::query(trimmed)
-                        .fetch_all(&pool)
-                        .await
-                        .map_err(|e| format!("Query error: {}", e))?;
+                    if is_select {
+                        use sqlx::Row;
+                        let rows = sqlx::query(trimmed)
+                            .fetch_all(&pool)
+                            .await
+                            .map_err(|e| format!("Query error on '{}': {}", trimmed, e))?;
 
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
+                        let execution_time_ms = start.elapsed().as_millis() as u64;
 
-                    if rows.is_empty() {
-                        pool.close().await;
-                        return Ok(DbQueryResult {
-                            columns: vec![],
-                            rows: vec![],
+                        if rows.is_empty() {
+                            results.push(DbQueryResult {
+                                statement: Some(trimmed.to_string()),
+                                columns: vec![],
+                                rows: vec![],
+                                affected_rows: 0,
+                                execution_time_ms,
+                                error: None,
+                            });
+                            continue;
+                        }
+
+                        use sqlx::Column;
+                        let first_row = &rows[0];
+                        let columns: Vec<String> = first_row.columns().iter().map(|c| c.name().to_string()).collect();
+
+                        let mut json_rows = Vec::new();
+                        for r in rows {
+                            let mut row_vals = Vec::new();
+                            for (idx, _col) in r.columns().iter().enumerate() {
+                                let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
+                                    Value::String(s)
+                                } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+                                    Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
+                                    Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
+                                    Value::String(d.format("%Y-%m-%d").to_string())
+                                } else if let Ok(t) = r.try_get::<chrono::NaiveTime, _>(idx) {
+                                    Value::String(t.format("%H:%M:%S").to_string())
+                                } else if let Ok(u) = r.try_get::<uuid::Uuid, _>(idx) {
+                                    Value::String(u.to_string())
+                                } else if let Ok(i) = r.try_get::<i64, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i32, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i16, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(f) = r.try_get::<f64, _>(idx) {
+                                    serde_json::Number::from_f64(f)
+                                        .map(Value::Number)
+                                        .unwrap_or(Value::Null)
+                                } else if let Ok(b) = r.try_get::<bool, _>(idx) {
+                                    Value::Bool(b)
+                                } else if let Ok(json_v) = r.try_get::<serde_json::Value, _>(idx) {
+                                    json_v
+                                } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
+                                    Value::String(String::from_utf8_lossy(&bytes).to_string())
+                                } else {
+                                    Value::Null
+                                };
+                                row_vals.push(val);
+                            }
+                            json_rows.push(row_vals);
+                        }
+
+                        results.push(DbQueryResult {
+                            statement: Some(trimmed.to_string()),
+                            columns,
+                            rows: json_rows,
                             affected_rows: 0,
                             execution_time_ms,
                             error: None,
                         });
+                    } else {
+                        let res = sqlx::query(trimmed)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| format!("Execution error on '{}': {}", trimmed, e))?;
+
+                        let execution_time_ms = start.elapsed().as_millis() as u64;
+
+                        results.push(DbQueryResult {
+                            statement: Some(trimmed.to_string()),
+                            columns: vec![],
+                            rows: vec![],
+                            affected_rows: res.rows_affected(),
+                            execution_time_ms,
+                            error: None,
+                        });
                     }
-
-                    use sqlx::Column;
-                    let first_row = &rows[0];
-                    let columns: Vec<String> = first_row.columns().iter().map(|c| c.name().to_string()).collect();
-
-                    let mut json_rows = Vec::new();
-                    for r in rows {
-                        let mut row_vals = Vec::new();
-                        for (idx, _col) in r.columns().iter().enumerate() {
-                            let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
-                                Value::String(s)
-                            } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
-                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
-                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
-                                Value::String(d.format("%Y-%m-%d").to_string())
-                            } else if let Ok(t) = r.try_get::<chrono::NaiveTime, _>(idx) {
-                                Value::String(t.format("%H:%M:%S").to_string())
-                            } else if let Ok(u) = r.try_get::<uuid::Uuid, _>(idx) {
-                                Value::String(u.to_string())
-                            } else if let Ok(i) = r.try_get::<i64, _>(idx) {
-                                Value::Number(i.into())
-                            } else if let Ok(i) = r.try_get::<i32, _>(idx) {
-                                Value::Number(i.into())
-                            } else if let Ok(i) = r.try_get::<i16, _>(idx) {
-                                Value::Number(i.into())
-                            } else if let Ok(f) = r.try_get::<f64, _>(idx) {
-                                serde_json::Number::from_f64(f)
-                                    .map(Value::Number)
-                                    .unwrap_or(Value::Null)
-                            } else if let Ok(b) = r.try_get::<bool, _>(idx) {
-                                Value::Bool(b)
-                            } else if let Ok(json_v) = r.try_get::<serde_json::Value, _>(idx) {
-                                json_v
-                            } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
-                                Value::String(String::from_utf8_lossy(&bytes).to_string())
-                            } else {
-                                Value::Null
-                            };
-                            row_vals.push(val);
-                        }
-                        json_rows.push(row_vals);
-                    }
-
-                    pool.close().await;
-                    Ok(DbQueryResult {
-                        columns,
-                        rows: json_rows,
-                        affected_rows: 0,
-                        execution_time_ms,
-                        error: None,
-                    })
-                } else {
-                    let res = sqlx::query(trimmed)
-                        .execute(&pool)
-                        .await
-                        .map_err(|e| format!("Execution error: {}", e))?;
-
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
-                    pool.close().await;
-
-                    Ok(DbQueryResult {
-                        columns: vec![],
-                        rows: vec![],
-                        affected_rows: res.rows_affected(),
-                        execution_time_ms,
-                        error: None,
-                    })
                 }
+
+                pool.close().await;
+                Ok(results)
             }
             "sqlite" => {
                 let path = config
@@ -762,89 +823,97 @@ impl DbmsManager {
                     .await
                     .map_err(|e| format!("SQLite connection error: {}", e))?;
 
-                let is_select = trimmed.to_uppercase().starts_with("SELECT")
-                    || trimmed.to_uppercase().starts_with("PRAGMA")
-                    || trimmed.to_uppercase().starts_with("EXPLAIN");
+                for stmt in statements {
+                    let start = Instant::now();
+                    let trimmed = stmt.trim();
+                    let is_select = trimmed.to_uppercase().starts_with("SELECT")
+                        || trimmed.to_uppercase().starts_with("PRAGMA")
+                        || trimmed.to_uppercase().starts_with("EXPLAIN");
 
-                if is_select {
-                    use sqlx::Row;
-                    let rows = sqlx::query(trimmed)
-                        .fetch_all(&pool)
-                        .await
-                        .map_err(|e| format!("Query error: {}", e))?;
+                    if is_select {
+                        use sqlx::Row;
+                        let rows = sqlx::query(trimmed)
+                            .fetch_all(&pool)
+                            .await
+                            .map_err(|e| format!("Query error on '{}': {}", trimmed, e))?;
 
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
+                        let execution_time_ms = start.elapsed().as_millis() as u64;
 
-                    if rows.is_empty() {
-                        pool.close().await;
-                        return Ok(DbQueryResult {
-                            columns: vec![],
-                            rows: vec![],
+                        if rows.is_empty() {
+                            results.push(DbQueryResult {
+                                statement: Some(trimmed.to_string()),
+                                columns: vec![],
+                                rows: vec![],
+                                affected_rows: 0,
+                                execution_time_ms,
+                                error: None,
+                            });
+                            continue;
+                        }
+
+                        use sqlx::Column;
+                        let first_row = &rows[0];
+                        let columns: Vec<String> = first_row.columns().iter().map(|c| c.name().to_string()).collect();
+
+                        let mut json_rows = Vec::new();
+                        for r in rows {
+                            let mut row_vals = Vec::new();
+                            for (idx, _col) in r.columns().iter().enumerate() {
+                                let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
+                                    Value::String(s)
+                                } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
+                                    Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
+                                    Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
+                                    Value::String(d.format("%Y-%m-%d").to_string())
+                                } else if let Ok(i) = r.try_get::<i64, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(f) = r.try_get::<f64, _>(idx) {
+                                    serde_json::Number::from_f64(f)
+                                        .map(Value::Number)
+                                        .unwrap_or(Value::Null)
+                                } else if let Ok(b) = r.try_get::<bool, _>(idx) {
+                                    Value::Bool(b)
+                                } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
+                                    Value::String(String::from_utf8_lossy(&bytes).to_string())
+                                } else {
+                                    Value::Null
+                                };
+                                row_vals.push(val);
+                            }
+                            json_rows.push(row_vals);
+                        }
+
+                        results.push(DbQueryResult {
+                            statement: Some(trimmed.to_string()),
+                            columns,
+                            rows: json_rows,
                             affected_rows: 0,
                             execution_time_ms,
                             error: None,
                         });
+                    } else {
+                        let res = sqlx::query(trimmed)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| format!("Execution error on '{}': {}", trimmed, e))?;
+
+                        let execution_time_ms = start.elapsed().as_millis() as u64;
+
+                        results.push(DbQueryResult {
+                            statement: Some(trimmed.to_string()),
+                            columns: vec![],
+                            rows: vec![],
+                            affected_rows: res.rows_affected(),
+                            execution_time_ms,
+                            error: None,
+                        });
                     }
-
-                    use sqlx::Column;
-                    let first_row = &rows[0];
-                    let columns: Vec<String> = first_row.columns().iter().map(|c| c.name().to_string()).collect();
-
-                    let mut json_rows = Vec::new();
-                    for r in rows {
-                        let mut row_vals = Vec::new();
-                        for (idx, _col) in r.columns().iter().enumerate() {
-                            let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
-                                Value::String(s)
-                            } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
-                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
-                                Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                            } else if let Ok(d) = r.try_get::<chrono::NaiveDate, _>(idx) {
-                                Value::String(d.format("%Y-%m-%d").to_string())
-                            } else if let Ok(i) = r.try_get::<i64, _>(idx) {
-                                Value::Number(i.into())
-                            } else if let Ok(f) = r.try_get::<f64, _>(idx) {
-                                serde_json::Number::from_f64(f)
-                                    .map(Value::Number)
-                                    .unwrap_or(Value::Null)
-                            } else if let Ok(b) = r.try_get::<bool, _>(idx) {
-                                Value::Bool(b)
-                            } else if let Ok(bytes) = r.try_get::<Vec<u8>, _>(idx) {
-                                Value::String(String::from_utf8_lossy(&bytes).to_string())
-                            } else {
-                                Value::Null
-                            };
-                            row_vals.push(val);
-                        }
-                        json_rows.push(row_vals);
-                    }
-
-                    pool.close().await;
-                    Ok(DbQueryResult {
-                        columns,
-                        rows: json_rows,
-                        affected_rows: 0,
-                        execution_time_ms,
-                        error: None,
-                    })
-                } else {
-                    let res = sqlx::query(trimmed)
-                        .execute(&pool)
-                        .await
-                        .map_err(|e| format!("Execution error: {}", e))?;
-
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
-                    pool.close().await;
-
-                    Ok(DbQueryResult {
-                        columns: vec![],
-                        rows: vec![],
-                        affected_rows: res.rows_affected(),
-                        execution_time_ms,
-                        error: None,
-                    })
                 }
+
+                pool.close().await;
+                Ok(results)
             }
             "redis" => {
                 let host = config.host.as_deref().unwrap_or("127.0.0.1");
@@ -862,84 +931,97 @@ impl DbmsManager {
                     .await
                     .map_err(|e| format!("Redis connection failed: {}", e))?;
 
-                let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                if parts.is_empty() {
-                    return Err("Query kosong".to_string());
-                }
-
-                let cmd_name = parts[0].to_uppercase();
-                let mut cmd = redis::cmd(&cmd_name);
-                for arg in &parts[1..] {
-                    cmd.arg(*arg);
-                }
-
-                let raw_val: redis::Value = cmd
-                    .query_async(&mut conn)
-                    .await
-                    .map_err(|e| format!("Redis command error: {}", e))?;
-
-                let execution_time_ms = start.elapsed().as_millis() as u64;
-
-                fn redis_val_to_json(v: redis::Value) -> Value {
-                    match v {
-                        redis::Value::Nil => Value::Null,
-                        redis::Value::Int(i) => Value::Number(i.into()),
-                        redis::Value::BulkString(bytes) => {
-                            Value::String(String::from_utf8_lossy(&bytes).to_string())
-                        }
-                        redis::Value::SimpleString(s) => Value::String(s),
-                        redis::Value::Array(items) => {
-                            Value::Array(items.into_iter().map(redis_val_to_json).collect())
-                        }
-                        redis::Value::Map(pairs) => {
-                            let mut map = serde_json::Map::new();
-                            for (k, val) in pairs {
-                                let key_str = match k {
-                                    redis::Value::SimpleString(s) => s,
-                                    redis::Value::BulkString(b) => String::from_utf8_lossy(&b).to_string(),
-                                    other => format!("{:?}", other),
-                                };
-                                map.insert(key_str, redis_val_to_json(val));
-                            }
-                            Value::Object(map)
-                        }
-                        redis::Value::Set(items) => {
-                            Value::Array(items.into_iter().map(redis_val_to_json).collect())
-                        }
-                        redis::Value::Double(f) => {
-                            serde_json::Number::from_f64(f)
-                                .map(Value::Number)
-                                .unwrap_or(Value::Null)
-                        }
-                        redis::Value::Boolean(b) => Value::Bool(b),
-                        redis::Value::VerbatimString { text, .. } => Value::String(text),
-                        redis::Value::Okay => Value::String("OK".to_string()),
-                        other => Value::String(format!("{:?}", other)),
+                for stmt in statements {
+                    let start = Instant::now();
+                    let trimmed = stmt.trim();
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    if parts.is_empty() {
+                        continue;
                     }
+
+                    let cmd_name = parts[0].to_uppercase();
+                    let mut cmd = redis::cmd(&cmd_name);
+                    for arg in &parts[1..] {
+                        cmd.arg(*arg);
+                    }
+
+                    let raw_val: redis::Value = cmd
+                        .query_async(&mut conn)
+                        .await
+                        .map_err(|e| format!("Redis command error on '{}': {}", trimmed, e))?;
+
+                    let execution_time_ms = start.elapsed().as_millis() as u64;
+
+                    fn redis_val_to_json(v: redis::Value) -> Value {
+                        match v {
+                            redis::Value::Nil => Value::Null,
+                            redis::Value::Int(i) => Value::Number(i.into()),
+                            redis::Value::BulkString(bytes) => {
+                                Value::String(String::from_utf8_lossy(&bytes).to_string())
+                            }
+                            redis::Value::SimpleString(s) => Value::String(s),
+                            redis::Value::Array(items) => {
+                                Value::Array(items.into_iter().map(redis_val_to_json).collect())
+                            }
+                            redis::Value::Map(pairs) => {
+                                let mut map = serde_json::Map::new();
+                                for (k, val) in pairs {
+                                    let key_str = match k {
+                                        redis::Value::SimpleString(s) => s,
+                                        redis::Value::BulkString(b) => String::from_utf8_lossy(&b).to_string(),
+                                        other => format!("{:?}", other),
+                                    };
+                                    map.insert(key_str, redis_val_to_json(val));
+                                }
+                                Value::Object(map)
+                            }
+                            redis::Value::Set(items) => {
+                                Value::Array(items.into_iter().map(redis_val_to_json).collect())
+                            }
+                            redis::Value::Double(f) => {
+                                serde_json::Number::from_f64(f)
+                                    .map(Value::Number)
+                                    .unwrap_or(Value::Null)
+                            }
+                            redis::Value::Boolean(b) => Value::Bool(b),
+                            redis::Value::VerbatimString { text, .. } => Value::String(text),
+                            redis::Value::Okay => Value::String("OK".to_string()),
+                            other => Value::String(format!("{:?}", other)),
+                        }
+                    }
+
+                    let json_res = redis_val_to_json(raw_val);
+
+                    results.push(DbQueryResult {
+                        statement: Some(trimmed.to_string()),
+                        columns: vec!["Result".to_string()],
+                        rows: vec![vec![json_res]],
+                        affected_rows: 0,
+                        execution_time_ms,
+                        error: None,
+                    });
                 }
 
-                let json_res = redis_val_to_json(raw_val);
-
-                Ok(DbQueryResult {
-                    columns: vec!["Result".to_string()],
-                    rows: vec![vec![json_res]],
-                    affected_rows: 0,
-                    execution_time_ms,
-                    error: None,
-                })
+                Ok(results)
             }
             "mongodb" => {
-                let execution_time_ms = start.elapsed().as_millis() as u64;
-                Ok(DbQueryResult {
-                    columns: vec!["Result".to_string()],
-                    rows: vec![vec![Value::String(format!(
-                        "MongoDB query executed: {}",
-                        trimmed
-                    ))]],
-                    affected_rows: 0,
-                    execution_time_ms,
-                    error: None,
-                })
+                for stmt in statements {
+                    let start = Instant::now();
+                    let trimmed = stmt.trim();
+                    let execution_time_ms = start.elapsed().as_millis() as u64;
+                    results.push(DbQueryResult {
+                        statement: Some(trimmed.to_string()),
+                        columns: vec!["Result".to_string()],
+                        rows: vec![vec![Value::String(format!(
+                            "MongoDB query executed: {}",
+                            trimmed
+                        ))]],
+                        affected_rows: 0,
+                        execution_time_ms,
+                        error: None,
+                    });
+                }
+                Ok(results)
             }
             other => Err(format!("Engine {} tidak didukung", other)),
         }

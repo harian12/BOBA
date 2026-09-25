@@ -12,7 +12,7 @@ export const tauriBridge = {
     return await invoke('dbms_get_schema_overview', { config, selectedDb: selectedDb || null });
   },
 
-  async dbmsExecuteQuery(config: DbConnectionConfig, selectedDb: string | undefined, query: string): Promise<DbQueryResult> {
+  async dbmsExecuteQuery(config: DbConnectionConfig, selectedDb: string | undefined, query: string): Promise<DbQueryResult[]> {
     return await invoke('dbms_execute_query', { config, selectedDb: selectedDb || null, query });
   },
 

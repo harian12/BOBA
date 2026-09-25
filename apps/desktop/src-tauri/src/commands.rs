@@ -956,7 +956,7 @@ pub async fn dbms_execute_query(
     config: crate::dbms::DbConnectionConfig,
     selected_db: Option<String>,
     query: String,
-) -> Result<crate::dbms::DbQueryResult, String> {
+) -> Result<Vec<crate::dbms::DbQueryResult>, String> {
     state.dbms_manager.execute_query(&config, selected_db, &query).await
 }
 

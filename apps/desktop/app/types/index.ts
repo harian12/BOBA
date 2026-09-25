@@ -115,6 +115,7 @@ export interface DbSchemaOverview {
 }
 
 export interface DbQueryResult {
+  statement?: string;
   columns: string[];
   rows: any[][];
   affected_rows: number;

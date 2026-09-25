@@ -326,6 +326,33 @@
           </div>
         </div>
 
+        <!-- Multi-Query Result Set Switcher Bar -->
+        <div
+          v-if="queryResults.length > 1 && activeViewTab === 'data'"
+          class="px-3 py-1.5 bg-[#141a29] border-b border-boba-800 flex items-center space-x-2 text-xs font-mono select-none overflow-x-auto shrink-0 shadow-inner"
+        >
+          <span class="text-[11px] text-slate-400 font-sans font-bold shrink-0">Hasil Query ({{ queryResults.length }} Query):</span>
+          <button
+            v-for="(res, rIdx) in queryResults"
+            :key="rIdx"
+            @click="activeResultIndex = rIdx"
+            :class="[
+              'px-2.5 py-1 rounded text-xs transition flex items-center space-x-1.5 shrink-0 border font-mono',
+              activeResultIndex === rIdx
+                ? 'bg-sky-600 text-white font-bold border-sky-400 shadow-md ring-1 ring-sky-300/50'
+                : 'bg-boba-950 text-slate-400 hover:text-slate-200 border-boba-800 hover:bg-boba-850'
+            ]"
+          >
+            <span>Result {{ rIdx + 1 }}</span>
+            <span class="text-[10px] text-sky-200 font-sans" v-if="res.rows && res.rows.length > 0">
+              ({{ res.rows.length }} baris)
+            </span>
+            <span class="text-[10px] text-emerald-200 font-sans" v-else-if="res.affected_rows > 0">
+              ({{ res.affected_rows }} affected)
+            </span>
+          </button>
+        </div>
+
         <!-- Fitur 1: Visual Multi-Filter Bar with Per-Condition AND / OR -->
         <div
           v-if="activeTable && activeViewTab === 'data' && activeTable.columns.length > 0"
@@ -1162,7 +1189,8 @@ interface SubQueryTab {
   tableName?: string;
   text: string;
   showQueryEditor: boolean;
-  queryResult: DbQueryResult | null;
+  queryResults: DbQueryResult[];
+  activeResultIndex: number;
   activeTable: DbTableMeta | null;
   currentPage: number;
   pageSize: number;
@@ -1188,7 +1216,8 @@ function createDefaultTab(
     tableName,
     text,
     showQueryEditor,
-    queryResult: null,
+    queryResults: [],
+    activeResultIndex: 0,
     activeTable: targetTable,
     currentPage: 1,
     pageSize: 100,
@@ -1240,10 +1269,40 @@ const activeTable = computed({
   },
 });
 
+const queryResults = computed({
+  get: () => activeQueryTab.value?.queryResults || [],
+  set: (val: DbQueryResult[]) => {
+    if (activeQueryTab.value) activeQueryTab.value.queryResults = val;
+  },
+});
+
+const activeResultIndex = computed({
+  get: () => activeQueryTab.value?.activeResultIndex || 0,
+  set: (val: number) => {
+    if (activeQueryTab.value) activeQueryTab.value.activeResultIndex = val;
+  },
+});
+
 const queryResult = computed({
-  get: () => activeQueryTab.value?.queryResult || null,
+  get: () => {
+    const list = queryResults.value;
+    if (!list || list.length === 0) return null;
+    const idx = Math.min(Math.max(0, activeResultIndex.value), list.length - 1);
+    return list[idx] || null;
+  },
   set: (val: DbQueryResult | null) => {
-    if (activeQueryTab.value) activeQueryTab.value.queryResult = val;
+    if (activeQueryTab.value) {
+      if (val === null) {
+        activeQueryTab.value.queryResults = [];
+      } else {
+        const idx = activeResultIndex.value;
+        if (activeQueryTab.value.queryResults[idx]) {
+          activeQueryTab.value.queryResults[idx] = val;
+        } else {
+          activeQueryTab.value.queryResults = [val];
+        }
+      }
+    }
   },
 });
 
@@ -1669,13 +1728,17 @@ async function executeQuery(customQuery?: string) {
   errorMessage.value = null;
 
   try {
-    const res = await tauriBridge.dbmsExecuteQuery(
+    const resList = await tauriBridge.dbmsExecuteQuery(
       props.tab.dbConnection,
       activeDatabase.value || undefined,
       q
     );
-    queryResult.value = res;
-    lastExecutionTime.value = res.execution_time_ms;
+    queryResults.value = resList;
+    activeResultIndex.value = 0;
+    if (resList.length > 0) {
+      const totalTime = resList.reduce((acc, r) => acc + (r.execution_time_ms || 0), 0);
+      lastExecutionTime.value = totalTime;
+    }
 
     if (!queryHistory.value.includes(q.trim())) {
       queryHistory.value.unshift(q.trim());
@@ -1683,7 +1746,7 @@ async function executeQuery(customQuery?: string) {
     }
   } catch (err: any) {
     errorMessage.value = String(err?.message || err);
-    queryResult.value = null;
+    queryResults.value = [];
   } finally {
     executing.value = false;
   }
