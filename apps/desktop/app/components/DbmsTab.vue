@@ -693,7 +693,7 @@
               <div class="flex items-center space-x-1.5 text-slate-300 text-[11px]">
                 <span class="text-slate-400 font-sans">Total Data:</span>
                 <span class="font-bold text-emerald-400">
-                  {{ totalTableRows !== null ? totalTableRows.toLocaleString() : (queryResult?.rows?.length ?? 0).toLocaleString() }}
+                  {{ typeof totalTableRows === 'number' ? totalTableRows.toLocaleString() : ((queryResult?.rows?.length ?? 0).toLocaleString()) }}
                 </span>
                 <span class="text-slate-500 font-sans text-[10px]">
                   (Menampilkan {{ (currentPage - 1) * pageSize + 1 }} - {{ (currentPage - 1) * pageSize + (queryResult?.rows?.length ?? 0) }})
@@ -867,7 +867,7 @@
             </div>
             <div class="flex justify-between border-b border-boba-850 pb-1.5" v-if="serverMetrics.queries_count > 0">
               <span class="text-slate-400">Total Queries/Commands:</span>
-              <span class="text-slate-200">{{ serverMetrics.queries_count.toLocaleString() }}</span>
+              <span class="text-slate-200">{{ serverMetrics.queries_count?.toLocaleString?.() ?? serverMetrics.queries_count }}</span>
             </div>
             <div class="flex justify-between border-b border-boba-850 pb-1.5" v-if="serverMetrics.memory_used_bytes">
               <span class="text-slate-400">Memory Usage:</span>
