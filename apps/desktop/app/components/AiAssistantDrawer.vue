@@ -387,21 +387,29 @@
 
                 <!-- Keterangan Eksekusi untuk Database Query (Khusus db_execute_query) -->
                 <div v-else-if="tc.name === 'db_execute_query'" class="rounded-lg bg-boba-900/90 border border-boba-800/80 p-2.5 space-y-2 font-sans">
-                  <!-- Header: DB Logo & Status Bahaya / Read-Only -->
+                  <!-- Header: DB Logo & Status Bahaya / Izin Data / Read-Only -->
                   <div class="flex items-center justify-between gap-2">
                     <div class="flex items-center space-x-1.5 text-indigo-300 font-semibold text-[11px]">
                       <Icon icon="lucide:database" class="w-3.5 h-3.5 text-indigo-400" />
                       <span>Eksekusi SQL Database:</span>
                     </div>
                     <span
-                      :class="[
-                        'px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wide flex items-center space-x-1 uppercase border',
-                        isDbMutationQuery(tc.args.query)
-                          ? 'bg-rose-950/80 text-rose-300 border-rose-700/60 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]'
-                          : 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
-                      ]"
+                      v-if="isDbMutationQuery(tc.args.query)"
+                      class="px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wide flex items-center space-x-1 uppercase border bg-rose-950/80 text-rose-300 border-rose-700/60 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.3)]"
                     >
-                      <span>{{ isDbMutationQuery(tc.args.query) ? '⚠️ PERUBAHAN DATA' : '🛡️ READ-ONLY' }}</span>
+                      <span>⚠️ PERUBAHAN DATA</span>
+                    </span>
+                    <span
+                      v-else-if="tc.args.include_data_for_ai"
+                      class="px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wide flex items-center space-x-1 uppercase border bg-amber-950/80 text-amber-300 border-amber-700/60"
+                    >
+                      <span>🔒 PERMINTAAN DATA BARIS</span>
+                    </span>
+                    <span
+                      v-else
+                      class="px-2 py-0.5 rounded text-[9.5px] font-bold tracking-wide flex items-center space-x-1 uppercase border bg-emerald-950/80 text-emerald-300 border-emerald-700/60"
+                    >
+                      <span>🛡️ READ-ONLY (LOKAL)</span>
                     </span>
                   </div>
 
@@ -410,19 +418,30 @@
                     {{ tc.args.description || 'Menjalankan query SQL pada database' }}
                   </div>
 
-                  <!-- Dampak Terhadap Database -->
+                  <!-- Dampak / Izin Privasi Terhadap Database -->
                   <div
                     :class="[
                       'flex items-start space-x-2 text-[10.5px] p-2 rounded-md leading-relaxed border',
                       isDbMutationQuery(tc.args.query)
                         ? 'bg-rose-950/40 border-rose-800/60 text-rose-200'
-                        : 'bg-black/40 border-white/5 text-slate-300'
+                        : (tc.args.include_data_for_ai ? 'bg-amber-950/40 border-amber-800/60 text-amber-200' : 'bg-black/40 border-white/5 text-slate-300')
                     ]"
                   >
-                    <span class="font-bold shrink-0 mt-0.5">{{ isDbMutationQuery(tc.args.query) ? '🚨' : '⚡' }}</span>
+                    <span class="font-bold shrink-0 mt-0.5">
+                      {{ isDbMutationQuery(tc.args.query) ? '🚨' : (tc.args.include_data_for_ai ? '🔒' : '⚡') }}
+                    </span>
                     <div>
-                      <span :class="isDbMutationQuery(tc.args.query) ? 'text-rose-300 font-bold' : 'text-amber-300 font-semibold'">Dampak: </span>
-                      <span>{{ tc.args.impact || (isDbMutationQuery(tc.args.query) ? 'Peringatan: Perintah ini akan mengubah atau menghapus data pada database!' : 'Aman (Hanya membaca data)') }}</span>
+                      <span :class="isDbMutationQuery(tc.args.query) ? 'text-rose-300 font-bold' : (tc.args.include_data_for_ai ? 'text-amber-300 font-bold' : 'text-slate-400 font-semibold')">
+                        {{ isDbMutationQuery(tc.args.query) ? 'Peringatan: ' : (tc.args.include_data_for_ai ? 'Izin Privasi Data: ' : 'Dampak: ') }}
+                      </span>
+                      <span>
+                        {{
+                          tc.args.impact ||
+                          (isDbMutationQuery(tc.args.query)
+                            ? 'Perintah ini akan memodifikasi / menghapus data di database!'
+                            : (tc.args.include_data_for_ai ? 'AI memerlukan izin Anda untuk membaca dan memproses baris data hasil query ini.' : 'Aman (Hanya membaca metadata secara lokal)'))
+                        }}
+                      </span>
                     </div>
                   </div>
 
@@ -500,11 +519,19 @@
                         'px-3 py-1 text-white font-semibold rounded-md text-[10.5px] transition shadow flex items-center space-x-1',
                         tc.name === 'db_execute_query' && isDbMutationQuery(tc.args.query)
                           ? 'bg-rose-600 hover:bg-rose-500 ring-2 ring-rose-500/50'
-                          : (tc.name === 'exec_command' ? getCommandInsight(tc).buttonClass : 'bg-emerald-600 hover:bg-emerald-500')
+                          : (tc.name === 'db_execute_query' && tc.args.include_data_for_ai
+                              ? 'bg-amber-600 hover:bg-amber-500 ring-2 ring-amber-500/50'
+                              : (tc.name === 'exec_command' ? getCommandInsight(tc).buttonClass : 'bg-emerald-600 hover:bg-emerald-500'))
                       ]"
                     >
                       <span>✓</span>
-                      <span>{{ tc.name === 'db_execute_query' && isDbMutationQuery(tc.args.query) ? 'Setujui & Ubah Data' : 'Setujui & Jalankan' }}</span>
+                      <span>
+                        {{
+                          tc.name === 'db_execute_query' && isDbMutationQuery(tc.args.query)
+                            ? 'Setujui & Ubah Data'
+                            : (tc.name === 'db_execute_query' && tc.args.include_data_for_ai ? 'Izinkan & Kirim Data ke AI' : 'Setujui & Jalankan')
+                        }}
+                      </span>
                     </button>
                   </div>
                 </div>

@@ -638,6 +638,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         return formatted;
       } else if (toolCall.name === 'db_execute_query') {
         const query = (toolCall.args?.query || '').trim();
+        const includeData = !!toolCall.args?.include_data_for_ai;
         if (!query) throw new Error('Query SQL kosong');
         const connId = toolCall.args?.connection_id;
         const dbName = toolCall.args?.database;
@@ -652,23 +653,37 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
         const resList = await tauriBridge.dbmsExecuteQuery(dbConfig, dbName || undefined, query);
 
-        // ZERO DATA LEAK: Isi baris data (records) TIDAK PERNAH dikirim ke provider AI.
-        // Hanya kirim metadata eksekusi: status, nama kolom, jumlah baris, affected rows, dan execution time.
-        const safeSummary = resList.map((r, idx) => ({
-          result_index: idx + 1,
-          status: 'success',
-          columns: r.columns || [],
-          total_rows_returned: r.rows ? r.rows.length : 0,
-          affected_rows: r.affected_rows || 0,
-          execution_time_ms: r.execution_time_ms || 0,
-          privacy_guard: 'Data baris (records) dienkripsi & dilindungi secara lokal. Isi data tidak dikirim ke AI Provider demi privasi pengguna.'
-        }));
-
-        const formatted = JSON.stringify(safeSummary, null, 2);
-        toolCall.result = formatted;
-        toolCall.status = 'completed';
-        toolCall.executedAt = Date.now();
-        return formatted;
+        if (includeData) {
+          // Disetujui pengguna untuk dikirimkan baris datanya ke AI
+          const formatted = JSON.stringify(resList.map(r => ({
+            columns: r.columns || [],
+            rows: (r.rows || []).slice(0, 50),
+            total_rows: r.rows ? r.rows.length : 0,
+            affected_rows: r.affected_rows || 0,
+            execution_time_ms: r.execution_time_ms || 0,
+            user_consent: 'Disetujui pengguna untuk diproses oleh AI'
+          })), null, 2);
+          toolCall.result = formatted;
+          toolCall.status = 'completed';
+          toolCall.executedAt = Date.now();
+          return formatted;
+        } else {
+          // Zero Data Leak: Metadata saja
+          const safeSummary = resList.map((r, idx) => ({
+            result_index: idx + 1,
+            status: 'success',
+            columns: r.columns || [],
+            total_rows_returned: r.rows ? r.rows.length : 0,
+            affected_rows: r.affected_rows || 0,
+            execution_time_ms: r.execution_time_ms || 0,
+            privacy_guard: 'Data baris (records) dienkripsi & dilindungi secara lokal. Set include_data_for_ai: true jika AI memerlukan data nyata.'
+          }));
+          const formatted = JSON.stringify(safeSummary, null, 2);
+          toolCall.result = formatted;
+          toolCall.status = 'completed';
+          toolCall.executedAt = Date.now();
+          return formatted;
+        }
       } else {
         throw new Error(`Tool "${toolCall.name}" tidak dikenali`);
       }
@@ -998,8 +1013,14 @@ You have access to tools to inspect and configure the server and database:
                   const cmd = (pendingCall.args?.command || pendingCall.args?.cmd || pendingCall.args?.bash || '').trim();
                   if (pendingCall.name === 'exec_command' && isDangerousCommand(cmd)) {
                     dialogStore.showToast('Perintah berisiko tinggi memerlukan persetujuan manual', 'warning', 3000);
-                  } else if (pendingCall.name === 'db_execute_query' && isDbMutation(pendingCall.args?.query || '')) {
-                    dialogStore.showToast('Query modifikasi/penghapusan database memerlukan persetujuan manual', 'warning', 3500);
+                  } else if (pendingCall.name === 'db_execute_query' && (isDbMutation(pendingCall.args?.query || '') || pendingCall.args?.include_data_for_ai)) {
+                    dialogStore.showToast(
+                      isDbMutation(pendingCall.args?.query || '')
+                        ? 'Query modifikasi/penghapusan database memerlukan persetujuan manual'
+                        : 'Pengiriman baris data database ke AI memerlukan persetujuan manual',
+                      'warning',
+                      3500
+                    );
                   } else if (copilotMode.value === 'plan' && (pendingCall.name === 'write_file' || (pendingCall.name === 'db_execute_query' && isDbMutation(pendingCall.args?.query || '')))) {
                     dialogStore.showToast('Modifikasi dicegah dalam Mode Plan (Read-Only)', 'warning', 3000);
                   } else {

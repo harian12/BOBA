@@ -206,13 +206,17 @@ export const AGENT_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'db_execute_query',
-      description: 'Jalankan query SQL ke database target. Perintah BACA (SELECT/SHOW/EXPLAIN) dan perintah UBAH/HAPUS (UPDATE/DELETE/DROP/INSERT/ALTER) didukung. Perintah perubahan/penghapusan data WAJIB meminta konfirmasi manual pengguna sebelum dieksekusi.',
+      description: 'Jalankan query SQL ke database target. Perintah BACA (SELECT/SHOW/EXPLAIN) dan perintah UBAH/HAPUS (UPDATE/DELETE/DROP/INSERT/ALTER) didukung. Secara default, isi data baris tidak dikirim ke AI demi privasi. Jika AI benar-benar memerlukan baris data untuk dianalisis, set include_data_for_ai: true (pengguna akan dimintai konfirmasi persetujuan terlebih dahulu).',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
             description: 'Query SQL yang akan dieksekusi (contoh: "SELECT * FROM users WHERE status = \'active\' LIMIT 10", "UPDATE users SET status = \'banned\' WHERE id = 5")',
+          },
+          include_data_for_ai: {
+            type: 'boolean',
+            description: 'Set true jika kamu memerlukan isi baris data (records) nyata untuk dianalisis/dijelaskan ke pengguna. Pengguna AKAN dimintai konfirmasi izin manual sebelum baris data dikirim ke model AI.',
           },
           connection_id: {
             type: 'string',
@@ -228,7 +232,7 @@ export const AGENT_TOOLS = [
           },
           impact: {
             type: 'string',
-            description: 'Penjelasan dampak query: "Aman (Read-Only)" atau "Peringatan: Mengubah / Menghapus data pada tabel X".',
+            description: 'Penjelasan dampak query: "Aman (Read-Only)", "Izin Data: Mengirim N baris data ke AI", atau "Peringatan: Mengubah / Menghapus data pada tabel X".',
           },
         },
         required: ['query', 'description'],
