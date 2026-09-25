@@ -14,7 +14,7 @@
         </div>
         <button
           @click="handleClose"
-          :disabled="isDownloading"
+          :disabled="isBusy"
           class="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-100 hover:bg-boba-800 disabled:opacity-40 transition text-sm"
         >
           ✕
@@ -24,11 +24,11 @@
       <!-- Loading / Checking State -->
       <div v-if="isChecking || loading" class="py-8 flex flex-col items-center justify-center space-y-3">
         <div class="w-7 h-7 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
-        <span class="text-xs text-slate-400 font-mono">Memeriksa rilis terbaru...</span>
+        <span class="text-xs text-slate-400 font-mono">{{ loadingMessage || statusMessage }}</span>
       </div>
 
       <!-- Error State -->
-      <div v-else-if="status === 'error' || errorMessage" class="bg-rose-950/50 border border-rose-800/60 p-4 rounded-xl space-y-3">
+      <div v-else-if="((status === 'error' && !updateInfo) || errorMessage) && !loading" class="bg-rose-950/50 border border-rose-800/60 p-4 rounded-xl space-y-3">
         <div class="flex items-start space-x-2 text-rose-300 text-xs">
           <span class="text-sm shrink-0">⚠️</span>
           <div class="flex-1 font-mono break-all">{{ statusMessage || errorMessage }}</div>
@@ -84,8 +84,12 @@
           </div>
         </div>
 
+        <div v-if="updateInfo && status === 'error' && !hasUpdate" class="bg-amber-950/40 border border-amber-800/50 p-3 rounded-xl text-[11px] text-amber-200">
+          Pemeriksaan pembaruan otomatis gagal. Metadata GitHub tidak menemukan versi yang lebih baru.
+        </div>
+
         <!-- In-App Download Progress Bar -->
-        <div v-if="isDownloading || status === 'downloaded'" class="space-y-2 p-3 bg-boba-950 rounded-xl border border-sky-500/30">
+        <div v-if="isDownloading || isInstalling" class="space-y-2 p-3 bg-boba-950 rounded-xl border border-sky-500/30">
           <div class="flex items-center justify-between text-xs">
             <span class="text-slate-300 font-medium flex items-center space-x-1.5">
               <span v-if="isDownloading" class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
@@ -99,31 +103,32 @@
               :style="{ width: `${downloadProgress}%` }"
             ></div>
           </div>
-          <div v-if="totalBytes > 0" class="flex justify-between text-[10px] font-mono text-slate-400">
-            <span>{{ formatBytes(downloadedBytes) }} / {{ formatBytes(totalBytes) }}</span>
-            <span>Otomatis me-restart setelah selesai</span>
+          <div v-if="totalBytes > 0 || isInstalling" class="flex justify-between text-[10px] font-mono text-slate-400">
+            <span v-if="totalBytes > 0">{{ formatBytes(downloadedBytes) }} / {{ formatBytes(totalBytes) }}</span>
+            <span v-if="isInstalling">Pemasangan sedang berjalan</span>
           </div>
         </div>
 
         <!-- Primary Actions -->
         <div v-if="hasUpdate" class="space-y-2 pt-1">
           <button
+            v-if="hasNativeUpdate"
             @click="handleInstallClick"
-            :disabled="isDownloading"
+            :disabled="isDownloading || isInstalling"
             class="w-full py-2.5 bg-gradient-to-r from-sky-600 via-sky-500 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-lg shadow-sky-900/20 transition flex items-center justify-center space-x-2"
           >
-            <span v-if="isDownloading" class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            <span v-if="isDownloading || isInstalling" class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             <span v-else>🚀</span>
-            <span>{{ isDownloading ? 'Sedang Mengunduh...' : (status === 'downloaded' ? 'Mulai Ulang Sekarang' : 'Pasang Pembaruan Langsung') }}</span>
+            <span>{{ isDownloading ? 'Sedang Mengunduh...' : (isInstalling ? 'Sedang Memasang...' : 'Pasang Pembaruan Langsung') }}</span>
           </button>
 
-          <!-- Fallback direct download link -->
-          <div class="flex items-center justify-center pt-1">
+          <div v-if="updateInfo?.has_update" class="bg-amber-950/40 border border-amber-800/50 p-3 rounded-xl text-[11px] text-amber-200 space-y-2">
+            <p>Pembaruan otomatis tidak tersedia. Gunakan halaman rilis GitHub untuk mengunduh dan memasang versi ini secara manual.</p>
             <button
-              @click="openUrl(updateInfo?.html_url || 'https://github.com/harian12/BOBA/releases/latest')"
-              class="text-[11px] text-slate-400 hover:text-sky-300 underline underline-offset-2 transition"
+              @click="openUrl(updateInfo.html_url || 'https://github.com/harian12/BOBA/releases/latest')"
+              class="text-amber-100 hover:text-white underline underline-offset-2 transition"
             >
-              Atau buka rilis di browser GitHub 🌐
+              Buka halaman rilis di GitHub
             </button>
           </div>
         </div>
@@ -143,7 +148,7 @@
 
         <div class="flex items-center space-x-2">
           <button
-            v-if="!isChecking && !loading && !isDownloading"
+            v-if="!isBusy"
             @click="runCheck"
             class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs transition"
           >
@@ -151,7 +156,7 @@
           </button>
           <button
             @click="handleClose"
-            :disabled="isDownloading"
+            :disabled="isBusy"
             class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 disabled:opacity-40 text-slate-300 hover:text-white rounded-lg text-xs transition"
           >
             Tutup
@@ -163,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import { useUpdater } from '../composables/useUpdater.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import type { AppUpdateInfo } from '../types/index.js';
@@ -185,15 +190,19 @@ const {
   releaseNotes,
   isChecking,
   isDownloading,
-  hasUpdate,
+  isInstalling,
+  hasUpdate: hasNativeUpdate,
   checkForUpdates,
   downloadAndInstall,
 } = useUpdater();
 
 const loading = ref(false);
+const loadingMessage = ref('');
 const errorMessage = ref<string | null>(null);
 const updateInfo = ref<AppUpdateInfo | null>(null);
 const autoCheckEnabled = ref(true);
+const hasUpdate = computed(() => hasNativeUpdate.value || updateInfo.value?.has_update === true);
+const isBusy = computed(() => isChecking.value || loading.value || isDownloading.value || isInstalling.value);
 
 const AUTO_CHECK_STORAGE_KEY = 'boba_auto_check_update';
 
@@ -209,40 +218,40 @@ function saveAutoCheckPreference() {
 }
 
 function handleClose() {
-  if (isDownloading.value) return;
+  if (isBusy.value) return;
   emit('close');
 }
 
 async function runCheck() {
+  if (isBusy.value) return;
+
   errorMessage.value = null;
+  updateInfo.value = null;
+  loadingMessage.value = 'Memeriksa pembaruan...';
   loading.value = true;
-  
+
   try {
-    // 1. Cek lewat Tauri Native Plugin Updater
-    const tauriFound = await checkForUpdates();
-    
-    // 2. Fetch metadata rilis dari GitHub API sebagai fallback info
-    try {
+    const result = await checkForUpdates();
+
+    if (result.nativeCheckFailed) {
+      loadingMessage.value = 'Memeriksa metadata rilis di GitHub...';
       const info = await tauriBridge.checkAppUpdate();
       updateInfo.value = info;
-    } catch {
-      // ignore github api fallback error if tauri handled it
     }
-  } catch (err: any) {
-    errorMessage.value = String(err?.message || err);
+  } catch (err: unknown) {
+    errorMessage.value = err instanceof Error ? err.message : String(err);
   } finally {
+    loadingMessage.value = '';
     loading.value = false;
   }
 }
 
 async function handleInstallClick() {
-  if (status.value === 'downloaded') {
-    return;
-  }
-  
+  if (!hasNativeUpdate.value || isDownloading.value || isInstalling.value) return;
+
   try {
     await downloadAndInstall();
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Download install error:', err);
   }
 }

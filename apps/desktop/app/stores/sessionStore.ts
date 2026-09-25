@@ -24,7 +24,8 @@ export const useSessionStore = defineStore('session', () => {
     const capacity = gridCapacity.value;
     if (capacity === 1) {
       const active = tabs.value.find(t => t.id === activeTabId.value);
-      return active ? [active] : [tabs.value[0]];
+      const first = tabs.value[0];
+      return active ? [active] : first ? [first] : [];
     }
 
     const activeIndex = tabs.value.findIndex(t => t.id === activeTabId.value);
@@ -35,6 +36,8 @@ export const useSessionStore = defineStore('session', () => {
     const start = pageIndex * capacity;
     return tabs.value.slice(start, start + capacity);
   });
+
+  const activeTab = computed(() => tabs.value.find(tab => tab.id === activeTabId.value) || null);
 
   function setLayoutMode(mode: GridLayoutMode) {
     layoutMode.value = mode;
@@ -189,7 +192,8 @@ export const useSessionStore = defineStore('session', () => {
         activeTabId.value = null;
       } else {
         const nextIndex = Math.min(index, tabs.value.length - 1);
-        activeTabId.value = tabs.value[nextIndex].id;
+        const nextTab = tabs.value[nextIndex];
+        if (nextTab) activeTabId.value = nextTab.id;
       }
     }
     // Non-blocking asynchronous cleanup on backend
@@ -207,10 +211,12 @@ export const useSessionStore = defineStore('session', () => {
     if (tabs.value.length <= 1) return;
     const currentIndex = tabs.value.findIndex(t => t.id === activeTabId.value);
     if (currentIndex === -1) {
-      activeTabId.value = tabs.value[0].id;
+      const firstTab = tabs.value[0];
+      if (firstTab) activeTabId.value = firstTab.id;
     } else {
       const nextIndex = (currentIndex + 1) % tabs.value.length;
-      activeTabId.value = tabs.value[nextIndex].id;
+      const nextTab = tabs.value[nextIndex];
+      if (nextTab) activeTabId.value = nextTab.id;
     }
   }
 
@@ -218,16 +224,19 @@ export const useSessionStore = defineStore('session', () => {
     if (tabs.value.length <= 1) return;
     const currentIndex = tabs.value.findIndex(t => t.id === activeTabId.value);
     if (currentIndex === -1) {
-      activeTabId.value = tabs.value[tabs.value.length - 1].id;
+      const lastTab = tabs.value[tabs.value.length - 1];
+      if (lastTab) activeTabId.value = lastTab.id;
     } else {
       const prevIndex = (currentIndex - 1 + tabs.value.length) % tabs.value.length;
-      activeTabId.value = tabs.value[prevIndex].id;
+      const prevTab = tabs.value[prevIndex];
+      if (prevTab) activeTabId.value = prevTab.id;
     }
   }
 
   function selectTabByIndex(index: number) {
     if (index >= 0 && index < tabs.value.length) {
-      activeTabId.value = tabs.value[index].id;
+      const tab = tabs.value[index];
+      if (tab) activeTabId.value = tab.id;
     }
   }
 
@@ -242,6 +251,7 @@ export const useSessionStore = defineStore('session', () => {
     tabs,
     activeTabId,
     layoutMode,
+    activeTab,
     visibleTabs,
     gridCapacity,
     setLayoutMode,

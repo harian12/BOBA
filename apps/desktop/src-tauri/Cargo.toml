@@ -1,6 +1,6 @@
 [package]
 name = "boba-desktop"
-version = "0.1.7"
+version = "0.1.8"
 description = "BOBA - Remote Terminal & SFTP Suite with Multi-Device Sync"
 authors = ["BOBA Team"]
 edition = "2021"
@@ -36,3 +36,4 @@ uuid = { version = "1.8", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "mysql", "postgres", "sqlite", "json", "chrono", "uuid"] }
 redis = { version = "0.26", default-features = false, features = ["tokio-comp", "aio"] }
+keyring = "4.2.0"

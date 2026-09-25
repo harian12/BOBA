@@ -152,7 +152,7 @@
           </button>
 
           <div
-            v-for="(qTab, qIdx) in queryTabs"
+            v-for="qTab in queryTabs"
             :key="qTab.id"
             @click="selectQueryTab(qTab)"
             @dblclick="startRenameTab(qTab)"
@@ -776,7 +776,7 @@
 
                 <!-- Draft Pending Insert / Cloned Rows -->
                 <tr
-                  v-for="(nRow, nIdx) in (pendingNewRows ?? [])"
+                  v-for="nRow in (pendingNewRows ?? [])"
                   :key="nRow.tempId"
                   class="bg-emerald-950/30 hover:bg-emerald-950/50 transition border-b border-emerald-800/60 ring-1 ring-emerald-500/40"
                 >
@@ -1208,13 +1208,15 @@
         <span>Lihat Syntax DDL</span>
       </button>
       <button
+        v-if="isSqlEngine(engine)"
         @click="handleContextAction('truncate')"
         class="w-full text-left px-2.5 py-1 hover:bg-amber-950/80 hover:text-amber-300 text-amber-400 flex items-center space-x-2 transition"
       >
         <Icon icon="lucide:eraser" class="w-3.5 h-3.5 text-amber-400" />
-        <span>Kosongkan Tabel (TRUNCATE)</span>
+        <span>{{ supportsTruncate(engine) ? 'Kosongkan Tabel (TRUNCATE)' : 'Kosongkan Tabel (DELETE)' }}</span>
       </button>
       <button
+        v-if="isSqlEngine(engine)"
         @click="handleContextAction('drop')"
         class="w-full text-left px-2.5 py-1 hover:bg-rose-950/80 hover:text-rose-300 text-rose-400 flex items-center space-x-2 transition"
       >
@@ -1418,11 +1420,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
+import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine } from '../utils/dbmsSql.js';
 import DataImporterModal from './DataImporterModal.vue';
 import ProcesslistModal from './ProcesslistModal.vue';
 import TableDesignerModal from './TableDesignerModal.vue';
@@ -1528,7 +1531,7 @@ interface SubQueryTab {
   totalTableRows: number | null;
   lastExecutionTime: number | null;
   errorMessage: string | null;
-  activeViewTab: 'data' | 'structure' | 'ddl';
+  activeViewTab: 'data' | 'structure' | 'ddl' | 'erd';
   filterState: FilterState;
   pendingEdits: Record<string, PendingCellEdit>;
   pendingNewRows: PendingNewRow[];
@@ -1578,7 +1581,7 @@ const queryTabs = ref<SubQueryTab[]>([createDefaultTab()]);
 const activeQueryTabId = ref<string>('qtab_1');
 
 const activeQueryTab = computed(() => {
-  return queryTabs.value.find(t => t.id === activeQueryTabId.value) || queryTabs.value[0];
+  return queryTabs.value.find(t => t.id === activeQueryTabId.value) ?? queryTabs.value[0]!;
 });
 
 const showQueryEditor = computed({
@@ -1797,7 +1800,7 @@ function closeQueryTab(id: string) {
   const idx = queryTabs.value.findIndex(t => t.id === id);
   queryTabs.value = queryTabs.value.filter(t => t.id !== id);
   if (activeQueryTabId.value === id) {
-    const nextTab = queryTabs.value[Math.max(0, idx - 1)];
+    const nextTab = queryTabs.value[Math.max(0, idx - 1)]!;
     selectQueryTab(nextTab);
   }
 }
@@ -1915,6 +1918,13 @@ function getTablePrimaryKey(tbl: DbTableMeta) {
   return tbl.columns.find(c => c.is_primary_key);
 }
 
+const engine = computed(() => (props.tab.dbConnection?.engine || '').toLowerCase());
+
+/** Quotes an identifier the way the connected engine expects it. */
+function qi(name: string): string {
+  return quoteIdent(engine.value, name);
+}
+
 async function loadSchemaOverview() {
   if (!props.tab.dbConnection) return;
   loadingSchema.value = true;
@@ -1942,13 +1952,12 @@ function handleDatabaseChange() {
 
 async function fetchTableCount(tableName: string) {
   if (!props.tab.dbConnection) return;
-  const engine = props.tab.dbConnection.engine.toLowerCase();
-  if (['mysql', 'mariadb', 'postgres', 'postgresql', 'sqlite'].includes(engine)) {
+  if (isSqlEngine(engine.value)) {
     try {
       const res = await tauriBridge.dbmsExecuteQuery(
         props.tab.dbConnection,
         activeDatabase.value || undefined,
-        `SELECT COUNT(*) AS total FROM \`${tableName}\`;`
+        `SELECT COUNT(*) AS total FROM ${qi(tableName)};`
       );
       if (res && res[0]?.rows?.[0]?.[0] !== undefined) {
         totalTableRows.value = Number(res[0].rows[0][0]);
@@ -1962,10 +1971,9 @@ async function fetchTableCount(tableName: string) {
 }
 
 function handleSelectTable(tbl: DbTableMeta) {
-  const engine = props.tab.dbConnection?.engine.toLowerCase();
-  const generatedSql = engine === 'redis'
+  const generatedSql = engine.value === 'redis'
     ? `GET ${tbl.name}`
-    : `SELECT * FROM ${tbl.name} LIMIT 100 OFFSET 0;`;
+    : `SELECT * FROM ${qi(tbl.name)} LIMIT 100 OFFSET 0;`;
 
   fetchTableCount(tbl.name);
 
@@ -1974,19 +1982,20 @@ function handleSelectTable(tbl: DbTableMeta) {
   if (existingTab) {
     activeQueryTabId.value = existingTab.id;
     existingTab.activeTable = tbl;
-    if (!existingTab.queryResult) {
+    if (existingTab.queryResults.length === 0) {
       if (!existingTab.text.trim()) existingTab.text = generatedSql;
       executeQuery();
     }
   } else {
     // Jika tab tunggal saat ini masih berupa tab default kosong "SQL 1", gunakan & beri nama tabel (dan hide query editor)
-    if (queryTabs.value.length === 1 && queryTabs.value[0].title === 'SQL 1' && !queryTabs.value[0].text.trim() && !queryTabs.value[0].queryResult) {
-      queryTabs.value[0].title = tbl.name;
-      queryTabs.value[0].tableName = tbl.name;
-      queryTabs.value[0].text = generatedSql;
-      queryTabs.value[0].activeTable = tbl;
-      queryTabs.value[0].showQueryEditor = false; // Sembunyikan query jika dibuka dari tabel
-      activeQueryTabId.value = queryTabs.value[0].id;
+    const firstTab = queryTabs.value[0];
+    if (queryTabs.value.length === 1 && firstTab?.title === 'SQL 1' && !firstTab.text.trim() && firstTab.queryResults.length === 0) {
+      firstTab.title = tbl.name;
+      firstTab.tableName = tbl.name;
+      firstTab.text = generatedSql;
+      firstTab.activeTable = tbl;
+      firstTab.showQueryEditor = false; // Sembunyikan query jika dibuka dari tabel
+      activeQueryTabId.value = firstTab.id;
       executeQuery();
     } else {
       // Buka tab query baru otomatis dengan nama tabel & sembunyikan query editor
@@ -2002,16 +2011,17 @@ function handlePageChange(page: number) {
   if (page < 1 || !activeTable.value) return;
   currentPage.value = page;
   const offset = (page - 1) * pageSize.value;
+  const tableIdent = qi(activeTable.value.name);
   let sql = '';
   if (filterState.value.active) {
     const whereClause = buildWhereClause();
     if (whereClause) {
-      sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET ${offset};`;
+      sql = `SELECT * FROM ${tableIdent} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET ${offset};`;
     } else {
-      sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
+      sql = `SELECT * FROM ${tableIdent} LIMIT ${pageSize.value} OFFSET ${offset};`;
     }
   } else {
-    sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
+    sql = `SELECT * FROM ${tableIdent} LIMIT ${pageSize.value} OFFSET ${offset};`;
   }
   currentQueryText.value = sql;
   executeQuery(sql);
@@ -2046,21 +2056,21 @@ function buildWhereClause(): string {
 
   let clause = '';
   validRules.forEach((r, idx) => {
-    const col = `\`${r.column}\``;
+    const col = qi(r.column);
     const val = r.value.trim();
     let expr = '';
     if (r.operator === 'IS NULL' || r.operator === 'IS NOT NULL') {
       expr = `${col} ${r.operator}`;
     } else if (r.operator === 'LIKE') {
-      expr = `${col} LIKE '%${val.replace(/'/g, "''")}%'`;
+      expr = `${col} LIKE ${sqlLiteral(engine.value, `%${val}%`)}`;
     } else if (r.operator === 'STARTS WITH') {
-      expr = `${col} LIKE '${val.replace(/'/g, "''")}%'`;
+      expr = `${col} LIKE ${sqlLiteral(engine.value, `${val}%`)}`;
     } else if (r.operator === 'ENDS WITH') {
-      expr = `${col} LIKE '%${val.replace(/'/g, "''")}'`;
+      expr = `${col} LIKE ${sqlLiteral(engine.value, `%${val}`)}`;
     } else if (!isNaN(Number(val)) && val !== '') {
       expr = `${col} ${r.operator} ${val}`;
     } else {
-      expr = `${col} ${r.operator} '${val.replace(/'/g, "''")}'`;
+      expr = `${col} ${r.operator} ${sqlLiteral(engine.value, val)}`;
     }
 
     if (idx === 0) {
@@ -2083,7 +2093,7 @@ function applyMultiFilter() {
   }
   filterState.value.active = true;
   currentPage.value = 1;
-  const sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET 0;`;
+  const sql = `SELECT * FROM ${qi(activeTable.value.name)} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET 0;`;
   currentQueryText.value = sql;
   executeQuery(sql);
 }
@@ -2097,7 +2107,7 @@ function resetMultiFilter() {
   }
   currentPage.value = 1;
   if (activeTable.value) {
-    const sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET 0;`;
+    const sql = `SELECT * FROM ${qi(activeTable.value.name)} LIMIT ${pageSize.value} OFFSET 0;`;
     currentQueryText.value = sql;
     executeQuery(sql);
   }
@@ -2231,7 +2241,7 @@ function updateCursorPosition() {
   const textBeforeCursor = textarea.value.slice(0, cursorIndex);
   const lines = textBeforeCursor.split('\n');
   const currentLineIndex = lines.length - 1;
-  const currentLineText = lines[currentLineIndex];
+  const currentLineText = lines[currentLineIndex] ?? '';
 
   // Font character metrics for monospace text-xs (12px, line-height 20px, p-3 = 12px)
   const charWidth = 7.4;
@@ -2295,14 +2305,15 @@ const filteredSuggestions = computed<SuggestionItem[]>(() => {
   return results.slice(0, 8);
 });
 
-function handleEditorInput(e: Event) {
+function handleEditorInput() {
   const textarea = sqlEditorTextareaRef.value;
   if (!textarea) return;
   const cursor = textarea.selectionStart;
   const textBeforeCursor = textarea.value.slice(0, cursor);
   const match = textBeforeCursor.match(/([a-zA-Z0-9_]+)$/);
-  if (match && match[1].length >= 1) {
-    suggestionQuery.value = match[1];
+  const token = match?.[1];
+  if (token) {
+    suggestionQuery.value = token;
     activeSuggestionIndex.value = 0;
     updateCursorPosition();
     showSuggestions.value = true;
@@ -2324,8 +2335,9 @@ function insertSuggestion(sug: SuggestionItem) {
   const textBeforeCursor = textarea.value.slice(0, cursor);
   const textAfterCursor = textarea.value.slice(cursor);
   const match = textBeforeCursor.match(/([a-zA-Z0-9_]+)$/);
-  if (match) {
-    const start = cursor - match[1].length;
+  const token = match?.[1];
+  if (token) {
+    const start = cursor - token.length;
     const replacement = sug.value;
     currentQueryText.value = textarea.value.slice(0, start) + replacement + textAfterCursor;
     nextTick(() => {
@@ -2350,7 +2362,8 @@ function handleEditorKeyDown(e: KeyboardEvent) {
     }
     if (e.key === 'Tab' || (e.key === 'Enter' && !e.ctrlKey && !e.metaKey)) {
       e.preventDefault();
-      insertSuggestion(filteredSuggestions.value[activeSuggestionIndex.value]);
+      const suggestion = filteredSuggestions.value[activeSuggestionIndex.value];
+      if (suggestion) insertSuggestion(suggestion);
       return;
     }
     if (e.key === 'Escape') {
@@ -2406,6 +2419,7 @@ function saveInlineCellEdit(rIdx: number, cIdx: number) {
   const { tempValue, originalVal } = editingCell.value;
   const colName = queryResult.value.columns[cIdx];
   const row = queryResult.value.rows[rIdx];
+  if (colName === undefined || !row) return;
 
   // Compare if changed
   const origStr = originalVal === null ? '' : (typeof originalVal === 'object' ? JSON.stringify(originalVal) : String(originalVal));
@@ -2441,13 +2455,14 @@ function saveInlineCellEdit(rIdx: number, cIdx: number) {
   }
 
   // Update view data locally (Pending commit)
-  queryResult.value.rows[rIdx][cIdx] = parsedVal;
+  row[cIdx] = parsedVal;
   editingCell.value = null;
 }
 
 function openCellContextMenu(e: MouseEvent, rIdx: number, cIdx: number, row: any[], value: any) {
   if (!queryResult.value) return;
   const colName = queryResult.value.columns[cIdx];
+  if (colName === undefined) return;
   cellContextMenu.value = {
     visible: true,
     x: Math.min(e.clientX, window.innerWidth - 220),
@@ -2521,15 +2536,10 @@ async function handleCellContextAction(action: 'edit_inline' | 'edit_row' | 'clo
   } else if (action === 'copy_row_json') {
     await copyRowAsJson(row);
   } else if (action === 'copy_row_sql') {
-    const tableName = activeTable.value?.name || getEffectiveTable()?.name || 'my_table';
+    const tableName = activeTable.value?.name || 'my_table';
     const cols = queryResult.value?.columns || [];
-    const vals = row.map(v => {
-      if (v === null) return 'NULL';
-      if (typeof v === 'number') return v;
-      if (typeof v === 'boolean') return v ? '1' : '0';
-      return `'${String(v).replace(/'/g, "''")}'`;
-    });
-    const sql = `INSERT INTO \`${tableName}\` (${cols.map(c => `\`${c}\``).join(', ')}) VALUES (${vals.join(', ')});`;
+    const vals = row.map(v => sqlLiteral(engine.value, v));
+    const sql = `INSERT INTO ${qi(tableName)} (${cols.map(c => qi(c)).join(', ')}) VALUES (${vals.join(', ')});`;
     await navigator.clipboard.writeText(sql);
     dialogStore.showToast('1 Baris (SQL INSERT) disalin ke clipboard!', 'success', 2000);
   } else if (action === 'detail') {
@@ -2571,19 +2581,41 @@ async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'c
     activeTable.value = tbl;
     activeViewTab.value = 'ddl';
   } else if (action === 'truncate') {
+    if (engine.value === 'redis' || engine.value === 'mongodb') {
+      await dialogStore.alert({
+        title: 'Operasi Tidak Didukung',
+        description: `Engine ${engine.value} tidak mendukung TRUNCATE. Gunakan perintah khusus engine tersebut.`,
+        variant: 'error',
+      });
+      return;
+    }
+
+    const useTruncate = supportsTruncate(engine.value);
     const confirm = await dialogStore.confirm({
       title: `Kosongkan Tabel "${tbl.name}"?`,
-      description: 'Semua data di dalam tabel ini akan dihapus secara permanen (TRUNCATE).',
+      description: useTruncate
+        ? 'Semua data di dalam tabel ini akan dihapus secara permanen (TRUNCATE).'
+        : 'SQLite tidak mendukung TRUNCATE. Semua data akan dihapus permanen memakai DELETE FROM tanpa WHERE.',
       confirmText: 'Kosongkan',
       isDestructive: true,
     });
     if (confirm) {
-      const sql = `TRUNCATE TABLE ${tbl.name};`;
+      const sql = useTruncate
+        ? `TRUNCATE TABLE ${qi(tbl.name)};`
+        : `DELETE FROM ${qi(tbl.name)};`;
       currentQueryText.value = sql;
       await executeQuery(sql);
       handleSelectTable(tbl);
     }
   } else if (action === 'drop') {
+    if (!isSqlEngine(engine.value)) {
+      await dialogStore.alert({
+        title: 'Operasi Tidak Didukung',
+        description: `Engine ${engine.value} tidak mendukung DROP TABLE dari antarmuka ini.`,
+        variant: 'error',
+      });
+      return;
+    }
     const confirm = await dialogStore.confirm({
       title: `Hapus Tabel "${tbl.name}"?`,
       description: 'Tabel beserta seluruh strukturnya akan dihapus dari database (DROP TABLE).',
@@ -2591,7 +2623,7 @@ async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'c
       isDestructive: true,
     });
     if (confirm) {
-      const sql = `DROP TABLE ${tbl.name};`;
+      const sql = `DROP TABLE ${qi(tbl.name)};`;
       currentQueryText.value = sql;
       await executeQuery(sql);
       loadSchemaOverview();
@@ -2602,14 +2634,14 @@ async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'c
 function generateTableDdl(): string {
   if (!activeTable.value) return '-- Pilih tabel untuk melihat DDL';
   const cols = activeTable.value.columns.map(c => {
-    let def = `  \`${c.name}\` ${c.data_type.toUpperCase()}`;
+    let def = `  ${qi(c.name)} ${c.data_type.toUpperCase()}`;
     if (!c.is_nullable) def += ' NOT NULL';
     if (c.default_value) def += ` DEFAULT ${c.default_value}`;
     if (c.is_primary_key) def += ' PRIMARY KEY';
     return def;
   }).join(',\n');
 
-  return `CREATE TABLE \`${activeTable.value.name}\` (\n${cols}\n);`;
+  return `CREATE TABLE ${qi(activeTable.value.name)} (\n${cols}\n);`;
 }
 
 function closeRowModals() {
@@ -2637,13 +2669,13 @@ async function handleCommitInsert() {
 
   for (const [colName, val] of Object.entries(rowFormValues.value)) {
     if (val !== undefined && val !== '') {
-      cols.push(colName);
-      if (val.toUpperCase() === 'NULL') {
+      cols.push(qi(colName));
+      if (val.trim().toUpperCase() === 'NULL') {
         vals.push('NULL');
       } else if (!isNaN(Number(val))) {
         vals.push(val);
       } else {
-        vals.push(`'${val.replace(/'/g, "''")}'`);
+        vals.push(sqlLiteral(engine.value, val));
       }
     }
   }
@@ -2657,7 +2689,7 @@ async function handleCommitInsert() {
     return;
   }
 
-  const sql = `INSERT INTO ${activeTable.value.name} (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
+  const sql = `INSERT INTO ${qi(activeTable.value.name)} (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
   closeRowModals();
   currentQueryText.value = sql;
   await executeQuery(sql);
@@ -2666,18 +2698,21 @@ async function handleCommitInsert() {
 
 function handleCommitEdit() {
   if (!activeTable.value || !editingRowOriginal.value || !queryResult.value) return;
-  const rIdx = queryResult.value.rows.findIndex(r => r === editingRowOriginal.value);
+  const result = queryResult.value;
+  const originalRow = editingRowOriginal.value;
+  const rIdx = result.rows.findIndex(r => r === originalRow);
   if (rIdx === -1) {
     closeRowModals();
     return;
   }
 
-  const row = queryResult.value.rows[rIdx];
+  const row = result.rows[rIdx];
+  if (!row) return;
 
-  queryResult.value.columns.forEach((colName, cIdx) => {
+  result.columns.forEach((colName, cIdx) => {
     const entered = rowFormValues.value[colName];
     if (entered !== undefined) {
-      const orig = editingRowOriginal.value![cIdx];
+      const orig = originalRow[cIdx];
       const origStr = orig === null ? 'NULL' : String(orig);
       if (entered !== origStr) {
         let parsedVal: any = entered;
@@ -2698,7 +2733,7 @@ function handleCommitEdit() {
           rowSnapshot: [...row],
         };
 
-        queryResult.value!.rows[rIdx][cIdx] = parsedVal;
+        row[cIdx] = parsedVal;
       }
     }
   });
@@ -2713,68 +2748,70 @@ async function commitPendingEdits() {
     (pendingEditsCount.value === 0 && pendingNewRows.value.length === 0)
   )
     return;
+  const result = queryResult.value;
+  const table = activeTable.value;
+  const dbConfig = props.tab.dbConnection;
+  if (!result || !table || !dbConfig) return;
   committingEdits.value = true;
   errorMessage.value = null;
 
   try {
-    const pk = getTablePrimaryKey(activeTable.value);
+    const pk = getTablePrimaryKey(table);
 
     // 1. Process modified existing rows (UPDATE)
     const editsByRow: Record<number, PendingCellEdit[]> = {};
     Object.values(pendingEdits.value).forEach(edit => {
-      if (!editsByRow[edit.rIdx]) editsByRow[edit.rIdx] = [];
-      editsByRow[edit.rIdx].push(edit);
+      const rowEdits = editsByRow[edit.rIdx] ?? [];
+      rowEdits.push(edit);
+      editsByRow[edit.rIdx] = rowEdits;
     });
 
-    for (const [rIdxStr, edits] of Object.entries(editsByRow)) {
-      const rIdx = Number(rIdxStr);
-      const row = edits[0].rowSnapshot;
+    if (Object.keys(editsByRow).length > 0) {
+      const pkIdx = pk ? result.columns.indexOf(pk.name) : -1;
 
-      // Build WHERE clause for this row
-      let whereClause = '';
-      if (pk) {
-        const pkIdx = queryResult.value.columns.indexOf(pk.name);
-        if (pkIdx !== -1) {
-          const pkVal = row[pkIdx];
-          whereClause = typeof pkVal === 'number' ? `\`${pk.name}\` = ${pkVal}` : `\`${pk.name}\` = '${String(pkVal).replace(/'/g, "''")}'`;
-        }
-      }
-
-      if (!whereClause) {
-        const conditions: string[] = [];
-        queryResult.value.columns.forEach((col, idx) => {
-          const v = row[idx];
-          if (v === null) {
-            conditions.push(`\`${col}\` IS NULL`);
-          } else if (typeof v === 'number') {
-            conditions.push(`\`${col}\` = ${v}`);
-          } else {
-            conditions.push(`\`${col}\` = '${String(v).replace(/'/g, "''")}'`);
-          }
+      if (!pk || pkIdx === -1) {
+        rollbackPendingEdits();
+        await dialogStore.alert({
+          title: 'Perubahan Tidak Dapat Disimpan',
+          description:
+            `Tabel "${table.name}" tidak memiliki primary key yang terlihat pada hasil query, ` +
+            'sehingga baris yang diubah tidak dapat ditunjuk secara unik. ' +
+            'Gunakan tab Query untuk menulis pernyataan UPDATE/DELETE dengan klausa WHERE yang eksplisit.',
+          variant: 'error',
         });
-        whereClause = conditions.slice(0, 4).join(' AND ');
+        return;
       }
 
-      // Build SET clause
-      const setClauses = edits.map(e => {
-        let formatted = '';
-        if (e.newVal === null) {
-          formatted = 'NULL';
-        } else if (typeof e.newVal === 'number') {
-          formatted = String(e.newVal);
-        } else {
-          formatted = `'${String(e.newVal).replace(/'/g, "''")}'`;
+      const tableIdent = qi(table.name);
+      const pkIdent = qi(pk.name);
+
+      for (const edits of Object.values(editsByRow)) {
+        const row = edits[0]?.rowSnapshot;
+        if (!row) continue;
+        const pkVal = row[pkIdx];
+
+        if (pkVal === null || pkVal === undefined) {
+          rollbackPendingEdits();
+          await dialogStore.alert({
+            title: 'Perubahan Tidak Dapat Disimpan',
+            description: `Nilai primary key ${pk.name} pada baris ini kosong, sehingga baris tidak dapat ditunjuk secara unik.`,
+            variant: 'error',
+          });
+          return;
         }
-        return `\`${e.colName}\` = ${formatted}`;
-      });
 
-      const updateSql = `UPDATE \`${activeTable.value.name}\` SET ${setClauses.join(', ')} WHERE ${whereClause};`;
+        const whereClause = `${pkIdent} = ${sqlLiteral(engine.value, pkVal)}`;
 
-      await tauriBridge.dbmsExecuteQuery(
-        props.tab.dbConnection!,
-        activeDatabase.value || undefined,
-        updateSql
-      );
+        const setClauses = edits.map(e => `${qi(e.colName)} = ${sqlLiteral(engine.value, e.newVal)}`);
+
+        const updateSql = `UPDATE ${tableIdent} SET ${setClauses.join(', ')} WHERE ${whereClause};`;
+
+        await tauriBridge.dbmsExecuteQuery(
+          dbConfig,
+          activeDatabase.value || undefined,
+          updateSql
+        );
+      }
     }
 
     // 2. Process new / cloned draft rows (INSERT)
@@ -2785,21 +2822,19 @@ async function commitPendingEdits() {
       for (const [colName, rawVal] of Object.entries(draftRow.values)) {
         if (rawVal !== undefined && String(rawVal).trim() !== '') {
           const valStr = String(rawVal).trim();
-          cols.push(`\`${colName}\``);
+          cols.push(qi(colName));
           if (valStr.toUpperCase() === 'NULL') {
             vals.push('NULL');
-          } else if (!isNaN(Number(valStr))) {
-            vals.push(valStr);
           } else {
-            vals.push(`'${valStr.replace(/'/g, "''")}'`);
+            vals.push(sqlLiteral(engine.value, valStr));
           }
         }
       }
 
       if (cols.length > 0) {
-        const insertSql = `INSERT INTO \`${activeTable.value.name}\` (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
+        const insertSql = `INSERT INTO ${qi(table.name)} (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
         await tauriBridge.dbmsExecuteQuery(
-          props.tab.dbConnection!,
+          dbConfig,
           activeDatabase.value || undefined,
           insertSql
         );
@@ -2830,12 +2865,12 @@ async function commitPendingEdits() {
 }
 
 function rollbackPendingEdits() {
-  if (!queryResult.value) return;
+  const result = queryResult.value;
+  if (!result) return;
   // Revert edited cells
   Object.values(pendingEdits.value).forEach(edit => {
-    if (queryResult.value && queryResult.value.rows[edit.rIdx]) {
-      queryResult.value.rows[edit.rIdx][edit.cIdx] = edit.oldVal;
-    }
+    const row = result.rows[edit.rIdx];
+    if (row) row[edit.cIdx] = edit.oldVal;
   });
   pendingEdits.value = {};
   pendingNewRows.value = [];
@@ -2844,13 +2879,31 @@ function rollbackPendingEdits() {
 async function handleDeleteRow(row: any[]) {
   if (!activeTable.value || !queryResult.value) return;
   const pk = getTablePrimaryKey(activeTable.value);
-  if (!pk) return;
+
+  if (!pk || queryResult.value.columns.indexOf(pk.name) === -1) {
+    await dialogStore.alert({
+      title: 'Hapus Baris Tidak Didukung',
+      description:
+        `Tabel "${activeTable.value.name}" tidak memiliki primary key yang terlihat pada hasil query, ` +
+        'sehingga baris tidak dapat ditunjuk secara unik. Jalankan DELETE ... WHERE secara manual dari tab Query.',
+      variant: 'error',
+    });
+    return;
+  }
 
   const pkIdx = queryResult.value.columns.indexOf(pk.name);
-  if (pkIdx === -1) return;
-
   const pkVal = row[pkIdx];
-  const pkClause = typeof pkVal === 'number' ? `${pk.name} = ${pkVal}` : `${pk.name} = '${String(pkVal).replace(/'/g, "''")}'`;
+
+  if (pkVal === null || pkVal === undefined) {
+    await dialogStore.alert({
+      title: 'Hapus Baris Tidak Didukung',
+      description: `Nilai primary key ${pk.name} pada baris ini kosong, sehingga baris tidak dapat ditunjuk secara unik.`,
+      variant: 'error',
+    });
+    return;
+  }
+
+  const pkClause = `${qi(pk.name)} = ${sqlLiteral(engine.value, pkVal)}`;
 
   const confirm = await dialogStore.confirm({
     title: 'Hapus Baris Data?',
@@ -2860,7 +2913,7 @@ async function handleDeleteRow(row: any[]) {
   });
 
   if (confirm) {
-    const sql = `DELETE FROM ${activeTable.value.name} WHERE ${pkClause};`;
+    const sql = `DELETE FROM ${qi(activeTable.value.name)} WHERE ${pkClause};`;
     currentQueryText.value = sql;
     await executeQuery(sql);
     handlePageChange(currentPage.value);
@@ -2893,13 +2946,8 @@ function exportData(type: 'csv' | 'json' | 'sql' | 'excel') {
   } else if (type === 'sql') {
     const tableName = activeTable.value?.name || 'exported_table';
     content = rows.map(r => {
-      const vals = r.map(v => {
-        if (v === null) return 'NULL';
-        if (typeof v === 'number') return v;
-        if (typeof v === 'boolean') return v ? '1' : '0';
-        return `'${String(v).replace(/'/g, "''")}'`;
-      }).join(', ');
-      return `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${vals});`;
+      const vals = r.map(v => sqlLiteral(engine.value, v)).join(', ');
+      return `INSERT INTO ${qi(tableName)} (${cols.map(c => qi(c)).join(', ')}) VALUES (${vals});`;
     }).join('\n');
     filename += '.sql';
   } else if (type === 'excel') {

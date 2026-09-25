@@ -743,6 +743,7 @@ async function streamOpenAiCompatible(
       const finalToolCalls: AiToolCall[] = [];
       for (const k of toolCallKeys) {
         const raw = accumulatedToolCalls[Number(k)];
+        if (!raw) continue;
         let parsedArgs = {};
         try {
           parsedArgs = JSON.parse(raw.argsStr || '{}');
@@ -894,7 +895,10 @@ async function streamAnthropic(
           if (event.delta?.type === 'text_delta') {
             callbacks.onToken(event.delta.text);
           } else if (event.delta?.type === 'input_json_delta' && currentToolIndex >= 0) {
-            accumulatedTools[currentToolIndex].jsonStr += event.delta.partial_json;
+            const currentTool = accumulatedTools[currentToolIndex];
+            if (currentTool) {
+              currentTool.jsonStr += event.delta.partial_json;
+            }
           }
         }
       } catch (_) {}
@@ -913,6 +917,7 @@ async function streamAnthropic(
       const finalToolCalls: AiToolCall[] = [];
       for (const k of toolKeys) {
         const raw = accumulatedTools[Number(k)];
+        if (!raw) continue;
         let parsed = {};
         try {
           parsed = JSON.parse(raw.jsonStr || '{}');

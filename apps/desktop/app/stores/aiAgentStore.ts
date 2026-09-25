@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
-import { streamChat, truncateOutput, maskSensitiveData } from '../services/aiAdapters.js';
+import { streamChat, maskSensitiveData } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { inspectCommandRisk } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
@@ -12,6 +12,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   const sessionStore = useSessionStore();
   const vaultStore = useVaultStore();
   const dialogStore = useDialogStore();
+  const activeTab = computed(() => sessionStore.tabs.find(tab => tab.id === sessionStore.activeTabId) || null);
 
   const providers = ref<AiProviderConfig[]>([]);
   const activeProviderId = ref<string>('');
@@ -41,7 +42,17 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     try {
       const savedProviders = localStorage.getItem('boba_ai_providers');
       if (savedProviders) {
-        providers.value = JSON.parse(savedProviders);
+        const parsed = JSON.parse(savedProviders) as AiProviderConfig[];
+        const legacySecrets = parsed.map(p => ({ id: p.id, apiKey: p.apiKey || '' }));
+        providers.value = parsed.map(p => ({ ...p, apiKey: '' }));
+        localStorage.setItem('boba_ai_providers', JSON.stringify(providers.value));
+        for (const secret of legacySecrets) {
+          if (secret.apiKey) void tauriBridge.aiSetProviderSecret(secret.id, secret.apiKey);
+        }
+        void Promise.all(providers.value.map(async p => {
+          const secret = await tauriBridge.aiGetProviderSecret(p.id);
+          if (secret) p.apiKey = secret;
+        }));
       } else {
         // Sample default providers
         providers.value = [
@@ -75,8 +86,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       const savedActive = localStorage.getItem('boba_ai_active_provider');
       if (savedActive && providers.value.some(p => p.id === savedActive)) {
         activeProviderId.value = savedActive;
-      } else if (providers.value.length > 0) {
-        activeProviderId.value = providers.value[0].id;
+      } else {
+        const [firstProvider] = providers.value;
+        if (firstProvider) {
+          activeProviderId.value = firstProvider.id;
+        }
       }
 
       const savedMode = localStorage.getItem('boba_ai_exec_mode');
@@ -142,7 +156,8 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   function saveState() {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem('boba_ai_providers', JSON.stringify(providers.value));
+      const providersForStorage = providers.value.map(p => ({ ...p, apiKey: '' }));
+      localStorage.setItem('boba_ai_providers', JSON.stringify(providersForStorage));
       localStorage.setItem('boba_ai_active_provider', activeProviderId.value);
       localStorage.setItem('boba_ai_exec_mode', executionMode.value);
       localStorage.setItem('boba_ai_copilot_mode', copilotMode.value);
@@ -171,6 +186,17 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     return providers.value.find(p => p.id === activeProviderId.value) || null;
   });
 
+  async function getProviderWithSecret(provider: AiProviderConfig | null): Promise<AiProviderConfig | null> {
+    if (!provider) return null;
+    if (provider.type === 'ollama') return { ...provider, apiKey: '' };
+    try {
+      const apiKey = await tauriBridge.aiGetProviderSecret(provider.id);
+      return { ...provider, apiKey: apiKey || '' };
+    } catch {
+      return { ...provider, apiKey: '' };
+    }
+  }
+
   const connectedAiSessions = new Set<string>();
 
   function syncActiveSessionFromTabs() {
@@ -179,8 +205,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       selectedSessionId.value = activeTab.sessionConfig.id;
     } else if (activeTab?.parentSessionId) {
       selectedSessionId.value = activeTab.parentSessionId;
-    } else if (!selectedSessionId.value && vaultStore.vault.sessions.length > 0) {
-      selectedSessionId.value = vaultStore.vault.sessions[0].id;
+    } else if (!selectedSessionId.value) {
+      const [firstSession] = vaultStore.vault.sessions;
+      if (firstSession) {
+        selectedSessionId.value = firstSession.id;
+      }
     }
   }
 
@@ -252,11 +281,17 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   }
 
   function saveProvider(config: AiProviderConfig) {
+    const provider = { ...config, apiKey: '' };
     const idx = providers.value.findIndex(p => p.id === config.id);
     if (idx >= 0) {
-      providers.value[idx] = { ...config };
+      providers.value[idx] = provider;
     } else {
-      providers.value.push({ ...config });
+      providers.value.push(provider);
+    }
+    if (config.apiKey) {
+      void tauriBridge.aiSetProviderSecret(config.id, config.apiKey);
+    } else {
+      void tauriBridge.aiDeleteProviderSecret(config.id);
     }
     if (!activeProviderId.value) {
       activeProviderId.value = config.id;
@@ -265,9 +300,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   }
 
   function deleteProvider(id: string) {
+    void tauriBridge.aiDeleteProviderSecret(id);
     providers.value = providers.value.filter(p => p.id !== id);
     if (activeProviderId.value === id) {
-      activeProviderId.value = providers.value.length > 0 ? providers.value[0].id : '';
+      const [firstProvider] = providers.value;
+      activeProviderId.value = firstProvider?.id || '';
     }
     saveState();
   }
@@ -370,7 +407,8 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   function deleteThread(threadId: string) {
     const idx = threads.value.findIndex(t => t.id === threadId);
     if (idx === -1) return;
-    const [deleted] = threads.value.splice(idx, 1);
+    const deleted = threads.value.splice(idx, 1)[0];
+    if (!deleted) return;
     const sid = deleted.sessionId;
 
     if (activeThreadPerSession.value[sid] === threadId) {
@@ -379,10 +417,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         .filter(t => t.sessionId === sid)
         .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
 
-      if (remaining.length > 0) {
-        activeThreadPerSession.value[sid] = remaining[0].id;
+      const [firstRemaining] = remaining;
+      if (firstRemaining) {
+        activeThreadPerSession.value[sid] = firstRemaining.id;
         if (selectedSessionId.value === sid) {
-          activeThreadId.value = remaining[0].id;
+          activeThreadId.value = firstRemaining.id;
         }
       } else if (selectedSessionId.value === sid) {
         createNewThread(sid);
@@ -461,9 +500,12 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
       // Guard: Cek batasan Mode Plan
       if (copilotMode.value === 'plan') {
-        if (toolCall.name === 'write_file') {
-          throw new Error('Aksi ditolak: Mode saat ini adalah PLAN (Read-Only). Ubah ke Mode BUILD untuk menulis/memodifikasi file.');
-        }
+         if (toolCall.name === 'write_file') {
+           throw new Error('Aksi ditolak: Mode saat ini adalah PLAN (Read-Only). Ubah ke Mode BUILD untuk menulis/memodifikasi file.');
+         }
+         if (toolCall.name === 'setup_security_hardening') {
+           throw new Error('Aksi ditolak: hardening mengubah firewall, paket, dan service. Jalankan dalam Mode BUILD.');
+         }
         if (toolCall.name === 'db_execute_query' && isDbMutation(toolCall.args?.query || '')) {
           throw new Error('Aksi ditolak: Query modifikasi/penghapusan data (UPDATE/DELETE/DROP/dll) dicegah dalam Mode PLAN. Ubah ke Mode BUILD jika ingin mengeksekusinya.');
         }
@@ -528,13 +570,8 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
           toolCall.status = 'completed';
           toolCall.executedAt = Date.now();
           return formatted;
-        } catch {
-          // Fallback via shell command
-          const output = await tauriBridge.sshExecCommand(realSessionId, `ls -la "${dirPath}"`);
-          toolCall.result = output;
-          toolCall.status = 'completed';
-          toolCall.executedAt = Date.now();
-          return output;
+        } catch (err) {
+          throw new Error(`Gagal membaca direktori: ${err instanceof Error ? err.message : String(err)}`);
         }
       } else if (toolCall.name === 'inspect_service') {
         const svc = (toolCall.args?.service_name || '').trim();
@@ -616,15 +653,15 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       } else if (toolCall.name === 'db_get_schema') {
         const connId = toolCall.args?.connection_id;
         const dbName = toolCall.args?.database;
-        const dbConfig = (connId ? vaultStore.vault.databases?.find(d => d.id === connId) : null) || sessionStore.activeTab?.dbConnection || (vaultStore.vault.databases && vaultStore.vault.databases[0]);
+        const dbConfig = (connId ? vaultStore.vault.databases?.find(d => d.id === connId) : null) || activeTab.value?.dbConnection || vaultStore.vault.databases?.[0];
         if (!dbConfig) {
           throw new Error('Tidak ada koneksi database yang tersedia di Vault. Silakan tambahkan koneksi database terlebih dahulu.');
         }
         const overview = await tauriBridge.dbmsGetSchemaOverview(dbConfig, dbName || undefined);
         const summary = {
           connection: dbConfig.name,
-          engine: overview.engine,
-          database: overview.database,
+          engine: dbConfig.engine,
+          database: overview.current_database || dbName || dbConfig.database || 'default',
           tables: overview.tables.map(t => ({
             name: t.name,
             type: t.table_type,
@@ -642,7 +679,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         if (!query) throw new Error('Query SQL kosong');
         const connId = toolCall.args?.connection_id;
         const dbName = toolCall.args?.database;
-        const dbConfig = (connId ? vaultStore.vault.databases?.find(d => d.id === connId) : null) || sessionStore.activeTab?.dbConnection || (vaultStore.vault.databases && vaultStore.vault.databases[0]);
+        const dbConfig = (connId ? vaultStore.vault.databases?.find(d => d.id === connId) : null) || activeTab.value?.dbConnection || vaultStore.vault.databases?.[0];
         if (!dbConfig) {
           throw new Error('Tidak ada koneksi database yang tersedia di Vault. Silakan tambahkan koneksi database terlebih dahulu.');
         }
@@ -817,8 +854,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     const hostInfo = session ? `Host: ${session.username}@${session.host}:${session.port} (${session.name})` : 'No active session attached';
 
     const dbs = vaultStore.vault.databases || [];
-    const activeTab = sessionStore.activeTab;
-    const activeDbTab = activeTab?.type === 'dbms' ? activeTab.dbConnection : null;
+    const activeDbTab = activeTab.value?.type === 'dbms' ? activeTab.value.dbConnection : null;
     let dbInfo = 'No database configured in Vault';
     if (activeDbTab) {
       dbInfo = `Active DBMS Tab: "${activeDbTab.name}" (${activeDbTab.engine.toUpperCase()} • ${activeDbTab.host}:${activeDbTab.port || 3306}, Database: ${activeDbTab.database || 'default'})`;
@@ -901,7 +937,7 @@ You have access to tools to inspect and configure the server and database:
       return;
     }
 
-    const provider = activeProvider.value;
+    const provider = await getProviderWithSecret(activeProvider.value);
     if (!provider) {
       dialogStore.alert({
         title: 'Provider AI Belum Dipilih',
@@ -945,7 +981,7 @@ You have access to tools to inspect and configure the server and database:
   }
 
   async function continueAgentLoop(sessionId: string) {
-    const provider = activeProvider.value;
+    const provider = await getProviderWithSecret(activeProvider.value);
     if (!provider) return;
     const sid = sessionId || selectedSessionId.value || 'default';
     const thread = getOrCreateActiveThread(sid);

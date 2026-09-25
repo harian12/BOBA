@@ -40,6 +40,18 @@ export const tauriBridge = {
     return await invoke('dbms_get_database_users', { config });
   },
 
+  async aiSetProviderSecret(providerId: string, secret: string): Promise<void> {
+    return await invoke('ai_set_provider_secret', { providerId, secret });
+  },
+
+  async aiGetProviderSecret(providerId: string): Promise<string | null> {
+    return await invoke('ai_get_provider_secret', { providerId });
+  },
+
+  async aiDeleteProviderSecret(providerId: string): Promise<void> {
+    return await invoke('ai_delete_provider_secret', { providerId });
+  },
+
   // Update commands
   async checkAppUpdate(customRepo?: string, currentVersion?: string): Promise<AppUpdateInfo> {
     return await invoke('check_app_update', { customRepo: customRepo || null, currentVersion: currentVersion || null });

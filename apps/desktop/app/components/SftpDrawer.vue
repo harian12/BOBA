@@ -412,7 +412,6 @@ async function toggleSudo() {
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const folderInputRef = ref<HTMLInputElement | null>(null);
 const uploading = ref(false);
-const downloading = ref(false);
 const transferStatus = ref('');
 
 const editingFile = ref<RemoteFileItem | null>(null);
@@ -791,6 +790,8 @@ async function uploadStructuredFiles(fileItems: { file: File; relativePath: stri
     while (index < fileItems.length) {
       const currentIdx = index++;
       const item = fileItems[currentIdx];
+      if (!item) continue;
+
       const fullRemotePath = `${basePath}${item.relativePath}`;
 
       const transferId = queueStore.addUpload(props.sessionId, fullRemotePath, item.file.name, item.file.size);

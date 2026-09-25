@@ -161,7 +161,7 @@
         <div class="flex items-center space-x-1.5 truncate mr-2">
           <span class="text-sm">🕒</span>
           <span class="font-bold text-xs text-slate-200">Riwayat Percakapan</span>
-          <span class="text-[10px] text-sky-300/80 font-mono truncate max-w-[120px]">({{ selectedServerName }})</span>
+          <span class="text-[10px] text-sky-300/80 font-mono truncate max-w-[120px]">({{ currentTargetLabel }})</span>
         </div>
         <button
           @click="handleNewChat"
@@ -615,7 +615,7 @@
         class="flex items-center justify-end pt-1"
       >
         <button
-          v-if="currentMessages[currentMessages.length - 1].role === 'user'"
+          v-if="currentMessages[currentMessages.length - 1]?.role === 'user'"
           @click="aiStore.continueAgentLoop(aiStore.selectedSessionId)"
           type="button"
           class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/50 rounded-lg text-[10.5px] font-semibold transition flex items-center space-x-1.5 shadow"
@@ -769,6 +769,7 @@ const aiStore = useAiAgentStore();
 const sessionStore = useSessionStore();
 const vaultStore = useVaultStore();
 const dialogStore = useDialogStore();
+const activeTab = computed(() => sessionStore.tabs.find(tab => tab.id === sessionStore.activeTabId) || null);
 
 function getCommandInsight(tc: any) {
   const cmd = tc.args?.command || tc.args?.cmd || tc.args?.bash || (typeof tc.args === 'string' ? tc.args : '');
@@ -907,16 +908,18 @@ function getDbTargetId(id?: string): string {
 }
 
 function syncActiveTarget() {
-  const tab = sessionStore.activeTab;
+  const tab = activeTab.value;
   if (tab?.type === 'dbms' && tab.dbConnection) {
     aiStore.selectedSessionId = getDbTargetId(tab.dbConnection.id);
   } else if (tab?.type === 'terminal' && tab.sessionConfig) {
     aiStore.selectedSessionId = tab.sessionConfig.id;
   } else if (!aiStore.selectedSessionId) {
-    if (availableDatabases.value.length > 0) {
-      aiStore.selectedSessionId = getDbTargetId(availableDatabases.value[0].id);
-    } else if (availableSessions.value.length > 0) {
-      aiStore.selectedSessionId = availableSessions.value[0].id;
+    const [firstDatabase] = availableDatabases.value;
+    const [firstSession] = availableSessions.value;
+    if (firstDatabase) {
+      aiStore.selectedSessionId = getDbTargetId(firstDatabase.id);
+    } else if (firstSession) {
+      aiStore.selectedSessionId = firstSession.id;
     }
   }
 }
@@ -932,14 +935,14 @@ const availableDatabases = computed(() => {
 const isDbTarget = computed(() => {
   return Boolean(
     aiStore.selectedSessionId?.startsWith('db_') ||
-    (!aiStore.selectedSessionId && sessionStore.activeTab?.type === 'dbms')
+    (!aiStore.selectedSessionId && activeTab.value?.type === 'dbms')
   );
 });
 
 const currentTargetLabel = computed(() => {
   if (isDbTarget.value) {
     const rawId = aiStore.selectedSessionId?.replace(/^db_/, '');
-    const db = availableDatabases.value.find(d => getDbTargetId(d.id) === aiStore.selectedSessionId || d.id === rawId) || sessionStore.activeTab?.dbConnection;
+    const db = availableDatabases.value.find(d => getDbTargetId(d.id) === aiStore.selectedSessionId || d.id === rawId) || activeTab.value?.dbConnection;
     return db ? `${db.name} (${db.engine.toUpperCase()})` : 'Database Aktif';
   }
   const s = availableSessions.value.find(sess => sess.id === aiStore.selectedSessionId);
@@ -978,7 +981,7 @@ const currentMessages = computed(() => {
   const sid = aiStore.selectedSessionId || 'default';
   const thread = aiStore.activeThread;
   // Akses thread?.updatedAt agar computed selalu re-trigger jika ada event streaming token atau tool execution
-  const _ = thread?.updatedAt;
+  void thread?.updatedAt;
   const rawList = aiStore.getSessionMessages(sid);
   // Saring pesan teknis internal tool role dan pesan assistant kosong tanpa konten/tool calls
   const msgs = rawList.filter(m => {
@@ -1005,10 +1008,10 @@ const canContinueAnalysis = computed(() => {
   if (currentMessages.value.length === 0) return false;
   if (aiStore.isThinking) return false;
   const last = currentMessages.value[currentMessages.value.length - 1];
-  if (last.role !== 'assistant') return false;
+  if (!last || last.role !== 'assistant') return false;
 
   // Jangan tampilkan jika masih ada tool yang sedang dieksekusi
-  const hasRunningTool = Boolean(last.toolCalls?.some(tc => tc.status === 'running' || tc.status === 'pending'));
+  const hasRunningTool = Boolean(last.toolCalls?.some(tc => tc.status === 'running' || tc.status === 'pending_approval'));
   if (hasRunningTool) return false;
 
   // Hanya tampilkan jika perintah sebelumnya gagal/error ATAU asisten sama sekali belum memberikan respon teks
@@ -1059,8 +1062,9 @@ function getThreadSnippet(thread: any): string {
   const visible = (thread.messages || []).filter((m: any) => m.role !== 'tool');
   if (visible.length === 0) return 'Belum ada pesan.';
   const last = visible[visible.length - 1];
+  if (!last) return 'Belum ada pesan.';
   const prefix = last.role === 'user' ? 'Anda: ' : 'AI: ';
-  const content = last.content || (last.toolCalls?.length ? `[${last.toolCalls[0].name}]` : '...');
+  const content = last.content || (last.toolCalls?.[0]?.name ? `[${last.toolCalls[0].name}]` : '...');
   return prefix + (content.length > 55 ? content.slice(0, 55) + '...' : content);
 }
 
@@ -1100,9 +1104,10 @@ async function retryConnection() {
   // Bersihkan pesan error terakhir atau pesan assistant kosong dari thread
   while (thread.messages.length > 0) {
     const last = thread.messages[thread.messages.length - 1];
-    if (last.role === 'assistant' && (!last.content || last.content.includes('⚠️ Connection Error') || last.content.includes('⚠️ Error'))) {
+    const lastContent = last?.content || '';
+    if (last?.role === 'assistant' && (!lastContent || lastContent.includes('⚠️ Connection Error') || lastContent.includes('⚠️ Error'))) {
       if (last.toolCalls && last.toolCalls.length > 0) {
-        last.content = last.content.replace(/\n*⚠️ (Connection Error|Error):[\s\S]*$/, '').trim();
+        last.content = lastContent.replace(/\n*⚠️ (Connection Error|Error):[\s\S]*$/, '').trim();
         break;
       } else {
         thread.messages.pop();
@@ -1156,14 +1161,17 @@ function handleSend() {
   }
 
   if (!aiStore.selectedSessionId) {
-    if (sessionStore.activeTab?.type === 'dbms' && sessionStore.activeTab.dbConnection) {
-      aiStore.selectedSessionId = `db_${sessionStore.activeTab.dbConnection.id}`;
-    } else if (sessionStore.activeTab?.type === 'terminal' && sessionStore.activeTab.sessionConfig) {
-      aiStore.selectedSessionId = sessionStore.activeTab.sessionConfig.id;
-    } else if (availableDatabases.value.length > 0) {
-      aiStore.selectedSessionId = `db_${availableDatabases.value[0].id}`;
-    } else if (availableSessions.value.length > 0) {
-      aiStore.selectedSessionId = availableSessions.value[0].id;
+    const tab = activeTab.value;
+    const [firstDatabase] = availableDatabases.value;
+    const [firstSession] = availableSessions.value;
+    if (tab?.type === 'dbms' && tab.dbConnection) {
+      aiStore.selectedSessionId = getDbTargetId(tab.dbConnection.id);
+    } else if (tab?.type === 'terminal' && tab.sessionConfig) {
+      aiStore.selectedSessionId = tab.sessionConfig.id;
+    } else if (firstDatabase) {
+      aiStore.selectedSessionId = getDbTargetId(firstDatabase.id);
+    } else if (firstSession) {
+      aiStore.selectedSessionId = firstSession.id;
     } else {
       dialogStore.showToast('Silakan pilih Target SSH Server atau Database terlebih dahulu', 'warning', 2500);
       return;

@@ -109,11 +109,33 @@ pub struct DbUserItem {
     pub is_superuser: bool,
 }
 
+pub const MONGO_UNSUPPORTED_EXEC: &str =
+    "MongoDB belum didukung untuk eksekusi query. Koneksi TCP diuji, tetapi tidak ada driver MongoDB yang aktif.";
+pub const MONGO_UNSUPPORTED_SCHEMA: &str =
+    "MongoDB belum didukung untuk pembacaan skema. Koneksi TCP diuji, tetapi tidak ada driver MongoDB yang aktif.";
+
 pub struct DbmsManager {
     // Keeps active pools / connections for fast reuse if desired
     _mysql_pools: Arc<Mutex<HashMap<String, sqlx::MySqlPool>>>,
     _pg_pools: Arc<Mutex<HashMap<String, sqlx::PgPool>>>,
     _sqlite_pools: Arc<Mutex<HashMap<String, sqlx::SqlitePool>>>,
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'~' => out.push(*byte as char),
+            _ => out.push_str(&format!("%{:02X}", byte)),
+        }
+    }
+    out
 }
 
 fn split_sql_statements(sql: &str) -> Vec<String> {
@@ -173,15 +195,15 @@ impl DbmsManager {
         let db = config.database.as_deref().unwrap_or("");
 
         let auth = if pass.is_empty() {
-            user.to_string()
+            percent_encode(user)
         } else {
-            format!("{}:{}", user, pass)
+            format!("{}:{}", percent_encode(user), percent_encode(pass))
         };
 
         if db.is_empty() {
             format!("mysql://{}@{}:{}", auth, host, port)
         } else {
-            format!("mysql://{}@{}:{}/{}", auth, host, port, db)
+            format!("mysql://{}@{}:{}/{}", auth, host, port, percent_encode(db))
         }
     }
 
@@ -193,12 +215,33 @@ impl DbmsManager {
         let db = config.database.as_deref().unwrap_or("postgres");
 
         let auth = if pass.is_empty() {
-            user.to_string()
+            percent_encode(user)
         } else {
-            format!("{}:{}", user, pass)
+            format!("{}:{}", percent_encode(user), percent_encode(pass))
         };
 
-        format!("postgres://{}@{}:{}/{}", auth, host, port, db)
+        format!("postgres://{}@{}:{}/{}", auth, host, port, percent_encode(db))
+    }
+
+    pub fn build_redis_url(config: &DbConnectionConfig) -> String {
+        let host = config.host.as_deref().unwrap_or("127.0.0.1");
+        let port = config.port.unwrap_or(6379);
+        let pass = config.password.as_deref().unwrap_or("");
+        let user = config.username.as_deref().unwrap_or("");
+
+        if pass.is_empty() && user.is_empty() {
+            format!("redis://{}:{}", host, port)
+        } else if user.is_empty() {
+            format!("redis://:{}@{}:{}", percent_encode(pass), host, port)
+        } else {
+            format!(
+                "redis://{}:{}@{}:{}",
+                percent_encode(user),
+                percent_encode(pass),
+                host,
+                port
+            )
+        }
     }
 
     pub async fn test_connection(&self, config: &DbConnectionConfig) -> Result<String, String> {
@@ -263,15 +306,7 @@ impl DbmsManager {
                 Ok(format!("Connected to SQLite database successfully! Version: {}", row.0))
             }
             "redis" => {
-                let host = config.host.as_deref().unwrap_or("127.0.0.1");
-                let port = config.port.unwrap_or(6379);
-                let pass = config.password.as_deref().unwrap_or("");
-
-                let url = if pass.is_empty() {
-                    format!("redis://{}:{}", host, port)
-                } else {
-                    format!("redis://:{}@{}:{}", pass, host, port)
-                };
+                let url = Self::build_redis_url(config);
 
                 let client = redis::Client::open(url).map_err(|e| format!("Redis Client error: {}", e))?;
                 let mut conn = client
@@ -301,6 +336,47 @@ impl DbmsManager {
             }
             other => Err(format!("Database engine tidak didukung: {}", other)),
         }
+    }
+
+    async fn scan_keys(
+        conn: &mut redis::aio::MultiplexedConnection,
+        limit: usize,
+    ) -> Result<Vec<String>, String> {
+        const COUNT: &str = "500";
+        const MAX_ITERATIONS: usize = 100;
+
+        let mut keys: Vec<String> = Vec::new();
+        let mut cursor: u64 = 0;
+
+        for _ in 0..MAX_ITERATIONS {
+            if keys.len() >= limit {
+                break;
+            }
+
+            let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("*")
+                .arg("COUNT")
+                .arg(COUNT)
+                .query_async(conn)
+                .await
+                .map_err(|e| format!("Redis SCAN failed: {}", e))?;
+
+            for key in batch {
+                keys.push(key);
+                if keys.len() >= limit {
+                    break;
+                }
+            }
+
+            if next_cursor == 0 {
+                break;
+            }
+            cursor = next_cursor;
+        }
+
+        Ok(keys)
     }
 
     pub async fn get_schema_overview(
@@ -416,6 +492,23 @@ impl DbmsManager {
                 .unwrap_or_default();
 
                 for (schema_name, t_name, t_type) in t_rows {
+                    let pk_rows: Vec<(String,)> = sqlx::query_as(
+                        "SELECT kcu.column_name
+                         FROM information_schema.table_constraints tc
+                         JOIN information_schema.key_column_usage kcu
+                           ON tc.constraint_name = kcu.constraint_name
+                          AND tc.constraint_type = 'PRIMARY KEY'
+                          AND tc.table_schema = kcu.table_schema
+                         WHERE tc.table_schema = $1 AND tc.table_name = $2",
+                    )
+                    .bind(&schema_name)
+                    .bind(&t_name)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+                    let pk_columns: std::collections::HashSet<String> =
+                        pk_rows.into_iter().map(|r| r.0).collect();
+
                     let col_rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
                         "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
                     )
@@ -427,12 +520,15 @@ impl DbmsManager {
 
                     let columns = col_rows
                         .into_iter()
-                        .map(|(c_name, d_type, is_null, def_val)| DbColumnMeta {
-                            name: c_name,
-                            data_type: d_type,
-                            is_nullable: is_null == "YES",
-                            is_primary_key: false, // simplified
-                            default_value: def_val,
+                        .map(|(c_name, d_type, is_null, def_val)| {
+                            let is_pk = pk_columns.contains(&c_name);
+                            DbColumnMeta {
+                                name: c_name,
+                                 data_type: d_type,
+                                 is_nullable: is_null == "YES" && !is_pk,
+                                is_primary_key: is_pk,
+                                default_value: def_val,
+                            }
                         })
                         .collect();
 
@@ -521,30 +617,17 @@ impl DbmsManager {
                 })
             }
             "redis" => {
-                let host = config.host.as_deref().unwrap_or("127.0.0.1");
-                let port = config.port.unwrap_or(6379);
-                let pass = config.password.as_deref().unwrap_or("");
-                let url = if pass.is_empty() {
-                    format!("redis://{}:{}", host, port)
-                } else {
-                    format!("redis://:{}@{}:{}", pass, host, port)
-                };
-
+                let url = Self::build_redis_url(config);
                 let client = redis::Client::open(url).map_err(|e| format!("Redis Client error: {}", e))?;
                 let mut conn = client
                     .get_multiplexed_async_connection()
                     .await
                     .map_err(|e| format!("Redis connection failed: {}", e))?;
 
-                // Get keys sample
-                let keys: Vec<String> = redis::cmd("KEYS")
-                    .arg("*")
-                    .query_async(&mut conn)
-                    .await
-                    .unwrap_or_default();
+                let keys = Self::scan_keys(&mut conn, 200).await?;
 
                 let mut tables = Vec::new();
-                for k in keys.into_iter().take(200) {
+                for k in keys {
                     let k_type: String = redis::cmd("TYPE")
                         .arg(&k)
                         .query_async(&mut conn)
@@ -583,13 +666,7 @@ impl DbmsManager {
                     tables,
                 })
             }
-            "mongodb" => {
-                Ok(DbSchemaOverview {
-                    databases: vec!["admin".to_string(), "local".to_string(), "app_db".to_string()],
-                    current_database: Some("app_db".to_string()),
-                    tables: vec![],
-                })
-            }
+            "mongodb" => Err(MONGO_UNSUPPORTED_SCHEMA.to_string()),
             other => Err(format!("Engine {} tidak didukung", other)),
         }
     }
@@ -1033,25 +1110,7 @@ impl DbmsManager {
 
                 Ok(results)
             }
-            "mongodb" => {
-                for stmt in statements {
-                    let start = Instant::now();
-                    let trimmed = stmt.trim();
-                    let execution_time_ms = start.elapsed().as_millis() as u64;
-                    results.push(DbQueryResult {
-                        statement: Some(trimmed.to_string()),
-                        columns: vec!["Result".to_string()],
-                        rows: vec![vec![Value::String(format!(
-                            "MongoDB query executed: {}",
-                            trimmed
-                        ))]],
-                        affected_rows: 0,
-                        execution_time_ms,
-                        error: None,
-                    });
-                }
-                Ok(results)
-            }
+            "mongodb" => Err(MONGO_UNSUPPORTED_EXEC.to_string()),
             other => Err(format!("Engine {} tidak didukung", other)),
         }
     }
@@ -1762,5 +1821,123 @@ impl DbmsManager {
             }
             other => Err(format!("User management tidak didukung untuk engine {}", other)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(engine: &str) -> DbConnectionConfig {
+        DbConnectionConfig {
+            id: "t".to_string(),
+            name: "t".to_string(),
+            engine: engine.to_string(),
+            host: Some("db.example.com".to_string()),
+            port: None,
+            username: Some("app_user".to_string()),
+            password: Some("p@ss:w/rd#1".to_string()),
+            database: Some("app db".to_string()),
+            ssl: None,
+            sqlite_path: None,
+            is_remote_sqlite: None,
+            ssh_tunnel_enabled: None,
+            ssh_session_id: None,
+        }
+    }
+
+    #[test]
+    fn percent_encode_leaves_unreserved_alone() {
+        assert_eq!(percent_encode("abcXYZ019-_.~"), "abcXYZ019-_.~");
+    }
+
+    #[test]
+    fn percent_encode_escapes_url_reserved_characters() {
+        assert_eq!(percent_encode("p@ss:w/rd#1"), "p%40ss%3Aw%2Frd%231");
+        assert_eq!(percent_encode("a b"), "a%20b");
+        assert_eq!(percent_encode("?&=+%"), "%3F%26%3D%2B%25");
+    }
+
+    #[test]
+    fn percent_encode_handles_multibyte_utf8() {
+        assert_eq!(percent_encode("é"), "%C3%A9");
+    }
+
+    #[test]
+    fn mysql_url_encodes_credentials_and_database() {
+        let url = DbmsManager::build_mysql_url(&cfg("mysql"));
+        assert_eq!(
+            url,
+            "mysql://app_user:p%40ss%3Aw%2Frd%231@db.example.com:3306/app%20db"
+        );
+    }
+
+    #[test]
+    fn pg_url_encodes_credentials_and_database() {
+        let url = DbmsManager::build_pg_url(&cfg("postgres"));
+        assert_eq!(
+            url,
+            "postgres://app_user:p%40ss%3Aw%2Frd%231@db.example.com:5432/app%20db"
+        );
+    }
+
+    #[test]
+    fn redis_url_encodes_password_only_when_present() {
+        let mut c = cfg("redis");
+        c.username = None;
+        assert_eq!(
+            DbmsManager::build_redis_url(&c),
+            "redis://:p%40ss%3Aw%2Frd%231@db.example.com:6379"
+        );
+
+        c.password = None;
+        assert_eq!(
+            DbmsManager::build_redis_url(&c),
+            "redis://db.example.com:6379"
+        );
+    }
+
+    #[test]
+    fn redis_url_supports_acl_username() {
+        assert_eq!(
+            DbmsManager::build_redis_url(&cfg("redis")),
+            "redis://app_user:p%40ss%3Aw%2Frd%231@db.example.com:6379"
+        );
+    }
+
+    #[test]
+    fn split_sql_statements_ignores_semicolons_inside_literals_and_quotes() {
+        assert_eq!(
+            split_sql_statements("SELECT ';' FROM t; SELECT 2"),
+            vec!["SELECT ';' FROM t", "SELECT 2"]
+        );
+        assert_eq!(
+            split_sql_statements("SELECT `a;b` FROM t"),
+            vec!["SELECT `a;b` FROM t"]
+        );
+        assert_eq!(
+            split_sql_statements("SELECT \"a;b\" FROM t"),
+            vec!["SELECT \"a;b\" FROM t"]
+        );
+    }
+
+    #[tokio::test]
+    async fn mongodb_execution_returns_explicit_unsupported_error() {
+        let mgr = DbmsManager::new();
+        let err = mgr
+            .execute_query(&cfg("mongodb"), None, "db.users.find({})")
+            .await
+            .expect_err("mongodb execution must not report success");
+        assert!(err.contains("MongoDB"));
+    }
+
+    #[tokio::test]
+    async fn mongodb_schema_overview_returns_explicit_unsupported_error() {
+        let mgr = DbmsManager::new();
+        let err = mgr
+            .get_schema_overview(&cfg("mongodb"), None)
+            .await
+            .expect_err("mongodb schema read must not fabricate databases");
+        assert!(err.contains("MongoDB"));
     }
 }

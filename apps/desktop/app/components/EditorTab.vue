@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { tauriBridge } from '../services/tauriBridge.js';
@@ -208,7 +208,7 @@ function updateCursorPos() {
   const before = content.value.substring(0, pos);
   const lines = before.split('\n');
   currentLine.value = lines.length;
-  currentCol.value = lines[lines.length - 1].length + 1;
+  currentCol.value = (lines[lines.length - 1]?.length || 0) + 1;
 }
 
 function handleKeyDown(e: KeyboardEvent) {

@@ -260,7 +260,7 @@ import { ref, watch, computed } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
-import type { SshSessionConfig, SnippetItem } from '../types/index.js';
+import type { SshSessionConfig } from '../types/index.js';
 
 const props = defineProps<{
   isOpen: boolean;

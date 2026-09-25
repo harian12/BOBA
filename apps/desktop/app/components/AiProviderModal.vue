@@ -440,7 +440,10 @@ async function handleFetchModels() {
       availableModels.value = list;
       form.value.availableModels = list;
       if (!list.includes(form.value.model)) {
-        form.value.model = list[0];
+        const [firstModel] = list;
+        if (firstModel) {
+          form.value.model = firstModel;
+        }
       }
       dialogStore.showToast(`Berhasil menemukan ${list.length} model!`, 'success', 2500);
     } else {
@@ -482,8 +485,9 @@ async function handleDelete() {
   });
   if (isConfirmed) {
     aiStore.deleteProvider(form.value.id);
-    if (aiStore.providers.length > 0) {
-      selectProvider(aiStore.providers[0]);
+    const [firstProvider] = aiStore.providers;
+    if (firstProvider) {
+      selectProvider(firstProvider);
     } else {
       handleNewProvider();
     }
@@ -498,10 +502,13 @@ watch(
       const active = aiStore.activeProvider;
       if (active) {
         selectProvider(active);
-      } else if (aiStore.providers.length > 0) {
-        selectProvider(aiStore.providers[0]);
       } else {
-        handleNewProvider();
+        const [firstProvider] = aiStore.providers;
+        if (firstProvider) {
+          selectProvider(firstProvider);
+        } else {
+          handleNewProvider();
+        }
       }
     }
   }

@@ -2,7 +2,6 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useVaultStore } from './vaultStore.js';
-import type { VaultSnapshot } from '../types/index.js';
 
 export const useSyncStore = defineStore('sync', () => {
   const serverUrl = ref<string>(localStorage.getItem('boba_server_url') || 'http://localhost:8787');

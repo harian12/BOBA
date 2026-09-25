@@ -19,6 +19,42 @@ pub struct AppState {
     pub dbms_manager: Arc<DbmsManager>,
 }
 
+#[tauri::command]
+pub fn ai_set_provider_secret(provider_id: String, secret: String) -> Result<(), String> {
+    if provider_id.trim().is_empty() {
+        return Err("Provider id kosong.".to_string());
+    }
+    keyring::Entry::new("BOBA AI Provider", &provider_id)
+        .map_err(|e| e.to_string())?
+        .set_password(&secret)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn ai_get_provider_secret(provider_id: String) -> Result<Option<String>, String> {
+    if provider_id.trim().is_empty() {
+        return Err("Provider id kosong.".to_string());
+    }
+    let entry = keyring::Entry::new("BOBA AI Provider", &provider_id).map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(secret) => Ok(Some(secret)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn ai_delete_provider_secret(provider_id: String) -> Result<(), String> {
+    if provider_id.trim().is_empty() {
+        return Err("Provider id kosong.".to_string());
+    }
+    let entry = keyring::Entry::new("BOBA AI Provider", &provider_id).map_err(|e| e.to_string())?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 // --- E2EE Local Vault & Auth Commands ---
 
 #[tauri::command]
@@ -905,12 +941,38 @@ pub async fn check_app_update(custom_repo: Option<String>, current_version: Opti
     })
 }
 
+fn validate_external_url(url: &str) -> Result<(), String> {
+    if url.is_empty() || url.chars().any(char::is_control) {
+        return Err("URL tidak valid.".to_string());
+    }
+
+    let scheme_end = url
+        .find("://")
+        .ok_or_else(|| "Hanya URL http:// atau https:// yang diizinkan.".to_string())?;
+    let scheme = url[..scheme_end].to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err("Hanya URL http:// atau https:// yang diizinkan.".to_string());
+    }
+
+    let authority = url[scheme_end + 3..]
+        .split(|character| matches!(character, '/' | '?' | '#'))
+        .next()
+        .unwrap_or_default();
+    if authority.is_empty() {
+        return Err("URL tidak valid.".to_string());
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn open_external_url(url: String) -> Result<(), String> {
+    validate_external_url(&url)?;
+
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd")
-            .args(["/C", "start", "", &url])
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(&url)
             .spawn()
             .map_err(|e| format!("Gagal membuka URL: {}", e))?;
     }
@@ -1010,4 +1072,27 @@ pub async fn dbms_get_database_users(
     config: crate::dbms::DbConnectionConfig,
 ) -> Result<Vec<crate::dbms::DbUserItem>, String> {
     state.dbms_manager.get_database_users(&config).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_external_url;
+
+    #[test]
+    fn accepts_http_and_https_urls() {
+        assert!(validate_external_url("http://example.com").is_ok());
+        assert!(validate_external_url("HTTPS://example.com/path?q=1#fragment").is_ok());
+    }
+
+    #[test]
+    fn rejects_non_http_schemes_and_empty_authority() {
+        assert!(validate_external_url("file:///tmp/example").is_err());
+        assert!(validate_external_url("https://").is_err());
+    }
+
+    #[test]
+    fn rejects_control_characters() {
+        assert!(validate_external_url("https://example.com/\nfile").is_err());
+        assert!(validate_external_url("https://example.com/\0").is_err());
+    }
 }

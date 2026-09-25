@@ -949,7 +949,7 @@ function initTerminal() {
           if (e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
             const line = buffer.getLine(selHeadRow);
             const lineStr = line ? line.translateToString(false) : '';
-            const isWordChar = (ch: string) => ch && /[a-zA-Z0-9_\-]/.test(ch);
+             const isWordChar = (ch: string | undefined) => ch && /[a-zA-Z0-9_\-]/.test(ch);
 
             if (e.key === 'ArrowLeft') {
               let col = Math.min(selHeadCol, lineStr.length);

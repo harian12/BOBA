@@ -85,20 +85,24 @@ function generateFallbackDescription(cmd: string): string {
   // Service management
   const sysMatch = lower.match(/\bsystemctl\s+(status|restart|stop|start|reload)\s+([a-zA-Z0-9_-]+)/);
   if (sysMatch) {
-    const actionMap: Record<string, string> = {
-      status: 'Memeriksa status aktif dan log error layanan',
-      restart: 'Memulai ulang (restart) layanan',
-      stop: 'Menghentikan layanan sementara',
-      start: 'Menjalankan layanan',
-      reload: 'Memuat ulang konfigurasi layanan tanpa mematikan koneksi',
-    };
-    return `${actionMap[sysMatch[1]] || 'Mengelola layanan'} ${sysMatch[2]}`;
+    const action = sysMatch[1];
+    const service = sysMatch[2];
+    if (action && service) {
+      const actionMap: Record<string, string> = {
+        status: 'Memeriksa status aktif dan log error layanan',
+        restart: 'Memulai ulang (restart) layanan',
+        stop: 'Menghentikan layanan sementara',
+        start: 'Menjalankan layanan',
+        reload: 'Memuat ulang konfigurasi layanan tanpa mematikan koneksi',
+      };
+      return `${actionMap[action] || 'Mengelola layanan'} ${service}`;
+    }
   }
 
   // Docker
   const docMatch = lower.match(/\bdocker\s+(ps|logs|restart|stop|start|rm)\s*([a-zA-Z0-9_-]*)/);
   if (docMatch) {
-    const act = docMatch[1];
+    const act = docMatch[1] || '';
     const target = docMatch[2] ? `container ${docMatch[2]}` : 'container';
     if (act === 'ps') return 'Melihat daftar container Docker yang sedang berjalan';
     if (act === 'logs') return `Melihat riwayat catatan log ${target}`;

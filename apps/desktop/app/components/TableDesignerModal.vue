@@ -123,8 +123,13 @@
 
       <!-- DDL Preview -->
       <div class="space-y-1">
-        <div class="text-[11px] font-semibold text-slate-400 uppercase">Preview DDL Script:</div>
+        <div class="text-[11px] font-semibold text-slate-400 uppercase">
+          Preview {{ tableToEdit ? 'ALTER TABLE' : 'DDL' }} Script ({{ engine || 'unknown engine' }}):
+        </div>
         <pre class="bg-black/60 border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 max-h-32 overflow-auto whitespace-pre-wrap">{{ generatedDdl }}</pre>
+        <div v-if="unsupportedChanges.length > 0" class="text-[11px] text-amber-300 space-y-0.5">
+          <div v-for="(issue, i) in unsupportedChanges" :key="i">⚠ {{ issue }}</div>
+        </div>
       </div>
 
       <!-- Actions -->
@@ -151,9 +156,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { tauriBridge } from '../services/tauriBridge.js';
+import { quoteIdent, normalizeEngine } from '../utils/dbmsSql.js';
 import type { DbConnectionConfig, DbTableMeta, DbColumnMeta } from '../types/index.js';
 
 const props = defineProps<{
@@ -169,7 +176,11 @@ const dialogStore = useDialogStore();
 
 const tableName = ref('');
 const columns = ref<DbColumnMeta[]>([]);
+const originalColumns = ref<DbColumnMeta[]>([]);
 const executing = ref(false);
+
+const engine = computed(() => normalizeEngine(props.dbConfig?.engine));
+const isSqlite = computed(() => engine.value === 'sqlite');
 
 watch(
   () => props.isOpen,
@@ -178,6 +189,7 @@ watch(
       if (props.tableToEdit) {
         tableName.value = props.tableToEdit.name;
         columns.value = JSON.parse(JSON.stringify(props.tableToEdit.columns));
+        originalColumns.value = JSON.parse(JSON.stringify(props.tableToEdit.columns));
       } else {
         tableName.value = '';
         columns.value = [
@@ -185,6 +197,7 @@ watch(
           { name: 'created_at', data_type: 'DATETIME', is_nullable: true, is_primary_key: false, default_value: 'CURRENT_TIMESTAMP' },
           { name: 'updated_at', data_type: 'DATETIME', is_nullable: true, is_primary_key: false, default_value: 'CURRENT_TIMESTAMP' },
         ];
+        originalColumns.value = [];
       }
     }
   }
@@ -204,21 +217,136 @@ function removeColumn(idx: number) {
   columns.value.splice(idx, 1);
 }
 
+function qi(name: string): string {
+  return quoteIdent(engine.value, name);
+}
+
+function columnClause(c: DbColumnMeta): string {
+  let def = `${qi(c.name)} ${c.data_type.toUpperCase()}`;
+  if (!c.is_nullable) def += ' NOT NULL';
+  if (c.default_value) def += ` DEFAULT ${c.default_value}`;
+  if (c.is_primary_key) def += ' PRIMARY KEY';
+  return def;
+}
+
+interface ColumnDiff {
+  added: DbColumnMeta[];
+  removed: DbColumnMeta[];
+  modified: { before: DbColumnMeta; after: DbColumnMeta }[];
+}
+
+function diffColumns(): ColumnDiff {
+  const before = new Map(originalColumns.value.map(c => [c.name, c]));
+  const after = new Map(columns.value.map(c => [c.name, c]));
+
+  const added = columns.value.filter(c => !before.has(c.name));
+  const removed = originalColumns.value.filter(c => !after.has(c.name));
+  const modified: ColumnDiff['modified'] = [];
+
+  for (const [name, prev] of before) {
+    const next = after.get(name);
+    if (!next) continue;
+    const changed =
+      prev.data_type.toUpperCase() !== next.data_type.toUpperCase() ||
+      prev.is_nullable !== next.is_nullable ||
+      (prev.default_value ?? null) !== (next.default_value ?? null) ||
+      prev.is_primary_key !== next.is_primary_key;
+    if (changed) modified.push({ before: prev, after: next });
+  }
+
+  return { added, removed, modified };
+}
+
+const unsupportedChanges = computed<string[]>(() => {
+  if (!props.tableToEdit) return [];
+  const { modified } = diffColumns();
+  const problems: string[] = [];
+
+  if (isSqlite.value && modified.length > 0) {
+    problems.push(
+      'SQLite tidak mendukung ALTER COLUMN, sehingga tipe data, nullability, dan default pada kolom yang sudah ada tidak dapat diubah. Kolom: ' +
+        modified.map(m => m.after.name).join(', ')
+    );
+  }
+
+  const pkChanges = modified.filter(m => m.before.is_primary_key !== m.after.is_primary_key);
+  if (pkChanges.length > 0) {
+    problems.push(
+      'Perubahan primary key harus lewat constraint terpisah dan tidak didukung di designer ini. Kolom: ' +
+        pkChanges.map(m => m.after.name).join(', ')
+    );
+  }
+
+  return problems;
+});
+
+function alterStatements(): string[] {
+  const table = qi(tableName.value.trim());
+  const { added, removed, modified } = diffColumns();
+  const stmts: string[] = [];
+
+  for (const c of added) {
+    stmts.push(`ALTER TABLE ${table} ADD COLUMN ${columnClause(c)};`);
+  }
+
+  for (const { after } of modified) {
+    if (engine.value === 'postgres' || engine.value === 'postgresql') {
+      stmts.push(`ALTER TABLE ${table} ALTER COLUMN ${qi(after.name)} TYPE ${after.data_type.toUpperCase()};`);
+      stmts.push(`ALTER TABLE ${table} ALTER COLUMN ${qi(after.name)} ${after.is_nullable ? 'DROP NOT NULL' : 'SET NOT NULL'};`);
+      stmts.push(
+        after.default_value
+          ? `ALTER TABLE ${table} ALTER COLUMN ${qi(after.name)} SET DEFAULT ${after.default_value};`
+          : `ALTER TABLE ${table} ALTER COLUMN ${qi(after.name)} DROP DEFAULT;`
+      );
+    } else if (engine.value === 'mysql' || engine.value === 'mariadb') {
+      stmts.push(`ALTER TABLE ${table} MODIFY COLUMN ${columnClause(after)};`);
+    }
+  }
+
+  for (const c of removed) {
+    stmts.push(`ALTER TABLE ${table} DROP COLUMN ${qi(c.name)};`);
+  }
+
+  return stmts;
+}
+
 const generatedDdl = computed(() => {
   const name = tableName.value.trim() || 'nama_tabel';
-  const colDefs = columns.value.map(c => {
-    let def = `  \`${c.name}\` ${c.data_type}`;
-    if (!c.is_nullable) def += ' NOT NULL';
-    if (c.default_value) def += ` DEFAULT ${c.default_value}`;
-    if (c.is_primary_key) def += ' PRIMARY KEY';
-    return def;
-  }).join(',\n');
 
-  return `CREATE TABLE \`${name}\` (\n${colDefs}\n);`;
+  if (!props.tableToEdit) {
+    const colDefs = columns.value.map(c => `  ${columnClause(c)}`).join(',\n');
+    return `CREATE TABLE ${qi(name)} (\n${colDefs}\n);`;
+  }
+
+  const stmts = alterStatements();
+  if (stmts.length === 0) {
+    return `-- Tidak ada perubahan struktur untuk tabel ${name}`;
+  }
+  return stmts.join('\n');
 });
 
 async function handleExecuteDdl() {
   if (!props.dbConfig) return;
+
+  if (unsupportedChanges.value.length > 0) {
+    await dialogStore.alert({
+      title: 'Perubahan Tidak Didukung Engine',
+      description: unsupportedChanges.value.join('\n'),
+      variant: 'error',
+    });
+    return;
+  }
+
+  const statements = props.tableToEdit ? alterStatements() : [];
+  if (statements.length === 0 && props.tableToEdit) {
+    await dialogStore.alert({
+      title: 'Tidak Ada Perubahan',
+      description: 'Tidak ada perubahan struktur yang perlu dieksekusi.',
+      variant: 'error',
+    });
+    return;
+  }
+
   executing.value = true;
 
   try {

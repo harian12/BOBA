@@ -133,7 +133,9 @@ function handleFileInput(e: Event) {
   const target = e.target as HTMLInputElement;
   if (!target.files || target.files.length === 0) return;
 
-  const file = target.files[0];
+  const file = target.files.item(0);
+  if (!file) return;
+
   newKeyName.value = file.name;
 
   const reader = new FileReader();

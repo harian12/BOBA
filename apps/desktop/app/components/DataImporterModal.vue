@@ -154,9 +154,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { tauriBridge } from '../services/tauriBridge.js';
 import type { DbConnectionConfig, DbTableMeta } from '../types/index.js';
 
 const props = defineProps<{
@@ -234,18 +235,101 @@ async function browseCsvFile() {
 }
 
 function parseCsv(text: string) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-  if (lines.length === 0) return;
-
-  // Simple CSV parser
-  const headerLine = lines[0];
-  csvHeaders.value = headerLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-
   const rows: string[][] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const row = lines[i].split(',').map(cell => cell.trim().replace(/^["']|["']$/g, ''));
-    rows.push(row);
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let quotedField = false;
+  let index = 0;
+
+  const pushField = () => {
+    row.push(quotedField ? field : field.trim());
+    field = '';
+    quotedField = false;
+  };
+
+  const pushRow = () => {
+    pushField();
+    if (row.some(value => value !== '') || row.length > 1) rows.push(row);
+    row = [];
+  };
+
+  while (index < text.length) {
+    const char = text[index];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[index + 1] === '"') {
+          field += '"';
+          index += 2;
+          continue;
+        }
+        inQuotes = false;
+        index += 1;
+        continue;
+      }
+      field += char;
+      index += 1;
+      continue;
+    }
+
+    if (char === '"' && field.trim() === '') {
+      field = '';
+      quotedField = true;
+      inQuotes = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === ',') {
+      pushField();
+      index += 1;
+      continue;
+    }
+
+    if (char === '\n' || char === '\r') {
+      pushRow();
+      if (char === '\r' && text[index + 1] === '\n') index += 1;
+      index += 1;
+      continue;
+    }
+
+    field += char;
+    index += 1;
   }
+
+  if (inQuotes) {
+    csvHeaders.value = [];
+    csvParsedRows.value = [];
+    importStatus.value = { success: false, message: 'CSV tidak valid: ada field yang belum ditutup.' };
+    return;
+  }
+
+  if (text.length > 0 && (row.length > 0 || field.length > 0)) pushRow();
+  if (rows.length === 0) {
+    csvHeaders.value = [];
+    csvParsedRows.value = [];
+    importStatus.value = { success: false, message: 'CSV tidak berisi header atau data.' };
+    return;
+  }
+
+  const header = rows.shift()!;
+  if (header.length === 0 || header.some(value => value === '')) {
+    csvHeaders.value = [];
+    csvParsedRows.value = [];
+    importStatus.value = { success: false, message: 'CSV tidak valid: header kolom tidak boleh kosong.' };
+    return;
+  }
+
+  const invalidRow = rows.findIndex(dataRow => dataRow.length !== header.length);
+  if (invalidRow !== -1) {
+    csvHeaders.value = [];
+    csvParsedRows.value = [];
+    importStatus.value = { success: false, message: `CSV tidak valid: lebar baris ${invalidRow + 2} harus sama dengan header.` };
+    return;
+  }
+
+  csvHeaders.value = header;
   csvParsedRows.value = rows;
 }
 

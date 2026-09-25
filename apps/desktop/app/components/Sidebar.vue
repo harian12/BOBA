@@ -8,7 +8,7 @@
       <!-- Top Modes: Sessions / Databases / SFTP -->
       <div class="flex flex-col items-center space-y-2.5 w-full">
         <!-- Brand Logo -->
-        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.1.7 (Klik untuk cek update)">
+        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.1.8 (Klik untuk cek update)">
           <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30 hover:border-sky-400 transition" />
         </div>
 
@@ -640,7 +640,6 @@ async function handleDeleteDb(db: DbConnectionConfig) {
 }
 
 // Drag and Drop States (Pointer-based, works reliably in WebView2)
-const treeContainer = ref<HTMLElement | null>(null);
 const dragType = ref<'session' | 'folder' | null>(null);
 const draggingSessionId = ref<string | null>(null);
 const draggingFolderId = ref<string | null>(null);
@@ -716,6 +715,65 @@ function getSessionsInFolder(folderId: string) {
   return sessions.filter(s => s.name.toLowerCase().includes(q) || s.host.toLowerCase().includes(q));
 }
 
+function renameFolder(folderId: string, name: string) {
+  const folder = vaultStore.vault.folders.find(item => item.id === folderId);
+  if (!folder) return;
+  folder.name = name;
+  void vaultStore.persist(true);
+}
+
+function storeDeleteFolder(folderId: string) {
+  void vaultStore.removeFolder(folderId);
+}
+
+function storeDeleteSession(sessionId: string) {
+  void vaultStore.removeSession(sessionId);
+}
+
+function moveSessionToFolder(sessionId: string, folderId: string | null) {
+  const session = vaultStore.vault.sessions.find(item => item.id === sessionId);
+  if (!session) return;
+  session.folder_id = folderId;
+  void vaultStore.persist(true);
+}
+
+function reorderSession(sessionId: string, targetSessionId: string, position: 'top' | 'bottom', targetFolderId: string | null) {
+  const sourceIndex = vaultStore.vault.sessions.findIndex(item => item.id === sessionId);
+  let targetIndex = vaultStore.vault.sessions.findIndex(item => item.id === targetSessionId);
+  const session = vaultStore.vault.sessions[sourceIndex];
+  if (!session || sourceIndex === -1 || targetIndex === -1) return;
+  session.folder_id = targetFolderId;
+  vaultStore.vault.sessions.splice(sourceIndex, 1);
+  if (sourceIndex < targetIndex) targetIndex--;
+  vaultStore.vault.sessions.splice(targetIndex + (position === 'bottom' ? 1 : 0), 0, session);
+  void vaultStore.persist(true);
+}
+
+function reorderFolder(folderId: string, targetFolderId: string, position: 'top' | 'bottom') {
+  const sourceIndex = vaultStore.vault.folders.findIndex(folder => folder.id === folderId);
+  let targetIndex = vaultStore.vault.folders.findIndex(folder => folder.id === targetFolderId);
+  const folder = vaultStore.vault.folders[sourceIndex];
+  if (!folder || sourceIndex === -1 || targetIndex === -1) return;
+  vaultStore.vault.folders.splice(sourceIndex, 1);
+  if (sourceIndex < targetIndex) targetIndex--;
+  vaultStore.vault.folders.splice(targetIndex + (position === 'bottom' ? 1 : 0), 0, folder);
+  void vaultStore.persist(true);
+}
+
+function duplicateSession(sessionId: string, folderId?: string) {
+  const source = vaultStore.vault.sessions.find(item => item.id === sessionId);
+  if (!source) return;
+  const duplicate: SshSessionConfig = {
+    ...source,
+    id: `session_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    name: `${source.name} (Copy)`,
+    folder_id: folderId === undefined ? source.folder_id : folderId,
+    snippets: source.snippets?.map(snippet => ({ ...snippet })),
+  };
+  vaultStore.vault.sessions.push(duplicate);
+  void vaultStore.persist(true);
+}
+
 function toggleFolder(folderId: string) {
   collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
 }
@@ -747,7 +805,7 @@ async function promptRenameFolder(folder: Folder) {
   });
 
   if (newName && newName.trim() && newName.trim() !== folder.name) {
-    vaultStore.renameFolder(folder.id, newName.trim());
+    renameFolder(folder.id, newName.trim());
   }
 }
 
@@ -760,7 +818,7 @@ async function deleteFolder(folder: Folder) {
   });
 
   if (confirmed) {
-    vaultStore.deleteFolder(folder.id);
+    storeDeleteFolder(folder.id);
   }
 }
 
@@ -773,7 +831,7 @@ async function deleteSession(session: SshSessionConfig) {
   });
 
   if (confirmed) {
-    vaultStore.deleteSession(session.id);
+    storeDeleteSession(session.id);
   }
 }
 
@@ -888,7 +946,7 @@ function onPointerMove(e: PointerEvent) {
   }
 }
 
-async function onPointerUp(e: PointerEvent) {
+async function onPointerUp() {
   window.removeEventListener('pointermove', onPointerMove);
   window.removeEventListener('pointerup', onPointerUp);
 
@@ -901,20 +959,20 @@ async function onPointerUp(e: PointerEvent) {
     const sessId = draggingSessionId.value;
 
     if (dragOverFolderId.value) {
-      vaultStore.moveSessionToFolder(sessId, dragOverFolderId.value);
+      moveSessionToFolder(sessId, dragOverFolderId.value);
     } else if (dragOverSessionId.value && dragOverSessionPos.value) {
       const targetSessionId = dragOverSessionId.value;
       const targetSession = vaultStore.vault.sessions.find(s => s.id === targetSessionId);
       const targetFolderId = targetSession ? targetSession.folder_id : null;
 
-      vaultStore.reorderSession(sessId, targetSessionId, dragOverSessionPos.value, targetFolderId);
+      reorderSession(sessId, targetSessionId, dragOverSessionPos.value, targetFolderId);
     } else if (dragOverRoot.value) {
-      vaultStore.moveSessionToFolder(sessId, null);
+      moveSessionToFolder(sessId, null);
     }
   } else if (dragType.value === 'folder' && draggingFolderId.value) {
     const srcFolderId = draggingFolderId.value;
     if (dragOverFolderTargetId.value && dragOverFolderPos.value) {
-      vaultStore.reorderFolder(srcFolderId, dragOverFolderTargetId.value, dragOverFolderPos.value);
+      reorderFolder(srcFolderId, dragOverFolderTargetId.value, dragOverFolderPos.value);
     }
   }
 
@@ -979,7 +1037,7 @@ function handleContextCopy(session: SshSessionConfig) {
 
 function handleContextDuplicate(session: SshSessionConfig) {
   closeContextMenu();
-  vaultStore.duplicateSession(session.id);
+  duplicateSession(session.id);
 }
 
 function handleContextEdit(session: SshSessionConfig) {
@@ -1014,10 +1072,10 @@ function handleContextPasteIntoFolder(folder: Folder) {
   if (clipboard.value.type === 'session') {
     const session = clipboard.value.data as SshSessionConfig;
     if (clipboard.value.action === 'cut') {
-      vaultStore.moveSessionToFolder(session.id, folder.id);
+      moveSessionToFolder(session.id, folder.id);
       clipboard.value = null;
     } else {
-      vaultStore.duplicateSession(session.id, folder.id);
+      duplicateSession(session.id, folder.id);
     }
   }
 }

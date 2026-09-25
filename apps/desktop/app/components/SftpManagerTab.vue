@@ -2183,7 +2183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, useTemplateRef } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { ActiveTab, LocalFileItem, RemoteFileItem } from '../types/index.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useTransferQueueStore } from '../stores/transferQueueStore.js';
@@ -3289,7 +3289,7 @@ function onRightTargetChange(newTarget: string) {
   rightPaneTarget.value = newTarget;
   if (newTarget === 'local') {
     if (!rightLocalPathInput.value) {
-      rightLocalPathInput.value = localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\';
+      rightLocalPathInput.value = localDrives.value[0]?.path || 'C:\\';
     }
     fetchRightLocalFiles(true);
   } else {
@@ -3508,7 +3508,7 @@ onMounted(async () => {
     const drives = await tauriBridge.fsGetLocalDrives();
     if (drives && drives.length > 0) {
       localDrives.value = drives;
-      localPathInput.value = drives[0].path;
+      localPathInput.value = drives[0]?.path || 'C:\\';
     }
   } catch (e) {
     console.warn('Failed to load local drives:', e);
@@ -3595,7 +3595,7 @@ async function fetchLocalFiles(recordHistory = true) {
     // Pastikan path lokal valid, default ke Home atau C:\
     let target = localPathInput.value?.trim();
     if (!target) {
-      target = localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\';
+      target = localDrives.value[0]?.path || 'C:\\';
       localPathInput.value = target;
     }
     const items = await tauriBridge.fsListLocalDir(target);
@@ -3630,7 +3630,7 @@ function handleLocalEnter() {
 function navigateLocalBack() {
   if (localHistoryIndex.value > 0) {
     localHistoryIndex.value--;
-    localPathInput.value = localHistory.value[localHistoryIndex.value];
+    localPathInput.value = localHistory.value[localHistoryIndex.value] || '';
     fetchLocalFiles(false);
   }
 }
@@ -3638,7 +3638,7 @@ function navigateLocalBack() {
 function navigateLocalForward() {
   if (localHistoryIndex.value < localHistory.value.length - 1) {
     localHistoryIndex.value++;
-    localPathInput.value = localHistory.value[localHistoryIndex.value];
+    localPathInput.value = localHistory.value[localHistoryIndex.value] || '';
     fetchLocalFiles(false);
   }
 }
@@ -3665,7 +3665,7 @@ async function fetchRightLocalFiles(recordHistory = true) {
   try {
     let target = rightLocalPathInput.value?.trim();
     if (!target) {
-      target = localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\';
+      target = localDrives.value[0]?.path || 'C:\\';
       rightLocalPathInput.value = target;
     }
     const items = await tauriBridge.fsListLocalDir(target);
@@ -3700,7 +3700,7 @@ function handleRightLocalEnter() {
 function navigateRightLocalBack() {
   if (rightLocalHistoryIndex.value > 0) {
     rightLocalHistoryIndex.value--;
-    rightLocalPathInput.value = rightLocalHistory.value[rightLocalHistoryIndex.value];
+    rightLocalPathInput.value = rightLocalHistory.value[rightLocalHistoryIndex.value] || '';
     fetchRightLocalFiles(false);
   }
 }
@@ -3708,7 +3708,7 @@ function navigateRightLocalBack() {
 function navigateRightLocalForward() {
   if (rightLocalHistoryIndex.value < rightLocalHistory.value.length - 1) {
     rightLocalHistoryIndex.value++;
-    rightLocalPathInput.value = rightLocalHistory.value[rightLocalHistoryIndex.value];
+    rightLocalPathInput.value = rightLocalHistory.value[rightLocalHistoryIndex.value] || '';
     fetchRightLocalFiles(false);
   }
 }
@@ -3870,7 +3870,7 @@ function navigateToLeftRemotePath(path: string) {
 function navigateLeftRemoteBack() {
   if (leftRemoteHistoryIndex.value > 0) {
     leftRemoteHistoryIndex.value--;
-    leftRemotePathInput.value = leftRemoteHistory.value[leftRemoteHistoryIndex.value];
+    leftRemotePathInput.value = leftRemoteHistory.value[leftRemoteHistoryIndex.value] || '';
     fetchLeftRemoteFiles(false);
   }
 }
@@ -3878,7 +3878,7 @@ function navigateLeftRemoteBack() {
 function navigateLeftRemoteForward() {
   if (leftRemoteHistoryIndex.value < leftRemoteHistory.value.length - 1) {
     leftRemoteHistoryIndex.value++;
-    leftRemotePathInput.value = leftRemoteHistory.value[leftRemoteHistoryIndex.value];
+    leftRemotePathInput.value = leftRemoteHistory.value[leftRemoteHistoryIndex.value] || '';
     fetchLeftRemoteFiles(false);
   }
 }
@@ -3928,16 +3928,17 @@ async function openInEditor(side: 'left' | 'right', item: LocalFileItem | Remote
         title: 'Local Machine',
         sessionConfig: {
           id: 'local',
+          folder_id: null,
           name: 'Local Machine',
           host: 'localhost',
           port: 0,
           username: '',
           auth_type: 'password',
-          created_at: '',
-          updated_at: '',
+          sftp_auto_open: false,
         },
         connected: true,
         sftpOpen: false,
+        currentRemotePath: item.path,
       };
     } else if (isLeft) {
       const activeId = await ensureLeftConnected();
@@ -3950,6 +3951,7 @@ async function openInEditor(side: 'left' | 'right', item: LocalFileItem | Remote
         sessionConfig: { ...conf },
         connected: true,
         sftpOpen: false,
+        currentRemotePath: item.path,
       };
     } else {
       const activeId = await ensureConnected();
@@ -3962,6 +3964,7 @@ async function openInEditor(side: 'left' | 'right', item: LocalFileItem | Remote
         sessionConfig: { ...conf },
         connected: true,
         sftpOpen: false,
+        currentRemotePath: item.path,
       };
     }
 
@@ -4094,7 +4097,7 @@ function handleRemoteEnter() {
 function navigateRemoteBack() {
   if (remoteHistoryIndex.value > 0) {
     remoteHistoryIndex.value--;
-    remotePathInput.value = remoteHistory.value[remoteHistoryIndex.value];
+    remotePathInput.value = remoteHistory.value[remoteHistoryIndex.value] || '';
     fetchRemoteFiles(false);
   }
 }
@@ -4102,7 +4105,7 @@ function navigateRemoteBack() {
 function navigateRemoteForward() {
   if (remoteHistoryIndex.value < remoteHistory.value.length - 1) {
     remoteHistoryIndex.value++;
-    remotePathInput.value = remoteHistory.value[remoteHistoryIndex.value];
+    remotePathInput.value = remoteHistory.value[remoteHistoryIndex.value] || '';
     fetchRemoteFiles(false);
   }
 }
@@ -4517,7 +4520,7 @@ async function transferItemRightToLeft(item: LocalFileItem | RemoteFileItem) {
 }
 
 async function copyLocalToLocal(srcItem: LocalFileItem, destDir: string, isDestLeft: boolean) {
-  const targetDir = destDir || (localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\');
+  const targetDir = destDir || localDrives.value[0]?.path || 'C:\\';
   const sep = targetDir.endsWith('\\') || targetDir.endsWith('/') ? '' : '\\';
   const targetPath = `${targetDir}${sep}${srcItem.name}`;
   try {
@@ -4535,7 +4538,7 @@ async function copyLocalToLocal(srcItem: LocalFileItem, destDir: string, isDestL
 }
 
 async function downloadLeftRemoteToRightLocal(file: RemoteFileItem) {
-  const destDir = rightLocalPathInput.value || (localDrives.value.length > 0 ? localDrives.value[0].path : 'C:\\');
+  const destDir = rightLocalPathInput.value || localDrives.value[0]?.path || 'C:\\';
   const sep = destDir.endsWith('\\') || destDir.endsWith('/') ? '' : '\\';
   const targetLocalPath = `${destDir}${sep}${file.name}`;
 

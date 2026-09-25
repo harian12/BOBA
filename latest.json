@@ -1,15 +1,15 @@
 {
-  "version": "0.1.7",
-  "notes": "Release v0.1.7 - Auto Update In-App, Universal DBMS Client, AI Copilot Database Tools & Interactive ERD Diagram.",
-  "pub_date": "2026-09-25T17:30:00.000Z",
+  "version": "0.1.8",
+  "notes": "Release v0.1.8 - Security hardening, DBMS correctness, auto-update reliability, and typecheck cleanup.",
+  "pub_date": "2026-09-25T18:30:00.000Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMDgwMmVlV1NZRnovVGJOQUtlL2JCZDJQNHhRUGhpTC9yL3ZvSS91cHlWVjJBSFF1SyswQjVLVzl2OVl2SERyenpTWDJzMDhlUlpCNndxbkp1VHB1Ti9id3BoZHgyQUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzMyNDU1CWZpbGU6Qk9CQV8wLjEuN194NjQtc2V0dXAuZXhlCmxGc0EySG1RLytleWFPVkovOWNUR29YSGp4M1JvZHlTZXpyM080K09xaGlLaklRVTQwVzIxamRXMVI4YUY2am4xMWFhbXB0enY5RXlpdnRCS1BqeERRPT0K",
-      "url": "https://github.com/harian12/BOBA/releases/download/v0.1.7/BOBA_0.1.7_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMDgwMmVlV1NZRndKMExhVjZ5cDhLaUYwbVJqbXVOK3RqZGlZWTBIOGFUYXVJT2dhL2FsZkwzZGlTalBaOUM3NFhSZnRhZWlZUHk5b25kbHBlOG9jRGxKYnpVWGFlRHc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzQxNjc0CWZpbGU6Qk9CQV8wLjEuOF94NjQtc2V0dXAuZXhlCmFIKzF2SDM4WUU5Q3hrLzN6bkF3QlA4TEQra2RqT2FBZzdSTytrUU5iRlRSN0NTOHJ0MzNtbGFIdE51K2RwNlo5eVdiOXc3elBBRGhFM21BbTBsTEF3PT0K",
+      "url": "https://github.com/harian12/BOBA/releases/download/v0.1.8/BOBA_0.1.8_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMDgwMmVlV1NZRnovVGJOQUtlL2JCZDJQNHhRUGhpTC9yL3ZvSS91cHlWVjJBSFF1SyswQjVLVzl2OVl2SERyenpTWDJzMDhlUlpCNndxbkp1VHB1Ti9id3BoZHgyQUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzMyNDU1CWZpbGU6Qk9CQV8wLjEuN194NjQtc2V0dXAuZXhlCmxGc0EySG1RLytleWFPVkovOWNUR29YSGp4M1JvZHlTZXpyM080K09xaGlLaklRVTQwVzIxamRXMVI4YUY2am4xMWFhbXB0enY5RXlpdnRCS1BqeERRPT0K",
-      "url": "https://github.com/harian12/BOBA/releases/download/v0.1.7/BOBA_0.1.7_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTMDgwMmVlV1NZRndKMExhVjZ5cDhLaUYwbVJqbXVOK3RqZGlZWTBIOGFUYXVJT2dhL2FsZkwzZGlTalBaOUM3NFhSZnRhZWlZUHk5b25kbHBlOG9jRGxKYnpVWGFlRHc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwMzQxNjc0CWZpbGU6Qk9CQV8wLjEuOF94NjQtc2V0dXAuZXhlCmFIKzF2SDM4WUU5Q3hrLzN6bkF3QlA4TEQra2RqT2FBZzdSTytrUU5iRlRSN0NTOHJ0MzNtbGFIdE51K2RwNlo5eVdiOXc3elBBRGhFM21BbTBsTEF3PT0K",
+      "url": "https://github.com/harian12/BOBA/releases/download/v0.1.8/BOBA_0.1.8_x64-setup.exe"
     }
   }
 }

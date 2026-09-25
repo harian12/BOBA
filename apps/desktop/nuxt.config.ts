@@ -1,3 +1,5 @@
+import { defineNuxtConfig } from 'nuxt/config';
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-30',
@@ -6,6 +8,13 @@ export default defineNuxtConfig({
   },
   ssr: false, // SPA mode for Tauri desktop app
   devtools: { enabled: false },
+  typescript: {
+    tsConfig: {
+      compilerOptions: {
+        types: ['node'],
+      },
+    },
+  },
   modules: [
     '@nuxtjs/tailwindcss',
     '@pinia/nuxt',
@@ -32,4 +41,4 @@ export default defineNuxtConfig({
       strictPort: true,
     },
   },
-});
+} as any);

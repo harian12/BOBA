@@ -98,6 +98,7 @@
 import { ref, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { tauriBridge } from '../services/tauriBridge.js';
 import type { DbConnectionConfig, DbProcessItem } from '../types/index.js';
 
 const props = defineProps<{
