@@ -14,32 +14,32 @@
 
         <!-- Mode 1: SSH Sessions / Terminal -->
         <button
-          @click="activeMode = 'sessions'"
+          @click="handleModeClick('sessions')"
           :class="[
             'w-9 h-9 flex items-center justify-center rounded-lg transition relative',
-            activeMode === 'sessions'
+            activeMode === 'sessions' && !isCollapsed
               ? 'bg-boba-800 text-sky-400 shadow-md border border-sky-500/30'
               : 'text-slate-400 hover:text-slate-200 hover:bg-boba-850'
           ]"
-          title="Sessions & Remote SSH"
+          :title="activeMode === 'sessions' && !isCollapsed ? 'Klik untuk sembunyikan sidebar' : 'Sessions & Remote SSH'"
         >
           <Icon icon="lucide:terminal" class="w-5 h-5" />
-          <span v-if="activeMode === 'sessions'" class="absolute left-0 top-2 bottom-2 w-1 bg-sky-400 rounded-r"></span>
+          <span v-if="activeMode === 'sessions' && !isCollapsed" class="absolute left-0 top-2 bottom-2 w-1 bg-sky-400 rounded-r"></span>
         </button>
 
         <!-- Mode 2: Databases (DBMS) -->
         <button
-          @click="activeMode = 'databases'"
+          @click="handleModeClick('databases')"
           :class="[
             'w-9 h-9 flex items-center justify-center rounded-lg transition relative',
-            activeMode === 'databases'
+            activeMode === 'databases' && !isCollapsed
               ? 'bg-boba-800 text-sky-400 shadow-md border border-sky-500/30'
               : 'text-slate-400 hover:text-slate-200 hover:bg-boba-850'
           ]"
-          title="Databases (DBMS Client & ERD)"
+          :title="activeMode === 'databases' && !isCollapsed ? 'Klik untuk sembunyikan sidebar' : 'Databases (DBMS Client & ERD)'"
         >
           <Icon icon="lucide:database" class="w-5 h-5" />
-          <span v-if="activeMode === 'databases'" class="absolute left-0 top-2 bottom-2 w-1 bg-sky-400 rounded-r"></span>
+          <span v-if="activeMode === 'databases' && !isCollapsed" class="absolute left-0 top-2 bottom-2 w-1 bg-sky-400 rounded-r"></span>
         </button>
 
         <!-- Mode 3: SFTP Manager -->
@@ -103,7 +103,7 @@
     </div>
 
     <!-- Main Sidebar Drawer (w-64) -->
-    <div class="w-64 bg-boba-900 border-r border-boba-800 flex flex-col h-full">
+    <div v-show="!isCollapsed" class="w-64 bg-boba-900 border-r border-boba-800 flex flex-col h-full animate-in slide-in-from-left-2 duration-150">
       <!-- ================= PANEL 1: SESSIONS & SSH ================= -->
       <template v-if="activeMode === 'sessions'">
         <!-- Action Toolbar (Add Session / Folder) -->
@@ -126,6 +126,13 @@
               class="px-2 py-1 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-md text-[11px] font-medium shadow-sm transition"
             >
               + Session
+            </button>
+            <button
+              @click="isCollapsed = true"
+              title="Sembunyikan Sidebar (Ctrl+B)"
+              class="p-1 hover:bg-boba-800 text-slate-400 hover:text-slate-200 rounded transition ml-0.5"
+            >
+              <Icon icon="lucide:panel-left-close" class="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -338,14 +345,23 @@
             <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Databases</span>
             <span class="text-[10px] text-slate-500 font-mono">({{ dbmsStore.databases.length }})</span>
           </div>
-          <button
-            @click="dbmsStore.openNewModal()"
-            title="Add New Database Connection"
-            class="px-2 py-1 bg-emerald-900/80 hover:bg-emerald-700 text-emerald-200 hover:text-white rounded text-[11px] font-medium border border-emerald-600/50 transition flex items-center space-x-1"
-          >
-            <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
-            <span>+ DB</span>
-          </button>
+          <div class="flex items-center space-x-1">
+            <button
+              @click="dbmsStore.openNewModal()"
+              title="Add New Database Connection"
+              class="px-2 py-1 bg-emerald-900/80 hover:bg-emerald-700 text-emerald-200 hover:text-white rounded text-[11px] font-medium border border-emerald-600/50 transition flex items-center space-x-1"
+            >
+              <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+              <span>+ DB</span>
+            </button>
+            <button
+              @click="isCollapsed = true"
+              title="Sembunyikan Sidebar (Ctrl+B)"
+              class="p-1 hover:bg-boba-800 text-slate-400 hover:text-slate-200 rounded transition ml-0.5"
+            >
+              <Icon icon="lucide:panel-left-close" class="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <!-- Search / Filter Databases -->
@@ -560,6 +576,23 @@ const dbmsStore = useDbmsStore();
 
 // Sidebar Modes: 'sessions' | 'databases'
 const activeMode = ref<'sessions' | 'databases'>('sessions');
+const isCollapsed = ref(false);
+
+function handleModeClick(mode: 'sessions' | 'databases') {
+  if (activeMode.value === mode) {
+    isCollapsed.value = !isCollapsed.value;
+  } else {
+    activeMode.value = mode;
+    isCollapsed.value = false;
+  }
+}
+
+function handleKeyDown(e: KeyboardEvent) {
+  if (e.ctrlKey && (e.key === 'b' || e.key === 'B')) {
+    e.preventDefault();
+    isCollapsed.value = !isCollapsed.value;
+  }
+}
 
 const searchQuery = ref('');
 const dbSearchQuery = ref('');
@@ -988,4 +1021,12 @@ function handleContextPasteIntoFolder(folder: Folder) {
     }
   }
 }
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+});
 </script>
