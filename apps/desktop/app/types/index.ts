@@ -35,6 +35,36 @@ export interface SshKeyItem {
   passphrase?: string;
 }
 
+export interface DbSavedQuery {
+  id: string;
+  title: string;
+  query: string;
+  engine?: string;
+  description?: string;
+  createdAt: number;
+}
+
+export interface DbServerMetrics {
+  engine: string;
+  uptime_seconds: number;
+  version: string;
+  active_connections: number;
+  max_connections: number;
+  queries_count: number;
+  memory_used_bytes?: number | null;
+  memory_peak_bytes?: number | null;
+  cache_hit_rate_pct?: number | null;
+  extra_info: Record<string, string>;
+}
+
+export interface DbExplainResult {
+  format: string;
+  raw_output: string;
+  warnings: string[];
+  suggestions: string[];
+  has_full_table_scan: boolean;
+}
+
 export interface VaultData {
   vault_version: number;
   updated_at: string;
@@ -43,6 +73,7 @@ export interface VaultData {
   keys: SshKeyItem[];
   snippets: SnippetItem[];
   databases?: DbConnectionConfig[];
+  db_snippets?: DbSavedQuery[];
 }
 
 export interface DbConnectionConfig {
@@ -160,6 +191,7 @@ export interface VaultSnapshot {
   keys: SshKeyItem[];
   snippets: SnippetItem[];
   databases?: DbConnectionConfig[];
+  db_snippets?: DbSavedQuery[];
 }
 
 // AI Copilot & Server Agent Types

@@ -56,6 +56,29 @@ pub struct DbQueryResult {
     pub error: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DbServerMetrics {
+    pub engine: String,
+    pub uptime_seconds: u64,
+    pub version: String,
+    pub active_connections: i64,
+    pub max_connections: i64,
+    pub queries_count: i64,
+    pub memory_used_bytes: Option<u64>,
+    pub memory_peak_bytes: Option<u64>,
+    pub cache_hit_rate_pct: Option<f64>,
+    pub extra_info: HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DbExplainResult {
+    pub format: String, // "json" | "table" | "text"
+    pub raw_output: String,
+    pub warnings: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub has_full_table_scan: bool,
+}
+
 pub struct DbmsManager {
     // Keeps active pools / connections for fast reuse if desired
     _mysql_pools: Arc<Mutex<HashMap<String, sqlx::MySqlPool>>>,
@@ -885,6 +908,414 @@ impl DbmsManager {
                 })
             }
             other => Err(format!("Engine {} tidak didukung", other)),
+        }
+    }
+
+    pub async fn get_server_metrics(&self, config: &DbConnectionConfig) -> Result<DbServerMetrics, String> {
+        match config.engine.to_lowercase().as_str() {
+            "mysql" | "mariadb" => {
+                let url = Self::build_mysql_url(config);
+                let pool = sqlx::mysql::MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("MySQL error: {}", e))?;
+
+                let version_row: (String,) = sqlx::query_as("SELECT VERSION()")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or_else(|_| ("Unknown".to_string(),));
+
+                let status_rows: Vec<(String, String)> = sqlx::query_as("SHOW GLOBAL STATUS")
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                let var_rows: Vec<(String, String)> = sqlx::query_as("SHOW VARIABLES")
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                let mut status_map = HashMap::new();
+                for (k, v) in status_rows {
+                    status_map.insert(k, v);
+                }
+
+                let mut var_map = HashMap::new();
+                for (k, v) in var_rows {
+                    var_map.insert(k, v);
+                }
+
+                let uptime: u64 = status_map.get("Uptime").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let active_conn: i64 = status_map.get("Threads_connected").and_then(|v| v.parse().ok()).unwrap_or(1);
+                let max_conn: i64 = var_map.get("max_connections").and_then(|v| v.parse().ok()).unwrap_or(151);
+                let queries: i64 = status_map.get("Questions").and_then(|v| v.parse().ok()).unwrap_or(0);
+
+                let read_req: f64 = status_map.get("Innodb_buffer_pool_read_requests").and_then(|v| v.parse().ok()).unwrap_or(1.0);
+                let reads: f64 = status_map.get("Innodb_buffer_pool_reads").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                let hit_rate = if read_req > 0.0 {
+                    Some(100.0 - (reads * 100.0 / read_req))
+                } else {
+                    None
+                };
+
+                let mut extra = HashMap::new();
+                if let Some(t_run) = status_map.get("Threads_running") {
+                    extra.insert("Threads Running".to_string(), t_run.clone());
+                }
+                if let Some(open_t) = status_map.get("Open_tables") {
+                    extra.insert("Open Tables".to_string(), open_t.clone());
+                }
+                if let Some(innodb_ver) = var_map.get("innodb_version") {
+                    extra.insert("InnoDB Version".to_string(), innodb_ver.clone());
+                }
+
+                pool.close().await;
+
+                Ok(DbServerMetrics {
+                    engine: "MySQL".to_string(),
+                    uptime_seconds: uptime,
+                    version: version_row.0,
+                    active_connections: active_conn,
+                    max_connections: max_conn,
+                    queries_count: queries,
+                    memory_used_bytes: None,
+                    memory_peak_bytes: None,
+                    cache_hit_rate_pct: hit_rate,
+                    extra_info: extra,
+                })
+            }
+            "postgres" | "postgresql" => {
+                let url = Self::build_pg_url(config);
+                let pool = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+
+                let ver_row: (String,) = sqlx::query_as("SELECT VERSION()")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or_else(|_| ("PostgreSQL".to_string(),));
+
+                let conn_row: (i64,) = sqlx::query_as("SELECT count(*) FROM pg_stat_activity")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or((1,));
+
+                let max_row: (String,) = sqlx::query_as("SHOW max_connections")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or(("100".to_string(),));
+
+                let uptime_row: (i64,) = sqlx::query_as(
+                    "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint, 0)",
+                )
+                .fetch_one(&pool)
+                .await
+                .unwrap_or((0,));
+
+                let stats_row: Result<(Option<i64>, Option<f64>), _> = sqlx::query_as(
+                    "SELECT sum(xact_commit + xact_rollback)::bigint, sum(blks_hit) * 100.0 / nullif(sum(blks_hit + blks_read), 0) FROM pg_stat_database",
+                )
+                .fetch_one(&pool)
+                .await;
+
+                let (queries_count, hit_rate) = match stats_row {
+                    Ok((q, h)) => (q.unwrap_or(0), h),
+                    Err(_) => (0, None),
+                };
+
+                pool.close().await;
+
+                Ok(DbServerMetrics {
+                    engine: "PostgreSQL".to_string(),
+                    uptime_seconds: uptime_row.0 as u64,
+                    version: ver_row.0,
+                    active_connections: conn_row.0,
+                    max_connections: max_row.0.parse().unwrap_or(100),
+                    queries_count,
+                    memory_used_bytes: None,
+                    memory_peak_bytes: None,
+                    cache_hit_rate_pct: hit_rate,
+                    extra_info: HashMap::new(),
+                })
+            }
+            "sqlite" => {
+                let path = config.sqlite_path.as_deref().unwrap_or("");
+                let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+
+                let url = format!("sqlite://{}", path);
+                let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("SQLite error: {}", e))?;
+
+                let ver_row: (String,) = sqlx::query_as("SELECT sqlite_version()")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or_else(|_| ("3.0".to_string(),));
+
+                let page_count: (i64,) = sqlx::query_as("PRAGMA page_count")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or((0,));
+
+                let page_size: (i64,) = sqlx::query_as("PRAGMA page_size")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or((4096,));
+
+                let mut extra = HashMap::new();
+                extra.insert("Page Count".to_string(), page_count.0.to_string());
+                extra.insert("Page Size".to_string(), format!("{} bytes", page_size.0));
+
+                pool.close().await;
+
+                Ok(DbServerMetrics {
+                    engine: "SQLite".to_string(),
+                    uptime_seconds: 0,
+                    version: format!("SQLite v{}", ver_row.0),
+                    active_connections: 1,
+                    max_connections: 1,
+                    queries_count: 0,
+                    memory_used_bytes: Some(file_size),
+                    memory_peak_bytes: None,
+                    cache_hit_rate_pct: Some(100.0),
+                    extra_info: extra,
+                })
+            }
+            "redis" => {
+                let host = config.host.as_deref().unwrap_or("127.0.0.1");
+                let port = config.port.unwrap_or(6379);
+                let pass = config.password.as_deref().unwrap_or("");
+                let url = if pass.is_empty() {
+                    format!("redis://{}:{}", host, port)
+                } else {
+                    format!("redis://:{}@{}:{}", pass, host, port)
+                };
+
+                let client = redis::Client::open(url).map_err(|e| format!("Redis error: {}", e))?;
+                let mut conn = client
+                    .get_multiplexed_async_connection()
+                    .await
+                    .map_err(|e| format!("Redis connection error: {}", e))?;
+
+                let info_str: String = redis::cmd("INFO")
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+
+                let mut info_map = HashMap::new();
+                for line in info_str.lines() {
+                    if let Some((k, v)) = line.split_once(':') {
+                        info_map.insert(k.trim().to_string(), v.trim().to_string());
+                    }
+                }
+
+                let ver = info_map.get("redis_version").cloned().unwrap_or_else(|| "Redis".to_string());
+                let uptime: u64 = info_map.get("uptime_in_seconds").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let clients: i64 = info_map.get("connected_clients").and_then(|v| v.parse().ok()).unwrap_or(1);
+                let used_mem: u64 = info_map.get("used_memory").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let peak_mem: u64 = info_map.get("used_memory_peak").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let total_cmds: i64 = info_map.get("total_commands_processed").and_then(|v| v.parse().ok()).unwrap_or(0);
+
+                let hits: f64 = info_map.get("keyspace_hits").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                let misses: f64 = info_map.get("keyspace_misses").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                let hit_rate = if (hits + misses) > 0.0 {
+                    Some(hits * 100.0 / (hits + misses))
+                } else {
+                    None
+                };
+
+                let mut extra = HashMap::new();
+                if let Some(r_mode) = info_map.get("redis_mode") {
+                    extra.insert("Mode".to_string(), r_mode.clone());
+                }
+                if let Some(frag) = info_map.get("mem_fragmentation_ratio") {
+                    extra.insert("Mem Frag Ratio".to_string(), frag.clone());
+                }
+
+                Ok(DbServerMetrics {
+                    engine: "Redis".to_string(),
+                    uptime_seconds: uptime,
+                    version: ver,
+                    active_connections: clients,
+                    max_connections: 10000,
+                    queries_count: total_cmds,
+                    memory_used_bytes: Some(used_mem),
+                    memory_peak_bytes: Some(peak_mem),
+                    cache_hit_rate_pct: hit_rate,
+                    extra_info: extra,
+                })
+            }
+            other => Err(format!("Engine {} metrics tidak didukung", other)),
+        }
+    }
+
+    pub async fn explain_query(
+        &self,
+        config: &DbConnectionConfig,
+        selected_db: Option<String>,
+        query: &str,
+    ) -> Result<DbExplainResult, String> {
+        let trimmed = query.trim();
+        let engine = config.engine.to_lowercase();
+
+        match engine.as_str() {
+            "mysql" | "mariadb" => {
+                let mut cfg = config.clone();
+                if let Some(ref db) = selected_db {
+                    cfg.database = Some(db.clone());
+                }
+                let url = Self::build_mysql_url(&cfg);
+                let pool = sqlx::mysql::MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("MySQL error: {}", e))?;
+
+                if let Some(ref db) = cfg.database {
+                    let _ = sqlx::query(&format!("USE `{}`", db)).execute(&pool).await;
+                }
+
+                let explain_sql = format!("EXPLAIN {}", trimmed);
+                let rows = sqlx::query(&explain_sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(|e| format!("EXPLAIN failed: {}", e))?;
+
+                let mut raw_lines = Vec::new();
+                let mut has_full_scan = false;
+                let mut warnings = Vec::new();
+                let mut suggestions = Vec::new();
+
+                use sqlx::Row;
+                for r in rows {
+                    let tbl: String = r.try_get("table").unwrap_or_default();
+                    let select_type: String = r.try_get("type").unwrap_or_default();
+                    let key: Option<String> = r.try_get("key").ok();
+                    let rows_examined: Option<i64> = r.try_get("rows").ok();
+                    let extra: String = r.try_get("Extra").unwrap_or_default();
+
+                    raw_lines.push(format!(
+                        "Table: {}, Type: {}, Key: {:?}, Rows: {:?}, Extra: {}",
+                        tbl, select_type, key, rows_examined, extra
+                    ));
+
+                    if select_type.eq_ignore_ascii_case("ALL") {
+                        has_full_scan = true;
+                        warnings.push(format!("Tabel `{}` melakukan Full Table Scan (Type: ALL)", tbl));
+                        suggestions.push(format!(
+                            "Pertimbangkan menambahkan indeks pada kolom yang digunakan di klausa WHERE/JOIN tabel `{}`",
+                            tbl
+                        ));
+                    }
+                    if extra.contains("Using filesort") {
+                        warnings.push(format!("Tabel `{}` menggunakan filesort untuk pengurutan", tbl));
+                        suggestions.push("Buat indeks komposit yang mencakup kolom ORDER BY untuk menghindari filesort".to_string());
+                    }
+                    if extra.contains("Using temporary") {
+                        warnings.push("Query membuat temporary table di memori/disk".to_string());
+                    }
+                }
+
+                pool.close().await;
+
+                Ok(DbExplainResult {
+                    format: "text".to_string(),
+                    raw_output: raw_lines.join("\n"),
+                    warnings,
+                    suggestions,
+                    has_full_table_scan: has_full_scan,
+                })
+            }
+            "postgres" | "postgresql" => {
+                let mut cfg = config.clone();
+                if let Some(ref db) = selected_db {
+                    cfg.database = Some(db.clone());
+                }
+                let url = Self::build_pg_url(&cfg);
+                let pool = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+
+                let explain_sql = format!("EXPLAIN (ANALYZE false, VERBOSE, COSTS) {}", trimmed);
+                let rows: Vec<(String,)> = sqlx::query_as(&explain_sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(|e| format!("EXPLAIN failed: {}", e))?;
+
+                let raw_output = rows.into_iter().map(|r| r.0).collect::<Vec<_>>().join("\n");
+                let mut warnings = Vec::new();
+                let mut suggestions = Vec::new();
+                let mut has_full_scan = false;
+
+                if raw_output.contains("Seq Scan") {
+                    has_full_scan = true;
+                    warnings.push("Ditemukan 'Seq Scan' (Sequential Scan menyeluruh terhadap tabel)".to_string());
+                    suggestions.push("Buat B-Tree Index pada kolom filter WHERE/JOIN untuk mempercepat eksekusi".to_string());
+                }
+                if raw_output.contains("Sort") && !raw_output.contains("Index Scan") {
+                    warnings.push("Query membutuhkan operasi Sort tambahan".to_string());
+                }
+
+                pool.close().await;
+
+                Ok(DbExplainResult {
+                    format: "text".to_string(),
+                    raw_output,
+                    warnings,
+                    suggestions,
+                    has_full_table_scan: has_full_scan,
+                })
+            }
+            "sqlite" => {
+                let path = config.sqlite_path.as_deref().unwrap_or("");
+                let url = format!("sqlite://{}", path);
+                let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("SQLite error: {}", e))?;
+
+                let explain_sql = format!("EXPLAIN QUERY PLAN {}", trimmed);
+                let rows = sqlx::query(&explain_sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(|e| format!("EXPLAIN failed: {}", e))?;
+
+                let mut raw_lines = Vec::new();
+                let mut warnings = Vec::new();
+                let mut suggestions = Vec::new();
+                let mut has_full_scan = false;
+
+                use sqlx::Row;
+                for r in rows {
+                    let detail: String = r.try_get("detail").unwrap_or_default();
+                    raw_lines.push(detail.clone());
+
+                    if detail.contains("SCAN") && !detail.contains("USING INDEX") {
+                        has_full_scan = true;
+                        warnings.push(format!("Full Scan terdeteksi: {}", detail));
+                        suggestions.push("Tambahkan Index pada tabel tersebut untuk menggantikan SCAN menjadi SEARCH".to_string());
+                    }
+                }
+
+                pool.close().await;
+
+                Ok(DbExplainResult {
+                    format: "text".to_string(),
+                    raw_output: raw_lines.join("\n"),
+                    warnings,
+                    suggestions,
+                    has_full_table_scan: has_full_scan,
+                })
+            }
+            other => Err(format!("EXPLAIN tidak didukung untuk engine {}", other)),
         }
     }
 }

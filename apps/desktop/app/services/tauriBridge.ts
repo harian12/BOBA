@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult } from '../types/index.js';
 
 export const tauriBridge = {
   // DBMS commands
@@ -14,6 +14,14 @@ export const tauriBridge = {
 
   async dbmsExecuteQuery(config: DbConnectionConfig, selectedDb: string | undefined, query: string): Promise<DbQueryResult> {
     return await invoke('dbms_execute_query', { config, selectedDb: selectedDb || null, query });
+  },
+
+  async dbmsGetServerMetrics(config: DbConnectionConfig): Promise<DbServerMetrics> {
+    return await invoke('dbms_get_server_metrics', { config });
+  },
+
+  async dbmsExplainQuery(config: DbConnectionConfig, selectedDb: string | undefined, query: string): Promise<DbExplainResult> {
+    return await invoke('dbms_explain_query', { config, selectedDb: selectedDb || null, query });
   },
 
   // Update commands

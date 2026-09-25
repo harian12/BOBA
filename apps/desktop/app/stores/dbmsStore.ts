@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { useVaultStore } from './vaultStore.js';
 import { useSessionStore } from './sessionStore.js';
-import type { DbConnectionConfig } from '../types/index.js';
+import type { DbConnectionConfig, DbSavedQuery } from '../types/index.js';
 
 export const useDbmsStore = defineStore('dbms', () => {
   const vaultStore = useVaultStore();
@@ -13,6 +13,10 @@ export const useDbmsStore = defineStore('dbms', () => {
 
   const databases = computed<DbConnectionConfig[]>(() => {
     return vaultStore.vault.databases || [];
+  });
+
+  const savedQueries = computed<DbSavedQuery[]>(() => {
+    return vaultStore.vault.db_snippets || [];
   });
 
   async function saveDatabase(config: DbConnectionConfig) {
@@ -36,6 +40,27 @@ export const useDbmsStore = defineStore('dbms', () => {
     await vaultStore.persist(true);
   }
 
+  async function saveSavedQuery(queryItem: DbSavedQuery) {
+    if (!vaultStore.vault.db_snippets) {
+      vaultStore.vault.db_snippets = [];
+    }
+
+    const idx = vaultStore.vault.db_snippets.findIndex(q => q.id === queryItem.id);
+    if (idx >= 0) {
+      vaultStore.vault.db_snippets[idx] = { ...queryItem };
+    } else {
+      vaultStore.vault.db_snippets.push({ ...queryItem });
+    }
+
+    await vaultStore.persist(true);
+  }
+
+  async function removeSavedQuery(id: string) {
+    if (!vaultStore.vault.db_snippets) return;
+    vaultStore.vault.db_snippets = vaultStore.vault.db_snippets.filter(q => q.id !== id);
+    await vaultStore.persist(true);
+  }
+
   function openNewModal() {
     editingDbConfig.value = null;
     isModalOpen.value = true;
@@ -54,8 +79,11 @@ export const useDbmsStore = defineStore('dbms', () => {
     isModalOpen,
     editingDbConfig,
     databases,
+    savedQueries,
     saveDatabase,
     removeDatabase,
+    saveSavedQuery,
+    removeSavedQuery,
     openNewModal,
     openEditModal,
     connectDatabase,

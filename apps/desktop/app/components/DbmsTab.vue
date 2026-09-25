@@ -17,14 +17,23 @@
               </div>
             </div>
           </div>
-          <button
-            @click="loadSchemaOverview"
-            :disabled="loadingSchema"
-            title="Refresh Database Schema"
-            class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-white transition text-xs"
-          >
-            <span :class="[loadingSchema ? 'animate-spin inline-block' : '']">🔄</span>
-          </button>
+          <div class="flex items-center space-x-1">
+            <button
+              @click="openHealthMonitor"
+              title="Server Health & Performance Metrics"
+              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-sky-400 transition text-xs"
+            >
+              📊
+            </button>
+            <button
+              @click="loadSchemaOverview"
+              :disabled="loadingSchema"
+              title="Refresh Database Schema"
+              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-white transition text-xs"
+            >
+              <span :class="[loadingSchema ? 'animate-spin inline-block' : '']">🔄</span>
+            </button>
+          </div>
         </div>
 
         <!-- Database/Schema Selector Dropdown (if multiple databases exist) -->
@@ -86,8 +95,40 @@
       </div>
     </div>
 
-    <!-- Right Pane: Split into Query Editor + Data Grid -->
+    <!-- Right Pane: Split into Multi-Tab Query Editor + Data Grid -->
     <div class="flex-1 flex flex-col overflow-hidden bg-[#0a0d14]">
+      <!-- Multi-Tab Query Editor Sub-Tabs Bar (Fitur 6) -->
+      <div class="h-8 bg-[#0b0e17] border-b border-boba-800 flex items-center px-1 shrink-0 select-none overflow-x-auto">
+        <div
+          v-for="(qTab, qIdx) in queryTabs"
+          :key="qTab.id"
+          @click="activeQueryTabId = qTab.id"
+          :class="[
+            'flex items-center space-x-2 px-3 py-1 text-xs font-mono rounded-t-md cursor-pointer border-t-2 transition mr-1',
+            activeQueryTabId === qTab.id
+              ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
+              : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
+          ]"
+        >
+          <span>SQL {{ qIdx + 1 }}</span>
+          <button
+            v-if="queryTabs.length > 1"
+            @click.stop="closeQueryTab(qTab.id)"
+            class="text-[10px] text-slate-500 hover:text-rose-400 rounded transition"
+          >
+            ✕
+          </button>
+        </div>
+
+        <button
+          @click="addNewQueryTab"
+          title="Tambah Tab Query Baru"
+          class="px-2 py-0.5 text-slate-400 hover:text-white hover:bg-boba-800 rounded text-xs transition"
+        >
+          +
+        </button>
+      </div>
+
       <!-- Top Section: SQL Query Editor & AI Copilot Bar -->
       <div class="border-b border-boba-800 flex flex-col shrink-0 bg-[#0e121d]">
         <!-- Query Control Toolbar -->
@@ -102,8 +143,27 @@
               <span>{{ executing ? 'Menjalankan...' : '⚡ Jalankan (Ctrl+Enter)' }}</span>
             </button>
 
+            <!-- Fitur 4: Visual EXPLAIN Button -->
             <button
-              @click="queryText = ''"
+              @click="handleExplainQuery"
+              :disabled="executing || !currentQueryText.trim()"
+              class="px-2.5 py-1 bg-sky-950/80 hover:bg-sky-800 text-sky-300 hover:text-white rounded border border-sky-700/50 text-xs font-medium transition flex items-center space-x-1"
+              title="Analisis Rencana Eksekusi Query (EXPLAIN / Bottleneck Detector)"
+            >
+              <span>🔍 EXPLAIN</span>
+            </button>
+
+            <!-- Fitur 3: Saved Queries / Snippets Button -->
+            <button
+              @click="isSnippetsDrawerOpen = true"
+              class="px-2.5 py-1 bg-amber-950/60 hover:bg-amber-800 text-amber-300 hover:text-white rounded border border-amber-700/50 text-xs font-medium transition flex items-center space-x-1"
+              title="Buka Snippets / Saved Queries (E2EE)"
+            >
+              <span>⭐ Snippets</span>
+            </button>
+
+            <button
+              @click="currentQueryText = ''"
               class="px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded transition"
             >
               Clear
@@ -113,7 +173,7 @@
               @click="formatQuickSql"
               class="px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded transition"
             >
-              Format SQL
+              Format
             </button>
           </div>
 
@@ -155,7 +215,7 @@
           </button>
         </div>
 
-        <!-- Query History Dropdown (if active) -->
+        <!-- Query History Dropdown -->
         <div v-if="showHistory" class="p-2 bg-boba-950 border-b border-boba-800 max-h-36 overflow-y-auto space-y-1 font-mono text-[11px]">
           <div v-if="queryHistory.length === 0" class="text-slate-500 text-center py-2 text-xs">
             Belum ada riwayat query.
@@ -174,16 +234,16 @@
         <!-- SQL Editor Textarea -->
         <div class="p-2">
           <textarea
-            v-model="queryText"
+            v-model="currentQueryText"
             @keydown="handleEditorKeyDown"
             placeholder="Ketik query SQL di sini (atau klik tabel di navigasi kiri)..."
-            rows="5"
+            rows="4"
             class="w-full bg-[#07090e] border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 placeholder-slate-600 focus:outline-none focus:border-sky-500/80 resize-y leading-relaxed"
           ></textarea>
         </div>
       </div>
 
-      <!-- Bottom Section: View Mode Switcher & Content -->
+      <!-- Bottom Section: View Mode Switcher, Visual Quick Filter Bar & Content -->
       <div class="flex-1 flex flex-col overflow-hidden">
         <!-- View Mode Navigation Tabs -->
         <div class="px-3 py-1.5 border-b border-boba-800 flex items-center justify-between text-xs bg-[#111622] shrink-0">
@@ -244,6 +304,59 @@
               </button>
             </template>
           </div>
+        </div>
+
+        <!-- Fitur 1: Visual Quick Filter Bar (No-Code Search) -->
+        <div
+          v-if="activeTable && activeViewTab === 'data' && activeTable.columns.length > 0"
+          class="px-3 py-1.5 bg-[#0e131f] border-b border-boba-800 flex items-center space-x-2 text-xs font-mono shrink-0"
+        >
+          <span class="text-slate-400 text-[11px] font-sans font-semibold">🔍 Filter:</span>
+          <select
+            v-model="quickFilter.column"
+            class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+          >
+            <option value="">-- Pilih Kolom --</option>
+            <option v-for="c in activeTable.columns" :key="c.name" :value="c.name">
+              {{ c.name }} ({{ c.data_type }})
+            </option>
+          </select>
+
+          <select
+            v-model="quickFilter.operator"
+            class="bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none"
+          >
+            <option value="=">=</option>
+            <option value="LIKE">LIKE (Mengandung)</option>
+            <option value=">">&gt; Lebih besar</option>
+            <option value="<">&lt; Lebih kecil</option>
+            <option value="!=">!= Tidak sama</option>
+            <option value="IS NULL">IS NULL</option>
+            <option value="IS NOT NULL">IS NOT NULL</option>
+          </select>
+
+          <input
+            v-if="!['IS NULL', 'IS NOT NULL'].includes(quickFilter.operator)"
+            v-model="quickFilter.value"
+            @keydown.enter="applyQuickFilter"
+            type="text"
+            placeholder="Nilai pencarian..."
+            class="flex-1 max-w-xs bg-boba-950 border border-boba-700 focus:border-boba-accent rounded px-2.5 py-1 text-xs text-slate-100 focus:outline-none font-mono"
+          />
+
+          <button
+            @click="applyQuickFilter"
+            class="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold shadow transition"
+          >
+            Terapkan
+          </button>
+          <button
+            v-if="quickFilter.active"
+            @click="resetQuickFilter"
+            class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
+          >
+            Reset
+          </button>
         </div>
 
         <!-- Query Error Banner -->
@@ -328,7 +441,7 @@
             </div>
           </div>
 
-          <!-- Data Grid Pagination Footer (if activeTable is selected) -->
+          <!-- Data Grid Pagination Footer -->
           <div
             v-if="activeTable && activeViewTab === 'data'"
             class="px-3 py-1.5 bg-[#121724] border-t border-boba-800 flex items-center justify-between text-xs shrink-0 select-none"
@@ -405,6 +518,219 @@
           <div class="p-3 bg-boba-950 rounded-lg border border-boba-800 whitespace-pre text-emerald-300 leading-relaxed">
 {{ generateTableDdl() }}
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fitur 4: EXPLAIN & Optimizer Modal -->
+    <div
+      v-if="explainResult"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">⚡</span>
+            <h3 class="text-base font-bold text-slate-100">Analisis Rencana Eksekusi (EXPLAIN)</h3>
+          </div>
+          <button @click="explainResult = null" class="text-slate-400 hover:text-white text-sm">✕</button>
+        </div>
+
+        <!-- Full Table Scan Alert -->
+        <div
+          v-if="explainResult.has_full_table_scan"
+          class="p-3.5 bg-amber-950/70 border border-amber-600/70 rounded-xl flex items-start space-x-3 text-amber-200 text-xs"
+        >
+          <span class="text-lg shrink-0">⚠️</span>
+          <div>
+            <strong class="font-bold">Peringatan: Full Table Scan Terdeteksi!</strong>
+            <p class="text-[11px] text-amber-300/90 mt-0.5">
+              Query ini memindai seluruh baris tabel tanpa menggunakan indeks yang sesuai. Hal ini dapat menyebabkan beban CPU & I/O tinggi pada dataset besar.
+            </p>
+          </div>
+        </div>
+
+        <!-- Optimizer Suggestions -->
+        <div v-if="explainResult.suggestions.length > 0" class="space-y-1.5">
+          <div class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">💡 Saran Optimasi Indeks:</div>
+          <ul class="space-y-1 bg-emerald-950/30 border border-emerald-900/50 p-3 rounded-lg text-xs text-emerald-200 list-disc list-inside">
+            <li v-for="(sug, idx) in explainResult.suggestions" :key="idx">{{ sug }}</li>
+          </ul>
+        </div>
+
+        <!-- Raw EXPLAIN Output -->
+        <div class="space-y-1.5">
+          <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Raw Plan Output:</div>
+          <pre class="p-3 bg-black/60 border border-boba-800 rounded-lg text-xs font-mono text-slate-300 overflow-auto whitespace-pre-wrap max-h-56 leading-relaxed">{{ explainResult.raw_output }}</pre>
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-boba-800">
+          <button
+            @click="explainResult = null"
+            class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fitur 5: Server Health Monitor Modal -->
+    <div
+      v-if="isHealthModalOpen"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">📊</span>
+            <div>
+              <h3 class="text-base font-bold text-slate-100">Database Server Health Monitor</h3>
+              <p class="text-[11px] text-slate-400">{{ tab.dbConnection?.name }} ({{ tab.dbConnection?.engine.toUpperCase() }})</p>
+            </div>
+          </div>
+          <button @click="isHealthModalOpen = false" class="text-slate-400 hover:text-white text-sm">✕</button>
+        </div>
+
+        <div v-if="loadingHealth" class="py-10 text-center text-slate-400 text-xs">
+          Mengambil metrik server database...
+        </div>
+
+        <div v-else-if="serverMetrics" class="space-y-4">
+          <!-- Metrics KPI Cards -->
+          <div class="grid grid-cols-3 gap-2.5">
+            <div class="bg-boba-950 border border-boba-800 p-3 rounded-xl text-center">
+              <div class="text-[10px] text-slate-400 uppercase font-semibold">Active Connections</div>
+              <div class="text-xl font-black text-sky-400 font-mono mt-1">
+                {{ serverMetrics.active_connections }} <span class="text-xs text-slate-500 font-normal">/ {{ serverMetrics.max_connections }}</span>
+              </div>
+            </div>
+
+            <div class="bg-boba-950 border border-boba-800 p-3 rounded-xl text-center">
+              <div class="text-[10px] text-slate-400 uppercase font-semibold">Buffer/Cache Hit Rate</div>
+              <div class="text-xl font-black text-emerald-400 font-mono mt-1">
+                {{ serverMetrics.cache_hit_rate_pct !== null && serverMetrics.cache_hit_rate_pct !== undefined ? serverMetrics.cache_hit_rate_pct.toFixed(1) + '%' : '100%' }}
+              </div>
+            </div>
+
+            <div class="bg-boba-950 border border-boba-800 p-3 rounded-xl text-center">
+              <div class="text-[10px] text-slate-400 uppercase font-semibold">Uptime</div>
+              <div class="text-sm font-bold text-purple-400 font-mono mt-2">
+                {{ formatUptime(serverMetrics.uptime_seconds) }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Server Details Table -->
+          <div class="bg-boba-950 border border-boba-800 rounded-xl p-3 space-y-2 text-xs font-mono">
+            <div class="flex justify-between border-b border-boba-850 pb-1.5">
+              <span class="text-slate-400">Server Version:</span>
+              <span class="text-slate-200 truncate max-w-xs">{{ serverMetrics.version }}</span>
+            </div>
+            <div class="flex justify-between border-b border-boba-850 pb-1.5" v-if="serverMetrics.queries_count > 0">
+              <span class="text-slate-400">Total Queries/Commands:</span>
+              <span class="text-slate-200">{{ serverMetrics.queries_count.toLocaleString() }}</span>
+            </div>
+            <div class="flex justify-between border-b border-boba-850 pb-1.5" v-if="serverMetrics.memory_used_bytes">
+              <span class="text-slate-400">Memory Usage:</span>
+              <span class="text-slate-200">{{ formatBytes(serverMetrics.memory_used_bytes) }}</span>
+            </div>
+            <div v-for="(val, k) in serverMetrics.extra_info" :key="k" class="flex justify-between border-b border-boba-850 pb-1.5">
+              <span class="text-slate-400">{{ k }}:</span>
+              <span class="text-slate-200">{{ val }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center pt-2 border-t border-boba-800">
+          <button
+            @click="openHealthMonitor"
+            class="px-3 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded-lg text-xs"
+          >
+            🔄 Refresh
+          </button>
+          <button
+            @click="isHealthModalOpen = false"
+            class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fitur 3: Saved Queries / Snippets Drawer Modal -->
+    <div
+      v-if="isSnippetsDrawerOpen"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-lg">⭐</span>
+            <h3 class="text-base font-bold text-slate-100">SQL Snippets & Saved Queries</h3>
+          </div>
+          <button @click="isSnippetsDrawerOpen = false" class="text-slate-400 hover:text-white text-sm">✕</button>
+        </div>
+
+        <!-- Quick Save Current Query Section -->
+        <div v-if="currentQueryText.trim()" class="p-3 bg-boba-950 rounded-xl border border-boba-800 space-y-2">
+          <div class="text-xs font-semibold text-sky-400">Simpan Query Aktif ke Vault:</div>
+          <div class="flex space-x-2">
+            <input
+              v-model="newSnippetTitle"
+              type="text"
+              placeholder="Judul Snippet (misal: Laporan Penjualan)..."
+              class="flex-1 bg-boba-900 border border-boba-700 rounded px-2.5 py-1 text-xs text-slate-100 focus:outline-none"
+            />
+            <button
+              @click="handleSaveSnippet"
+              :disabled="!newSnippetTitle.trim()"
+              class="px-3 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded text-xs font-medium transition"
+            >
+              + Simpan
+            </button>
+          </div>
+        </div>
+
+        <!-- Saved Queries List -->
+        <div class="space-y-2 max-h-64 overflow-y-auto">
+          <div v-if="dbmsStore.savedQueries.length === 0" class="py-6 text-center text-slate-500 text-xs">
+            Belum ada query tersimpan di Vault.
+          </div>
+          <div
+            v-for="snip in dbmsStore.savedQueries"
+            :key="snip.id"
+            class="p-3 bg-boba-950/70 border border-boba-800 rounded-xl hover:border-amber-500/50 transition space-y-1.5 group"
+          >
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-slate-200">{{ snip.title }}</span>
+              <div class="flex items-center space-x-1">
+                <button
+                  @click="useSnippet(snip.query)"
+                  class="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[10px] font-medium"
+                >
+                  Gunakan ↵
+                </button>
+                <button
+                  @click="dbmsStore.removeSavedQuery(snip.id)"
+                  class="p-1 text-slate-500 hover:text-rose-400 rounded text-xs"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+            <pre class="text-[11px] font-mono text-emerald-300 bg-black/40 p-2 rounded max-h-20 overflow-auto whitespace-pre-wrap">{{ snip.query }}</pre>
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-boba-800">
+          <button
+            @click="isSnippetsDrawerOpen = false"
+            class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded-lg text-xs"
+          >
+            Tutup
+          </button>
         </div>
       </div>
     </div>
@@ -544,13 +870,15 @@
 import { ref, computed, onMounted } from 'vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
-import type { ActiveTab, DbTableMeta, DbSchemaOverview, DbQueryResult } from '../types/index.js';
+import { useDbmsStore } from '../stores/dbmsStore.js';
+import type { ActiveTab, DbTableMeta, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult } from '../types/index.js';
 
 const props = defineProps<{
   tab: ActiveTab;
 }>();
 
 const dialogStore = useDialogStore();
+const dbmsStore = useDbmsStore();
 
 const loadingSchema = ref(false);
 const schemaOverview = ref<DbSchemaOverview | null>(null);
@@ -558,8 +886,39 @@ const activeDatabase = ref<string>('');
 const tableFilter = ref('');
 const activeTable = ref<DbTableMeta | null>(null);
 
+// Fitur 6: Multi-Tab SQL Queries
+const queryTabs = ref<Array<{ id: string; text: string }>>([
+  { id: 'qtab_1', text: '' },
+]);
+const activeQueryTabId = ref<string>('qtab_1');
+
+const currentQueryText = computed({
+  get: () => {
+    const cur = queryTabs.value.find(t => t.id === activeQueryTabId.value);
+    return cur ? cur.text : '';
+  },
+  set: (val: string) => {
+    const cur = queryTabs.value.find(t => t.id === activeQueryTabId.value);
+    if (cur) cur.text = val;
+  },
+});
+
+function addNewQueryTab() {
+  const newId = `qtab_${Date.now()}`;
+  queryTabs.value.push({ id: newId, text: '' });
+  activeQueryTabId.value = newId;
+}
+
+function closeQueryTab(id: string) {
+  if (queryTabs.value.length <= 1) return;
+  const idx = queryTabs.value.findIndex(t => t.id === id);
+  queryTabs.value = queryTabs.value.filter(t => t.id !== id);
+  if (activeQueryTabId.value === id) {
+    activeQueryTabId.value = queryTabs.value[Math.max(0, idx - 1)].id;
+  }
+}
+
 const activeViewTab = ref<'data' | 'structure' | 'ddl'>('data');
-const queryText = ref('');
 const executing = ref(false);
 const errorMessage = ref<string | null>(null);
 const queryResult = ref<DbQueryResult | null>(null);
@@ -575,6 +934,31 @@ const aiPrompt = ref('');
 const aiGenerating = ref(false);
 
 const selectedCell = ref<{ column: string; value: any } | null>(null);
+
+// Fitur 1: Visual Quick Filter
+const quickFilter = ref<{
+  column: string;
+  operator: string;
+  value: string;
+  active: boolean;
+}>({
+  column: '',
+  operator: '=',
+  value: '',
+  active: false,
+});
+
+// Fitur 4: EXPLAIN Plan Result
+const explainResult = ref<DbExplainResult | null>(null);
+
+// Fitur 5: Server Health Metrics
+const isHealthModalOpen = ref(false);
+const loadingHealth = ref(false);
+const serverMetrics = ref<DbServerMetrics | null>(null);
+
+// Fitur 3: Saved Queries / Snippets
+const isSnippetsDrawerOpen = ref(false);
+const newSnippetTitle = ref('');
 
 const isInsertModalOpen = ref(false);
 const isEditModalOpen = ref(false);
@@ -652,13 +1036,14 @@ function handleDatabaseChange() {
 function handleSelectTable(tbl: DbTableMeta) {
   activeTable.value = tbl;
   currentPage.value = 1;
+  quickFilter.value = { column: '', operator: '=', value: '', active: false };
   rowFormValues.value = {};
   const engine = props.tab.dbConnection?.engine.toLowerCase();
 
   if (engine === 'redis') {
-    queryText.value = `GET ${tbl.name}`;
+    currentQueryText.value = `GET ${tbl.name}`;
   } else {
-    queryText.value = `SELECT * FROM ${tbl.name} LIMIT ${pageSize.value} OFFSET 0;`;
+    currentQueryText.value = `SELECT * FROM ${tbl.name} LIMIT ${pageSize.value} OFFSET 0;`;
   }
 
   activeViewTab.value = 'data';
@@ -669,14 +1054,54 @@ function handlePageChange(page: number) {
   if (page < 1 || !activeTable.value) return;
   currentPage.value = page;
   const offset = (page - 1) * pageSize.value;
-  const sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
-  queryText.value = sql;
+  let sql = '';
+  if (quickFilter.value.active && quickFilter.value.column) {
+    const whereClause = buildWhereClause();
+    sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET ${offset};`;
+  } else {
+    sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET ${offset};`;
+  }
+  currentQueryText.value = sql;
   executeQuery(sql);
+}
+
+function buildWhereClause(): string {
+  const { column, operator, value } = quickFilter.value;
+  if (operator === 'IS NULL' || operator === 'IS NOT NULL') {
+    return `${column} ${operator}`;
+  }
+  if (operator === 'LIKE') {
+    return `${column} LIKE '%${value.replace(/'/g, "''")}%'`;
+  }
+  if (!isNaN(Number(value)) && value.trim() !== '') {
+    return `${column} ${operator} ${value}`;
+  }
+  return `${column} ${operator} '${value.replace(/'/g, "''")}'`;
+}
+
+function applyQuickFilter() {
+  if (!activeTable.value || !quickFilter.value.column) return;
+  quickFilter.value.active = true;
+  currentPage.value = 1;
+  const whereClause = buildWhereClause();
+  const sql = `SELECT * FROM ${activeTable.value.name} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET 0;`;
+  currentQueryText.value = sql;
+  executeQuery(sql);
+}
+
+function resetQuickFilter() {
+  quickFilter.value = { column: '', operator: '=', value: '', active: false };
+  currentPage.value = 1;
+  if (activeTable.value) {
+    const sql = `SELECT * FROM ${activeTable.value.name} LIMIT ${pageSize.value} OFFSET 0;`;
+    currentQueryText.value = sql;
+    executeQuery(sql);
+  }
 }
 
 async function executeQuery(customQuery?: string) {
   if (!props.tab.dbConnection) return;
-  const q = customQuery || queryText.value;
+  const q = customQuery || currentQueryText.value;
   if (!q.trim()) return;
 
   executing.value = true;
@@ -691,7 +1116,6 @@ async function executeQuery(customQuery?: string) {
     queryResult.value = res;
     lastExecutionTime.value = res.execution_time_ms;
 
-    // Add to history
     if (!queryHistory.value.includes(q.trim())) {
       queryHistory.value.unshift(q.trim());
       if (queryHistory.value.length > 20) queryHistory.value.pop();
@@ -704,8 +1128,60 @@ async function executeQuery(customQuery?: string) {
   }
 }
 
+async function handleExplainQuery() {
+  if (!props.tab.dbConnection || !currentQueryText.value.trim()) return;
+  executing.value = true;
+  errorMessage.value = null;
+
+  try {
+    const res = await tauriBridge.dbmsExplainQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      currentQueryText.value
+    );
+    explainResult.value = res;
+  } catch (err: any) {
+    errorMessage.value = `EXPLAIN gagal: ${String(err?.message || err)}`;
+  } finally {
+    executing.value = false;
+  }
+}
+
+async function openHealthMonitor() {
+  if (!props.tab.dbConnection) return;
+  isHealthModalOpen.value = true;
+  loadingHealth.value = true;
+
+  try {
+    const metrics = await tauriBridge.dbmsGetServerMetrics(props.tab.dbConnection);
+    serverMetrics.value = metrics;
+  } catch (err: any) {
+    console.error('Failed to get db health:', err);
+  } finally {
+    loadingHealth.value = false;
+  }
+}
+
+function handleSaveSnippet() {
+  if (!newSnippetTitle.value.trim() || !currentQueryText.value.trim()) return;
+  dbmsStore.saveSavedQuery({
+    id: `snip_${Date.now()}`,
+    title: newSnippetTitle.value.trim(),
+    query: currentQueryText.value.trim(),
+    engine: props.tab.dbConnection?.engine,
+    createdAt: Date.now(),
+  });
+  newSnippetTitle.value = '';
+}
+
+function useSnippet(sql: string) {
+  currentQueryText.value = sql;
+  isSnippetsDrawerOpen.value = false;
+  executeQuery();
+}
+
 function loadHistoryQuery(q: string) {
-  queryText.value = q;
+  currentQueryText.value = q;
   showHistory.value = false;
   executeQuery();
 }
@@ -718,13 +1194,13 @@ function handleEditorKeyDown(e: KeyboardEvent) {
 }
 
 function formatQuickSql() {
-  let s = queryText.value.trim();
+  let s = currentQueryText.value.trim();
   const keywords = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'INSERT INTO', 'UPDATE', 'SET', 'DELETE FROM'];
   for (const kw of keywords) {
     const re = new RegExp(`\\b${kw}\\b`, 'gi');
     s = s.replace(re, kw);
   }
-  queryText.value = s;
+  currentQueryText.value = s;
 }
 
 function openCellDetail(column: string, value: any) {
@@ -769,7 +1245,7 @@ async function handleContextAction(action: 'select' | 'structure' | 'copy_name' 
     });
     if (confirm) {
       const sql = `TRUNCATE TABLE ${tbl.name};`;
-      queryText.value = sql;
+      currentQueryText.value = sql;
       await executeQuery(sql);
       handleSelectTable(tbl);
     }
@@ -782,7 +1258,7 @@ async function handleContextAction(action: 'select' | 'structure' | 'copy_name' 
     });
     if (confirm) {
       const sql = `DROP TABLE ${tbl.name};`;
-      queryText.value = sql;
+      currentQueryText.value = sql;
       await executeQuery(sql);
       loadSchemaOverview();
     }
@@ -849,7 +1325,7 @@ async function handleCommitInsert() {
 
   const sql = `INSERT INTO ${activeTable.value.name} (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
   closeRowModals();
-  queryText.value = sql;
+  currentQueryText.value = sql;
   await executeQuery(sql);
   handlePageChange(currentPage.value);
 }
@@ -880,7 +1356,7 @@ async function handleCommitEdit() {
 
   const sql = `UPDATE ${activeTable.value.name} SET ${setClauses.join(', ')} WHERE ${pkClause};`;
   closeRowModals();
-  queryText.value = sql;
+  currentQueryText.value = sql;
   await executeQuery(sql);
   handlePageChange(currentPage.value);
 }
@@ -905,7 +1381,7 @@ async function handleDeleteRow(row: any[]) {
 
   if (confirm) {
     const sql = `DELETE FROM ${activeTable.value.name} WHERE ${pkClause};`;
-    queryText.value = sql;
+    currentQueryText.value = sql;
     await executeQuery(sql);
     handlePageChange(currentPage.value);
   }
@@ -919,11 +1395,11 @@ async function handleAiGenerateSql() {
   const targetTable = activeTable.value?.name || (schemaOverview.value?.tables[0]?.name ?? 'users');
 
   if (prompt.toLowerCase().includes('semua') || prompt.toLowerCase().includes('all')) {
-    queryText.value = `SELECT * FROM ${targetTable} LIMIT ${pageSize.value};`;
+    currentQueryText.value = `SELECT * FROM ${targetTable} LIMIT ${pageSize.value};`;
   } else if (prompt.toLowerCase().includes('hitung') || prompt.toLowerCase().includes('count')) {
-    queryText.value = `SELECT COUNT(*) AS total_count FROM ${targetTable};`;
+    currentQueryText.value = `SELECT COUNT(*) AS total_count FROM ${targetTable};`;
   } else {
-    queryText.value = `-- AI Generated for: "${prompt}"\nSELECT * FROM ${targetTable} ORDER BY 1 DESC LIMIT 50;`;
+    currentQueryText.value = `-- AI Generated for: "${prompt}"\nSELECT * FROM ${targetTable} ORDER BY 1 DESC LIMIT 50;`;
   }
 
   aiGenerating.value = false;
@@ -971,6 +1447,24 @@ function exportData(type: 'csv' | 'json' | 'sql') {
   link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
+}
+
+function formatUptime(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0s';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${seconds % 60}s`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 onMounted(() => {

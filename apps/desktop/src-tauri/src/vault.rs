@@ -47,6 +47,16 @@ pub struct SnippetItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DbSavedQuery {
+    pub id: String,
+    pub title: String,
+    pub query: String,
+    pub engine: Option<String>,
+    pub description: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VaultData {
     pub vault_version: i64,
     pub updated_at: String,
@@ -56,6 +66,8 @@ pub struct VaultData {
     pub snippets: Vec<SnippetItem>,
     #[serde(default)]
     pub databases: Vec<crate::dbms::DbConnectionConfig>,
+    #[serde(default)]
+    pub db_snippets: Vec<DbSavedQuery>,
 }
 
 impl Default for VaultData {
@@ -87,6 +99,24 @@ impl Default for VaultData {
                 }
             ],
             databases: vec![],
+            db_snippets: vec![
+                DbSavedQuery {
+                    id: Uuid::new_v4().to_string(),
+                    title: "Check Table Status".into(),
+                    query: "SHOW TABLE STATUS;".into(),
+                    engine: Some("mysql".into()),
+                    description: Some("Show table storage, rows and data length".into()),
+                    created_at: Utc::now().timestamp_millis(),
+                },
+                DbSavedQuery {
+                    id: Uuid::new_v4().to_string(),
+                    title: "Active Connections & Activity".into(),
+                    query: "SELECT pid, usename, state, query FROM pg_stat_activity WHERE state != 'idle';".into(),
+                    engine: Some("postgres".into()),
+                    description: Some("List non-idle PostgreSQL queries and clients".into()),
+                    created_at: Utc::now().timestamp_millis(),
+                }
+            ],
         }
     }
 }

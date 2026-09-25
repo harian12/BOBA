@@ -959,3 +959,21 @@ pub async fn dbms_execute_query(
 ) -> Result<crate::dbms::DbQueryResult, String> {
     state.dbms_manager.execute_query(&config, selected_db, &query).await
 }
+
+#[tauri::command]
+pub async fn dbms_get_server_metrics(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+) -> Result<crate::dbms::DbServerMetrics, String> {
+    state.dbms_manager.get_server_metrics(&config).await
+}
+
+#[tauri::command]
+pub async fn dbms_explain_query(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+    selected_db: Option<String>,
+    query: String,
+) -> Result<crate::dbms::DbExplainResult, String> {
+    state.dbms_manager.explain_query(&config, selected_db, &query).await
+}
