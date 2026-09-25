@@ -656,10 +656,22 @@
 
         <!-- Form Action Bar -->
         <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-boba-800/60">
-          <!-- Left Controls: Model Selector, Plan/Build, Confirm/Auto -->
+          <!-- Left Controls: Model Selector / Setup Provider, Plan/Build, Confirm/Auto -->
           <div class="flex flex-wrap items-center gap-1.5 text-[10px] min-w-0">
-            <!-- Model Selector Dropdown -->
-            <div class="relative flex items-center">
+            <!-- Setup Provider Prompt Button (If no API key / provider configured) -->
+            <button
+              v-if="!hasConfiguredProvider"
+              @click="aiStore.openProviderModal()"
+              type="button"
+              class="px-2 py-1 bg-amber-950/80 hover:bg-amber-900 text-amber-300 hover:text-white border border-amber-600/70 rounded-md text-[10px] font-mono font-semibold transition flex items-center space-x-1 shrink-0 shadow-sm animate-pulse"
+              title="Klik untuk memasukkan API Key AI (OpenAI, DeepSeek, Ollama, Gemini, Claude)"
+            >
+              <Icon icon="lucide:key" class="w-3 h-3 text-amber-400" />
+              <span>+ Setup AI Provider</span>
+            </button>
+
+            <!-- Model Selector Dropdown (When provider is configured) -->
+            <div v-else class="relative flex items-center">
               <select
                 :value="currentSelectedModel"
                 @change="handleModelChange"
@@ -857,6 +869,13 @@ function toggleExecutionMode() {
 onMounted(() => {
   initWidth();
   syncActiveTarget();
+});
+
+const hasConfiguredProvider = computed(() => {
+  const p = aiStore.activeProvider;
+  if (!p) return false;
+  if (p.type === 'ollama') return true;
+  return Boolean(p.apiKey && p.apiKey.trim().length > 0);
 });
 
 const currentSelectedModel = computed(() => {
@@ -1125,6 +1144,17 @@ function formatTime(timestamp: number): string {
 function handleSend() {
   const text = promptInput.value.trim();
   if (!text || aiStore.isThinking) return;
+
+  if (!hasConfiguredProvider.value) {
+    dialogStore.alert({
+      title: 'Provider AI Belum Dikonfigurasi',
+      description: 'Harap masukkan API Key AI (DeepSeek, OpenAI, Gemini, Claude, atau jalankan Ollama lokal) di menu pengaturan provider.',
+      variant: 'warning',
+    });
+    aiStore.openProviderModal();
+    return;
+  }
+
   if (!aiStore.selectedSessionId) {
     if (sessionStore.activeTab?.type === 'dbms' && sessionStore.activeTab.dbConnection) {
       aiStore.selectedSessionId = `db_${sessionStore.activeTab.dbConnection.id}`;
