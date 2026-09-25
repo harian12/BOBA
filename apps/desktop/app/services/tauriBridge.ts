@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbProcessItem, DbForeignKeyRelation, DbUserItem } from '../types/index.js';
 
 export const tauriBridge = {
   // DBMS commands
@@ -22,6 +22,22 @@ export const tauriBridge = {
 
   async dbmsExplainQuery(config: DbConnectionConfig, selectedDb: string | undefined, query: string): Promise<DbExplainResult> {
     return await invoke('dbms_explain_query', { config, selectedDb: selectedDb || null, query });
+  },
+
+  async dbmsGetProcesslist(config: DbConnectionConfig): Promise<DbProcessItem[]> {
+    return await invoke('dbms_get_processlist', { config });
+  },
+
+  async dbmsKillProcess(config: DbConnectionConfig, processId: number): Promise<void> {
+    return await invoke('dbms_kill_process', { config, processId });
+  },
+
+  async dbmsGetForeignKeys(config: DbConnectionConfig, selectedDb?: string): Promise<DbForeignKeyRelation[]> {
+    return await invoke('dbms_get_foreign_keys', { config, selectedDb: selectedDb || null });
+  },
+
+  async dbmsGetDatabaseUsers(config: DbConnectionConfig): Promise<DbUserItem[]> {
+    return await invoke('dbms_get_database_users', { config });
   },
 
   // Update commands

@@ -87,6 +87,10 @@ pub fn run() {
             commands::dbms_execute_query,
             commands::dbms_get_server_metrics,
             commands::dbms_explain_query,
+            commands::dbms_get_processlist,
+            commands::dbms_kill_process,
+            commands::dbms_get_foreign_keys,
+            commands::dbms_get_database_users,
         ])
         .run(tauri::generate_context!())
         .expect("error while running BOBA desktop application");

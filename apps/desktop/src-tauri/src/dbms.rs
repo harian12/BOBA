@@ -80,6 +80,35 @@ pub struct DbExplainResult {
     pub has_full_table_scan: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DbProcessItem {
+    pub id: i64,
+    pub user: String,
+    pub host: String,
+    pub db: Option<String>,
+    pub command: String,
+    pub time_seconds: i64,
+    pub state: Option<String>,
+    pub info: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DbForeignKeyRelation {
+    pub from_table: String,
+    pub from_column: String,
+    pub to_table: String,
+    pub to_column: String,
+    pub constraint_name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DbUserItem {
+    pub username: String,
+    pub host: String,
+    pub privileges: Vec<String>,
+    pub is_superuser: bool,
+}
+
 pub struct DbmsManager {
     // Keeps active pools / connections for fast reuse if desired
     _mysql_pools: Arc<Mutex<HashMap<String, sqlx::MySqlPool>>>,
@@ -1432,6 +1461,306 @@ impl DbmsManager {
                 })
             }
             other => Err(format!("EXPLAIN tidak didukung untuk engine {}", other)),
+        }
+    }
+
+    pub async fn get_processlist(&self, config: &DbConnectionConfig) -> Result<Vec<DbProcessItem>, String> {
+        match config.engine.to_lowercase().as_str() {
+            "mysql" | "mariadb" => {
+                let url = Self::build_mysql_url(config);
+                let pool = sqlx::mysql::MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("MySQL error: {}", e))?;
+
+                let rows: Vec<(i64, String, String, Option<String>, String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+                    "SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO FROM information_schema.PROCESSLIST ORDER BY TIME DESC"
+                )
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Processlist error: {}", e))?;
+
+                pool.close().await;
+
+                Ok(rows.into_iter().map(|(id, user, host, db, command, time_sec, state, info)| {
+                    DbProcessItem {
+                        id,
+                        user,
+                        host,
+                        db,
+                        command,
+                        time_seconds: time_sec,
+                        state,
+                        info,
+                    }
+                }).collect())
+            }
+            "postgres" | "postgresql" => {
+                let url = Self::build_pg_url(config);
+                let pool = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+
+                let rows: Vec<(i32, Option<String>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<String>, Option<String>)> = sqlx::query_as(
+                    "SELECT pid, usename, client_addr::text, datname, state, COALESCE(EXTRACT(EPOCH FROM (now() - query_start))::bigint, 0), state, query FROM pg_stat_activity WHERE state IS NOT NULL ORDER BY query_start ASC"
+                )
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Processlist error: {}", e))?;
+
+                pool.close().await;
+
+                Ok(rows.into_iter().map(|(pid, user, host, db, command, time_sec, state, info)| {
+                    DbProcessItem {
+                        id: pid as i64,
+                        user: user.unwrap_or_else(|| "postgres".to_string()),
+                        host: host.unwrap_or_else(|| "local".to_string()),
+                        db,
+                        command: command.unwrap_or_else(|| "active".to_string()),
+                        time_seconds: time_sec.unwrap_or(0),
+                        state,
+                        info,
+                    }
+                }).collect())
+            }
+            other => Err(format!("Processlist tidak didukung untuk engine {}", other)),
+        }
+    }
+
+    pub async fn kill_process(&self, config: &DbConnectionConfig, process_id: i64) -> Result<(), String> {
+        match config.engine.to_lowercase().as_str() {
+            "mysql" | "mariadb" => {
+                let url = Self::build_mysql_url(config);
+                let pool = sqlx::mysql::MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("MySQL error: {}", e))?;
+
+                sqlx::query(&format!("KILL CONNECTION {}", process_id))
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| format!("Kill failed: {}", e))?;
+
+                pool.close().await;
+                Ok(())
+            }
+            "postgres" | "postgresql" => {
+                let url = Self::build_pg_url(config);
+                let pool = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+
+                let res: (bool,) = sqlx::query_as("SELECT pg_terminate_backend($1)")
+                    .bind(process_id as i32)
+                    .fetch_one(&pool)
+                    .await
+                    .map_err(|e| format!("Kill failed: {}", e))?;
+
+                pool.close().await;
+                if res.0 {
+                    Ok(())
+                } else {
+                    Err("Gagal menghentikan process (permission denied atau PID tidak ditemukan)".to_string())
+                }
+            }
+            other => Err(format!("Kill process tidak didukung untuk engine {}", other)),
+        }
+    }
+
+    pub async fn get_foreign_keys(
+        &self,
+        config: &DbConnectionConfig,
+        selected_db: Option<String>,
+    ) -> Result<Vec<DbForeignKeyRelation>, String> {
+        match config.engine.to_lowercase().as_str() {
+            "mysql" | "mariadb" => {
+                let mut cfg = config.clone();
+                if let Some(ref db) = selected_db {
+                    cfg.database = Some(db.clone());
+                }
+                let target_db = cfg.database.clone().unwrap_or_else(|| "".to_string());
+                let url = Self::build_mysql_url(&cfg);
+                let pool = sqlx::mysql::MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("MySQL error: {}", e))?;
+
+                let rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(
+                    "SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, CONSTRAINT_NAME
+                     FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE TABLE_SCHEMA = $1 AND REFERENCED_TABLE_NAME IS NOT NULL"
+                )
+                .bind(&target_db)
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                pool.close().await;
+
+                Ok(rows.into_iter().map(|(ft, fc, tt, tc, cname)| DbForeignKeyRelation {
+                    from_table: ft,
+                    from_column: fc,
+                    to_table: tt,
+                    to_column: tc,
+                    constraint_name: cname,
+                }).collect())
+            }
+            "postgres" | "postgresql" => {
+                let mut cfg = config.clone();
+                if let Some(ref db) = selected_db {
+                    cfg.database = Some(db.clone());
+                }
+                let url = Self::build_pg_url(&cfg);
+                let pool = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+
+                let sql = "SELECT
+                    tc.table_name AS from_table, 
+                    kcu.column_name AS from_column, 
+                    ccu.table_name AS to_table,
+                    ccu.column_name AS to_column,
+                    tc.constraint_name
+                FROM information_schema.table_constraints AS tc 
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                  AND tc.table_schema = kcu.table_schema
+                JOIN information_schema.constraint_column_usage AS ccu
+                  ON ccu.constraint_name = tc.constraint_name
+                  AND ccu.table_schema = tc.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')";
+
+                let rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(sql)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                pool.close().await;
+
+                Ok(rows.into_iter().map(|(ft, fc, tt, tc, cname)| DbForeignKeyRelation {
+                    from_table: ft,
+                    from_column: fc,
+                    to_table: tt,
+                    to_column: tc,
+                    constraint_name: cname,
+                }).collect())
+            }
+            "sqlite" => {
+                let path = config.sqlite_path.as_deref().unwrap_or("");
+                let url = format!("sqlite://{}", path);
+                let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("SQLite error: {}", e))?;
+
+                let tables: Vec<(String,)> = sqlx::query_as(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+
+                let mut rels = Vec::new();
+                for (t_name,) in tables {
+                    let pragma_sql = format!("PRAGMA foreign_key_list(\"{}\")", t_name);
+                    if let Ok(rows) = sqlx::query(&pragma_sql).fetch_all(&pool).await {
+                        use sqlx::Row;
+                        for r in rows {
+                            let to_table: String = r.try_get("table").unwrap_or_default();
+                            let from_col: String = r.try_get("from").unwrap_or_default();
+                            let to_col: String = r.try_get("to").unwrap_or_default();
+                            if !to_table.is_empty() {
+                                rels.push(DbForeignKeyRelation {
+                                    from_table: t_name.clone(),
+                                    from_column: from_col,
+                                    to_table,
+                                    to_column: to_col,
+                                    constraint_name: None,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                pool.close().await;
+                Ok(rels)
+            }
+            _ => Ok(vec![]),
+        }
+    }
+
+    pub async fn get_database_users(&self, config: &DbConnectionConfig) -> Result<Vec<DbUserItem>, String> {
+        match config.engine.to_lowercase().as_str() {
+            "mysql" | "mariadb" => {
+                let url = Self::build_mysql_url(config);
+                let pool = sqlx::mysql::MySqlPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("MySQL error: {}", e))?;
+
+                let rows: Vec<(String, String, Option<String>)> = sqlx::query_as(
+                    "SELECT User, Host, Super_priv FROM mysql.user ORDER BY User, Host"
+                )
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Failed to read users: {}", e))?;
+
+                pool.close().await;
+
+                Ok(rows.into_iter().map(|(u, h, sp)| {
+                    let is_super = sp.as_deref() == Some("Y");
+                    DbUserItem {
+                        username: u,
+                        host: h,
+                        privileges: if is_super { vec!["ALL PRIVILEGES".to_string()] } else { vec!["USAGE".to_string()] },
+                        is_superuser: is_super,
+                    }
+                }).collect())
+            }
+            "postgres" | "postgresql" => {
+                let url = Self::build_pg_url(config);
+                let pool = sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(1)
+                    .connect(&url)
+                    .await
+                    .map_err(|e| format!("PostgreSQL error: {}", e))?;
+
+                let rows: Vec<(String, bool, bool, bool)> = sqlx::query_as(
+                    "SELECT rolname, rolsuper, rolcreaterole, rolcreatedb FROM pg_roles ORDER BY rolname"
+                )
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Failed to read pg roles: {}", e))?;
+
+                pool.close().await;
+
+                Ok(rows.into_iter().map(|(rname, is_super, can_create_role, can_create_db)| {
+                    let mut privs = Vec::new();
+                    if is_super { privs.push("SUPERUSER".to_string()); }
+                    if can_create_role { privs.push("CREATEROLE".to_string()); }
+                    if can_create_db { privs.push("CREATEDB".to_string()); }
+                    if privs.is_empty() { privs.push("LOGIN".to_string()); }
+
+                    DbUserItem {
+                        username: rname,
+                        host: "%".to_string(),
+                        privileges: privs,
+                        is_superuser: is_super,
+                    }
+                }).collect())
+            }
+            other => Err(format!("User management tidak didukung untuk engine {}", other)),
         }
     }
 }

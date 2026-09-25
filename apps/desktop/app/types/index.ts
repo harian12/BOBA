@@ -65,6 +65,32 @@ export interface DbExplainResult {
   has_full_table_scan: boolean;
 }
 
+export interface DbProcessItem {
+  id: number;
+  user: string;
+  host: string;
+  db?: string | null;
+  command: string;
+  time_seconds: number;
+  state?: string | null;
+  info?: string | null;
+}
+
+export interface DbForeignKeyRelation {
+  from_table: string;
+  from_column: string;
+  to_table: string;
+  to_column: string;
+  constraint_name?: string | null;
+}
+
+export interface DbUserItem {
+  username: string;
+  host: string;
+  privileges: string[];
+  is_superuser: boolean;
+}
+
 export interface VaultData {
   vault_version: number;
   updated_at: string;

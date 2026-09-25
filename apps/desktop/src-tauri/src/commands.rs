@@ -977,3 +977,37 @@ pub async fn dbms_explain_query(
 ) -> Result<crate::dbms::DbExplainResult, String> {
     state.dbms_manager.explain_query(&config, selected_db, &query).await
 }
+
+#[tauri::command]
+pub async fn dbms_get_processlist(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+) -> Result<Vec<crate::dbms::DbProcessItem>, String> {
+    state.dbms_manager.get_processlist(&config).await
+}
+
+#[tauri::command]
+pub async fn dbms_kill_process(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+    process_id: i64,
+) -> Result<(), String> {
+    state.dbms_manager.kill_process(&config, process_id).await
+}
+
+#[tauri::command]
+pub async fn dbms_get_foreign_keys(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+    selected_db: Option<String>,
+) -> Result<Vec<crate::dbms::DbForeignKeyRelation>, String> {
+    state.dbms_manager.get_foreign_keys(&config, selected_db).await
+}
+
+#[tauri::command]
+pub async fn dbms_get_database_users(
+    state: State<'_, AppState>,
+    config: crate::dbms::DbConnectionConfig,
+) -> Result<Vec<crate::dbms::DbUserItem>, String> {
+    state.dbms_manager.get_database_users(&config).await
+}

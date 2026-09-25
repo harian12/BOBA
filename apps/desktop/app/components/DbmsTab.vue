@@ -19,6 +19,34 @@
           </div>
           <div class="flex items-center space-x-1">
             <button
+              @click="isTableDesignerOpen = true"
+              title="Visual Table Designer (Buat Tabel Baru)"
+              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-indigo-400 transition text-xs"
+            >
+              🏗️
+            </button>
+            <button
+              @click="isImporterOpen = true"
+              title="Import Data & Script (.sql / .csv)"
+              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-emerald-400 transition text-xs"
+            >
+              📥
+            </button>
+            <button
+              @click="isProcesslistOpen = true"
+              title="Live Processlist & Query Killer"
+              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-rose-400 transition text-xs"
+            >
+              ⚡
+            </button>
+            <button
+              @click="isUserManagerOpen = true"
+              title="Database User & Privileges Manager"
+              class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-amber-400 transition text-xs"
+            >
+              👥
+            </button>
+            <button
               @click="openHealthMonitor"
               title="Server Health & Performance Metrics"
               class="p-1 hover:bg-boba-800 rounded text-slate-400 hover:text-sky-400 transition text-xs"
@@ -286,6 +314,13 @@
               :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'ddl' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
             >
               📜 DDL Script
+            </button>
+            <button
+              v-if="schemaOverview?.tables && schemaOverview.tables.length > 0"
+              @click="activeViewTab = 'erd'"
+              :class="['px-2.5 py-1 rounded text-xs font-medium transition', activeViewTab === 'erd' ? 'bg-sky-950 border border-sky-600/60 text-sky-200' : 'text-slate-400 hover:bg-boba-800 hover:text-slate-200']"
+            >
+              🌐 ERD Diagram
             </button>
           </div>
 
@@ -757,6 +792,15 @@
 {{ generateTableDdl() }}
           </div>
         </div>
+
+        <!-- VIEW 4: Entity Relationship Diagram (ERD) -->
+        <div v-else-if="activeViewTab === 'erd'" class="flex-1 flex overflow-hidden">
+          <ErdDiagramView
+            :db-config="tab.dbConnection"
+            :active-db="activeDatabase"
+            :tables="schemaOverview?.tables || []"
+          />
+        </div>
       </div>
     </div>
 
@@ -998,6 +1042,13 @@
         <span>Lihat Struktur Kolom</span>
       </button>
       <button
+        @click="handleContextAction('alter')"
+        class="w-full text-left px-2.5 py-1 hover:bg-indigo-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <span>🏗️</span>
+        <span>Modifikasi Desain Tabel (GUI)</span>
+      </button>
+      <button
         @click="handleContextAction('copy_name')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
@@ -1170,6 +1221,40 @@
         </div>
       </div>
     </div>
+    <!-- Data Importer Modal -->
+    <DataImporterModal
+      :is-open="isImporterOpen"
+      :db-config="tab.dbConnection"
+      :active-db="activeDatabase"
+      :tables="schemaOverview?.tables || []"
+      :default-table="activeTable?.name"
+      @close="isImporterOpen = false"
+      @imported="handleDataImported"
+    />
+
+    <!-- Processlist Modal -->
+    <ProcesslistModal
+      :is-open="isProcesslistOpen"
+      :db-config="tab.dbConnection"
+      @close="isProcesslistOpen = false"
+    />
+
+    <!-- Table Designer Modal -->
+    <TableDesignerModal
+      :is-open="isTableDesignerOpen"
+      :db-config="tab.dbConnection"
+      :active-db="activeDatabase"
+      :table-to-edit="tableDesigning"
+      @close="closeTableDesigner"
+      @saved="loadSchemaOverview"
+    />
+
+    <!-- Database User Manager Modal -->
+    <UserManagerModal
+      :is-open="isUserManagerOpen"
+      :db-config="tab.dbConnection"
+      @close="isUserManagerOpen = false"
+    />
   </div>
 </template>
 
@@ -1178,6 +1263,11 @@ import { ref, computed, onMounted } from 'vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
+import DataImporterModal from './DataImporterModal.vue';
+import ProcesslistModal from './ProcesslistModal.vue';
+import TableDesignerModal from './TableDesignerModal.vue';
+import UserManagerModal from './UserManagerModal.vue';
+import ErdDiagramView from './ErdDiagramView.vue';
 import type { ActiveTab, DbTableMeta, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult } from '../types/index.js';
 
 const props = defineProps<{
@@ -1186,6 +1276,29 @@ const props = defineProps<{
 
 const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
+
+const isImporterOpen = ref(false);
+const isProcesslistOpen = ref(false);
+const isTableDesignerOpen = ref(false);
+const isUserManagerOpen = ref(false);
+const tableDesigning = ref<DbTableMeta | null>(null);
+
+function openTableDesigner(tbl?: DbTableMeta) {
+  tableDesigning.value = tbl || null;
+  isTableDesignerOpen.value = true;
+}
+
+function closeTableDesigner() {
+  tableDesigning.value = null;
+  isTableDesignerOpen.value = false;
+}
+
+function handleDataImported() {
+  loadSchemaOverview();
+  if (activeTable.value) {
+    handlePageChange(currentPage.value);
+  }
+}
 
 const loadingSchema = ref(false);
 const schemaOverview = ref<DbSchemaOverview | null>(null);
@@ -2048,7 +2161,7 @@ function closeTableContextMenu() {
   tableContextMenu.value.table = null;
 }
 
-async function handleContextAction(action: 'select' | 'structure' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
+async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
   const tbl = tableContextMenu.value.table;
   closeTableContextMenu();
   if (!tbl) return;
@@ -2058,6 +2171,8 @@ async function handleContextAction(action: 'select' | 'structure' | 'copy_name' 
   } else if (action === 'structure') {
     activeTable.value = tbl;
     activeViewTab.value = 'structure';
+  } else if (action === 'alter') {
+    openTableDesigner(tbl);
   } else if (action === 'copy_name') {
     await navigator.clipboard.writeText(tbl.name);
   } else if (action === 'ddl') {
