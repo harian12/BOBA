@@ -9,7 +9,7 @@
           title="Versi Aplikasi BOBA (Klik untuk cek pembaruan)"
           class="px-1.5 py-0.2 bg-boba-900 hover:bg-boba-800 text-slate-400 hover:text-sky-300 border border-boba-750 rounded text-[10px] font-mono transition"
         >
-          v0.1.9
+          v0.2.0
         </button>
         <span class="text-slate-600">|</span>
         <span class="text-slate-400 text-[11px]">Windows Remote Terminal & SFTP Suite</span>
@@ -17,6 +17,26 @@
 
       <!-- Sync Status Pill & Update Pill -->
       <div class="flex items-center space-x-2">
+        <!-- Command Palette Trigger -->
+        <button
+          @click="isCommandPaletteOpen = true"
+          class="px-2 py-0.5 rounded-md text-[11px] font-mono flex items-center space-x-1.5 transition border bg-boba-900 border-boba-750 text-slate-400 hover:text-sky-300 hover:border-sky-500/50"
+          title="Command Palette & Quick Switcher (Ctrl+K)"
+        >
+          <Icon icon="lucide:search" class="w-3 h-3 text-slate-400" />
+          <span class="hidden md:inline text-[11px]">Cari...</span>
+          <kbd class="text-[9px] px-1 py-0.2 bg-boba-800 text-slate-400 rounded border border-boba-700">Ctrl+K</kbd>
+        </button>
+
+        <button
+          @click="isShortcutsOpen = true"
+          class="w-6 h-6 flex items-center justify-center rounded-md text-slate-400 hover:text-sky-300 hover:bg-boba-800 transition"
+          title="Daftar pintasan keyboard (Ctrl+/)"
+          aria-label="Daftar pintasan keyboard"
+        >
+          <Icon icon="lucide:keyboard" class="w-3.5 h-3.5" />
+        </button>
+
         <button
           v-if="hasUpdateAvailable"
           @click="isUpdateOpen = true"
@@ -25,6 +45,28 @@
         >
           <span class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping"></span>
           <span>Update v{{ latestVersionAvailable }}</span>
+        </button>
+
+        <!-- Lock Button -->
+        <button
+          v-if="vaultStore.isUnlocked"
+          @click="handleLockVault"
+          class="px-2.5 py-0.5 rounded-full text-[11px] font-mono flex items-center space-x-1.5 transition border bg-boba-900 border-boba-700 text-slate-400 hover:text-sky-300 hover:border-sky-500/50"
+          title="Kunci Proteksi Data sekarang (Ctrl+Shift+L)"
+        >
+          <Icon icon="lucide:lock" class="w-3 h-3" />
+          <span>Lock</span>
+        </button>
+
+        <!-- Auto-Lock Setting Indicator -->
+        <button
+          v-if="vaultStore.isUnlocked"
+          @click="isAutoLockOpen = true"
+          class="px-2 py-0.5 rounded-full text-[11px] font-mono flex items-center space-x-1 transition border bg-boba-900 border-boba-700 text-slate-400 hover:text-amber-300 hover:border-amber-500/40"
+          :title="`Kunci Otomatis (Auto-Lock): ${timeoutMinutes > 0 ? timeoutMinutes + ' menit' : 'Nonaktif'} (Klik untuk ubah)`"
+        >
+          <Icon icon="lucide:timer" class="w-3 h-3 text-amber-400/90" />
+          <span class="text-[10px]">{{ timeoutMinutes > 0 ? `${timeoutMinutes}m` : 'Off' }}</span>
         </button>
 
         <button
@@ -243,13 +285,40 @@
                   />
                 </div>
               </div>
+
+              <!-- Empty Slot placeholder for split layouts -->
+              <div
+                v-if="sessionStore.layoutMode !== '1' && sessionStore.visibleTabs.length < sessionStore.gridCapacity"
+                v-for="emptyIdx in (sessionStore.gridCapacity - sessionStore.visibleTabs.length)"
+                :key="'empty-' + emptyIdx"
+                class="flex flex-col items-center justify-center border border-dashed border-boba-800/80 rounded-lg bg-boba-950/40 text-slate-500 text-xs p-4 space-y-3 select-none hover:border-boba-700 transition"
+              >
+                <div class="flex items-center space-x-2">
+                  <button
+                    v-if="sessionStore.activeTab && sessionStore.activeTab.type === 'terminal'"
+                    @click="sessionStore.duplicateTab(sessionStore.activeTab.id)"
+                    class="px-3 py-1.5 bg-boba-900 hover:bg-boba-800 text-slate-300 hover:text-white rounded-lg border border-boba-750 transition flex items-center space-x-1.5 shadow-sm text-xs font-mono"
+                    title="Duplikasi tab SSH yang sedang aktif ke slot ini"
+                  >
+                    <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-sky-400" />
+                    <span>Duplikasi Tab</span>
+                  </button>
+                  <button
+                    @click="handleOpenNewSession()"
+                    class="px-3 py-1.5 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-lg transition flex items-center space-x-1.5 shadow-sm text-xs font-medium"
+                    title="Buka sesi koneksi SSH baru"
+                  >
+                    <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+                    <span>Sesi Baru</span>
+                  </button>
+                </div>
+                <span class="text-[10px] text-slate-600 font-mono tracking-wider uppercase">Slot Layar Terbagi</span>
+              </div>
             </div>
 
             <!-- Welcome Workspace when no tabs are open -->
             <div v-if="sessionStore.tabs.length === 0" class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-              <div class="w-16 h-16 rounded-2xl bg-boba-accent/10 border border-boba-accent/30 flex items-center justify-center text-3xl font-black text-boba-accent">
-                B
-              </div>
+              <img src="/logo.png" alt="BOBA" class="w-16 h-16 rounded-2xl" />
               <div>
                 <h2 class="text-xl font-bold text-slate-100">Welcome to BOBA</h2>
                 <p class="text-xs text-slate-400 mt-1 max-w-sm">
@@ -286,6 +355,19 @@
       @close="dbmsStore.isModalOpen = false"
     />
     <UpdateModal :is-open="isUpdateOpen" @close="isUpdateOpen = false" />
+    <ShortcutsModal :is-open="isShortcutsOpen" @close="isShortcutsOpen = false" />
+    <CommandPaletteModal
+      :is-open="isCommandPaletteOpen"
+      @close="isCommandPaletteOpen = false"
+      @new-session="handleOpenNewSession()"
+      @new-db="dbmsStore.openNewModal()"
+      @lock-vault="handleLockVault"
+      @open-sync="isSyncOpen = true"
+      @open-shortcuts="isShortcutsOpen = true"
+      @open-update="isUpdateOpen = true"
+      @open-autolock="isAutoLockOpen = true"
+    />
+    <AutoLockSettingsModal :is-open="isAutoLockOpen" @close="isAutoLockOpen = false" />
     <SyncModal :is-open="isSyncOpen" @close="isSyncOpen = false" />
     <KeyManagerModal :is-open="isKeyManagerOpen" @close="isKeyManagerOpen = false" />
     <ChangeMasterPasswordModal :is-open="isChangePasswordOpen" @close="isChangePasswordOpen = false" />
@@ -376,6 +458,9 @@ import AppDialog from './components/AppDialog.vue';
 import AiAssistantDrawer from './components/AiAssistantDrawer.vue';
 import AiProviderModal from './components/AiProviderModal.vue';
 import UpdateModal from './components/UpdateModal.vue';
+import ShortcutsModal from './components/ShortcutsModal.vue';
+import CommandPaletteModal from './components/CommandPaletteModal.vue';
+import AutoLockSettingsModal from './components/AutoLockSettingsModal.vue';
 import DbConnectionModal from './components/DbConnectionModal.vue';
 
 import { useVaultStore } from './stores/vaultStore.js';
@@ -386,6 +471,8 @@ import { useTransferQueueStore } from './stores/transferQueueStore.js';
 import { useAiAgentStore } from './stores/aiAgentStore.js';
 import { useDbmsStore } from './stores/dbmsStore.js';
 import { tauriBridge } from './services/tauriBridge.js';
+import { useTooltipLayer } from './composables/useTooltipLayer.js';
+import { useAutoLock } from './composables/useAutoLock.js';
 import type { SshSessionConfig, ActiveTab } from './types/index.js';
 
 const vaultStore = useVaultStore();
@@ -395,6 +482,9 @@ const dialogStore = useDialogStore();
 const queueStore = useTransferQueueStore();
 const aiAgentStore = useAiAgentStore();
 const dbmsStore = useDbmsStore();
+
+useTooltipLayer();
+const { timeoutMinutes } = useAutoLock();
 
 function getTabBadge(tab: ActiveTab) {
   if (tab.type === 'terminal') {
@@ -459,6 +549,9 @@ function getTabIcon(tab: ActiveTab): string {
 }
 
 const isUpdateOpen = ref(false);
+const isShortcutsOpen = ref(false);
+const isCommandPaletteOpen = ref(false);
+const isAutoLockOpen = ref(false);
 const hasUpdateAvailable = ref(false);
 const latestVersionAvailable = ref('');
 const isSyncOpen = ref(false);
@@ -541,9 +634,9 @@ onErrorCaptured((err, _instance, info) => {
 async function handleOpenKeyManager() {
   const enteredPassword = await dialogStore.prompt({
     title: 'Verifikasi Master Password',
-    description: 'SSH Key Vault menyimpan private key terenkripsi. Masukkan Master Password untuk membuka akses:',
+    description: 'Proteksi Kunci SSH menyimpan private key terenkripsi. Masukkan Master Password untuk membuka akses:',
     placeholder: 'Ketik Master Password...',
-    confirmText: 'Buka Key Vault',
+    confirmText: 'Buka Proteksi Kunci',
     inputType: 'password',
   });
 
@@ -554,7 +647,7 @@ async function handleOpenKeyManager() {
   } else {
     await dialogStore.alert({
       title: 'Akses Ditolak',
-      description: 'Master Password salah. Akses ke SSH Key Vault tidak diizinkan.',
+      description: 'Master Password salah. Akses ke Proteksi Kunci SSH tidak diizinkan.',
       variant: 'error',
     });
   }
@@ -587,10 +680,33 @@ async function handleCloseTab(tab: ActiveTab) {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  // Ctrl+K: Toggle Command Palette
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === 'k') {
+    e.preventDefault();
+    isCommandPaletteOpen.value = !isCommandPaletteOpen.value;
+    return;
+  }
+
+  // Ctrl+/: Toggle Shortcuts panel
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === '/') {
+    e.preventDefault();
+    if (!isCommandPaletteOpen.value) isShortcutsOpen.value = !isShortcutsOpen.value;
+    return;
+  }
+
   // Ctrl+Shift+A: Toggle AI Server Copilot Drawer
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
     e.preventDefault();
     aiAgentStore.toggleDrawer();
+    return;
+  }
+
+  // Ctrl+Shift+L: Lock vault
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+    if (vaultStore.isUnlocked && !isSyncOpen.value && !isKeyManagerOpen.value && !isNewSessionOpen.value && !isUpdateOpen.value) {
+      e.preventDefault();
+      void handleLockVault();
+    }
     return;
   }
 
@@ -648,6 +764,12 @@ function handleKeyDown(e: KeyboardEvent) {
       }
     }
   }
+}
+
+async function handleLockVault() {
+  /* Flush pending edits first so nothing typed since the last autosave is lost. */
+  await vaultStore.persist(false);
+  await vaultStore.lock();
 }
 
 async function checkUpdateSilently() {

@@ -137,12 +137,52 @@
       </button>
     </div>
 
-    <!-- Xterm Terminal Canvas Container -->
-    <div
-      ref="terminalRef"
-      class="flex-1 w-full h-full p-1 bg-[#0b0d13] overflow-hidden"
-      @contextmenu.prevent="openContextMenu"
-    ></div>
+    <!-- Xterm Terminal Canvas Container with Disconnect Banners -->
+    <div class="flex-1 w-full h-full relative overflow-hidden">
+      <!-- Disconnected Banner -->
+      <div
+        v-if="!tab.connected && !isReconnecting"
+        class="absolute top-2 right-4 z-20 flex items-center space-x-2 bg-rose-950/90 border border-rose-800/80 px-3 py-1.5 rounded-lg shadow-xl text-xs text-rose-200 backdrop-blur-sm animate-in fade-in slide-in-from-top-1 duration-150"
+      >
+        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+        <span class="font-medium">Koneksi SSH terputus</span>
+        <button
+          @click.stop="reconnect"
+          class="ml-1 px-2 py-0.5 bg-rose-800 hover:bg-rose-700 text-white rounded font-medium text-[11px] transition shadow flex items-center space-x-1"
+          title="Hubungkan kembali ke server ini"
+        >
+          <Icon icon="lucide:refresh-cw" class="w-3 h-3" />
+          <span>Sambungkan Ulang</span>
+        </button>
+      </div>
+
+      <!-- Auto-reconnecting Banner -->
+      <div
+        v-if="isReconnecting"
+        class="absolute top-2 right-4 z-20 flex items-center space-x-2 bg-amber-950/90 border border-amber-800/80 px-3 py-1.5 rounded-lg shadow-xl text-xs text-amber-200 backdrop-blur-sm animate-in fade-in slide-in-from-top-1 duration-150"
+      >
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+        <span>Menyambungkan kembali dalam <strong>{{ reconnectCountdown }}s</strong>...</span>
+        <button
+          @click.stop="reconnect"
+          class="ml-1 px-2 py-0.5 bg-amber-800 hover:bg-amber-700 text-white rounded font-medium text-[11px] transition shadow"
+        >
+          Sekarang
+        </button>
+        <button
+          @click.stop="cancelAutoReconnect"
+          class="px-1.5 py-0.5 hover:bg-amber-900/60 text-amber-300 rounded text-[11px] transition"
+        >
+          Batal
+        </button>
+      </div>
+
+      <div
+        ref="terminalRef"
+        class="w-full h-full p-1 bg-[#0b0d13] overflow-hidden"
+        @contextmenu.prevent="openContextMenu"
+      ></div>
+    </div>
 
     <!-- Custom Sleek Dark Terminal Context Menu -->
     <div
@@ -781,6 +821,13 @@ function handleKeydownCapture(e: KeyboardEvent) {
   }
 }
 
+function onNetworkOnline() {
+  if (!props.tab.connected && !isReconnecting.value && !isExplicitlyClosed) {
+    if (term) term.writeln('\r\n\x1b[32m[Jaringan aktif kembali. Menyambungkan ulang SSH...]\x1b[0m\r\n');
+    reconnect();
+  }
+}
+
 onMounted(async () => {
   await nextTick();
   initTerminal();
@@ -797,6 +844,7 @@ onMounted(async () => {
   // Global click listener to close context menu
   window.addEventListener('click', closeContextMenu);
   window.addEventListener('blur', closeContextMenu);
+  window.addEventListener('online', onNetworkOnline);
 
   // Auto-fetch resource stats every 6 seconds for this tab
   metricsInterval = setInterval(() => {
@@ -809,6 +857,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('click', closeContextMenu);
   window.removeEventListener('blur', closeContextMenu);
+  window.removeEventListener('online', onNetworkOnline);
   isExplicitlyClosed = true;
   cancelAutoReconnect();
   if (metricsInterval) {

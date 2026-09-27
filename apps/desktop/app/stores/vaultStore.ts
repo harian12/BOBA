@@ -114,11 +114,12 @@ export const useVaultStore = defineStore('vault', () => {
   }
 
   // Folders CRUD
-  async function addFolder(name: string, parentId: string | null = null) {
+  async function addFolder(name: string, parentId: string | null = null, type: 'session' | 'db' = 'session') {
     const newFolder: Folder = {
       id: `fld_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name,
       parent_id: parentId,
+      type,
     };
     vault.value.folders.push(newFolder);
     await persist(true);
@@ -133,6 +134,14 @@ export const useVaultStore = defineStore('vault', () => {
       }
       return s;
     });
+    if (vault.value.databases) {
+      vault.value.databases = vault.value.databases.map(d => {
+        if (d.folder_id === folderId) {
+          return { ...d, folder_id: null };
+        }
+        return d;
+      });
+    }
     await persist(true);
   }
 

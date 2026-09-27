@@ -65,6 +65,42 @@
         </div>
       </div>
 
+      <!-- Folder & Color Tag -->
+      <div class="grid grid-cols-2 gap-3 pt-1">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold text-slate-300">Folder Database</label>
+          <select
+            v-model="form.folder_id"
+            class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none transition"
+          >
+            <option :value="null">-- Tanpa Folder (Root) --</option>
+            <option v-for="fld in dbFolders" :key="fld.id" :value="fld.id">
+              📁 {{ fld.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold text-slate-300">Warna Tag / Aksen</label>
+          <div class="flex items-center space-x-1.5 pt-1">
+            <button
+              v-for="c in colorOptions"
+              :key="c.id"
+              type="button"
+              @click="form.color = c.id"
+              :class="[
+                'w-5 h-5 rounded-full transition transform hover:scale-110 flex items-center justify-center',
+                c.bg,
+                (form.color || '') === c.id ? 'ring-2 ring-white ring-offset-2 ring-offset-boba-900 scale-110' : 'opacity-60 hover:opacity-100'
+              ]"
+              :title="c.label"
+            >
+              <span v-if="(form.color || '') === c.id" class="w-1.5 h-1.5 rounded-full bg-black/70"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- SQLite Specific Field -->
       <div v-if="form.engine === 'sqlite'" class="space-y-1">
         <label class="block text-xs font-semibold text-slate-300">Path File Database (.db / .sqlite / .sqlite3) *</label>
@@ -148,7 +184,7 @@
         </div>
 
         <div v-if="form.ssh_tunnel_enabled" class="space-y-1 pt-1 border-t border-boba-800">
-          <label class="block text-[11px] text-slate-400">Pilih Sesi SSH Vault:</label>
+          <label class="block text-[11px] text-slate-400">Pilih Sesi SSH Terproteksi:</label>
           <select
             v-model="form.ssh_session_id"
             class="w-full bg-boba-900 border border-boba-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
@@ -208,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
@@ -248,7 +284,21 @@ const form = ref<DbConnectionConfig>({
   sqlite_path: '',
   ssh_tunnel_enabled: false,
   ssh_session_id: '',
+  folder_id: null,
+  color: '',
 });
+
+const dbFolders = computed(() => (vaultStore.vault?.folders || []).filter(f => f.type === 'db'));
+const colorOptions = [
+  { id: '', label: 'Default', bg: 'bg-slate-500' },
+  { id: 'emerald', label: 'Emerald', bg: 'bg-emerald-400' },
+  { id: 'sky', label: 'Sky', bg: 'bg-sky-400' },
+  { id: 'amber', label: 'Amber', bg: 'bg-amber-400' },
+  { id: 'rose', label: 'Rose', bg: 'bg-rose-400' },
+  { id: 'purple', label: 'Purple', bg: 'bg-purple-400' },
+  { id: 'indigo', label: 'Indigo', bg: 'bg-indigo-400' },
+  { id: 'cyan', label: 'Cyan', bg: 'bg-cyan-400' },
+];
 
 const testing = ref(false);
 const testResult = ref<{ success: boolean; message: string } | null>(null);
@@ -283,6 +333,8 @@ watch(
           sqlite_path: '',
           ssh_tunnel_enabled: false,
           ssh_session_id: '',
+          folder_id: null,
+          color: '',
         };
       }
     }

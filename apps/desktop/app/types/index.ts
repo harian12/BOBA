@@ -2,6 +2,7 @@ export interface Folder {
   id: string;
   name: string;
   parent_id: string | null;
+  type?: 'session' | 'db';
 }
 
 export interface SnippetItem {
@@ -118,6 +119,8 @@ export interface DbConnectionConfig {
   is_remote_sqlite?: boolean;
   ssh_tunnel_enabled?: boolean;
   ssh_session_id?: string;
+  folder_id?: string | null;
+  color?: string;
 }
 
 export interface DbColumnMeta {

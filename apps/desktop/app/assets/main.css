@@ -20,3 +20,35 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #394663;
 }
+
+/* Tooltip layer
+   Replaces every native `title` tooltip in the app, so labels appear at a
+   fixed delay and never race the browser's own tooltip.
+   No arrow: a plain card sits cleaner over dense toolbars than a pointer. */
+.boba-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  max-width: 240px;
+  padding: 6px 9px;
+  border: 1px solid #283147;
+  border-radius: 5px;
+  background: #11151f;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  text-align: left;
+  pointer-events: none;
+  user-select: none;
+  /* Only shadow in the app: lifts the card off dense toolbars. */
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.7);
+}
+
+.boba-tip__label {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+

@@ -8,8 +8,8 @@
       <!-- Top Modes: Sessions / Databases / SFTP -->
       <div class="flex flex-col items-center space-y-2.5 w-full">
         <!-- Brand Logo -->
-        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.1.9 (Klik untuk cek update)">
-          <img src="/logo.png" alt="BOBA" class="w-7 h-7 rounded-lg shadow-md object-contain border border-sky-500/30 hover:border-sky-400 transition" />
+        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.2.0 (Klik untuk cek update)">
+          <img src="/logo-mark.svg" alt="BOBA" class="w-7 h-7 object-contain transition-opacity hover:opacity-70" />
         </div>
 
         <!-- Mode 1: SSH Sessions / Terminal -->
@@ -67,7 +67,7 @@
         <!-- SSH Key Vault -->
         <button
           @click="$emit('open-keys')"
-          title="SSH Key Vault (E2EE)"
+          title="Proteksi Kunci SSH (E2EE)"
           class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-boba-850 rounded-md transition"
         >
           <Icon icon="lucide:key" class="w-4 h-4" />
@@ -94,7 +94,7 @@
         <!-- Lock Vault -->
         <button
           @click="vaultStore.lock"
-          title="Lock Vault"
+          title="Kunci Proteksi Data (Ctrl+Shift+L)"
           class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-boba-850 rounded-md transition"
         >
           <Icon icon="lucide:lock" class="w-4 h-4" />
@@ -107,30 +107,33 @@
       <!-- ================= PANEL 1: SESSIONS & SSH ================= -->
       <template v-if="activeMode === 'sessions'">
         <!-- Action Toolbar (Add Session / Folder) -->
-        <div class="px-3 py-2.5 flex items-center justify-between border-b border-boba-800 text-xs">
-          <div class="flex items-center space-x-1.5">
-            <Icon icon="lucide:server" class="w-3.5 h-3.5 text-sky-400" />
-            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Sessions</span>
+        <div class="px-3 py-2 flex items-center justify-between gap-1 border-b border-boba-800 text-xs">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <Icon icon="lucide:server" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 truncate">Sessions</span>
           </div>
-          <div class="flex items-center space-x-1">
+          <div class="flex items-center gap-0.5 shrink-0">
             <button
               @click="promptNewFolder"
-              title="New Folder"
-              class="px-2 py-1 text-slate-400 hover:text-slate-200 hover:bg-boba-800 rounded text-[11px] transition"
+              title="Buat Folder Baru"
+              aria-label="Buat Folder Baru"
+              class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-amber-300 hover:bg-boba-800 transition"
             >
-              + Folder
+              <Icon icon="lucide:folder-plus" class="w-3.5 h-3.5" />
             </button>
             <button
               @click="$emit('new-session')"
-              title="New SSH Session"
-              class="px-2 py-1 bg-boba-accent hover:bg-boba-accent-hover text-white rounded-md text-[11px] font-medium shadow-sm transition"
+              title="Sesi SSH Baru"
+              aria-label="Sesi SSH Baru"
+              class="w-6 h-6 flex items-center justify-center rounded text-boba-accent hover:text-white hover:bg-boba-accent transition"
             >
-              + Session
+              <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
             </button>
             <button
               @click="isCollapsed = true"
               title="Sembunyikan Sidebar (Ctrl+B)"
-              class="p-1 hover:bg-boba-800 text-slate-400 hover:text-slate-200 rounded transition ml-0.5"
+              aria-label="Sembunyikan Sidebar"
+              class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-slate-200 hover:bg-boba-800 transition"
             >
               <Icon icon="lucide:panel-left-close" class="w-3.5 h-3.5" />
             </button>
@@ -339,25 +342,34 @@
       <!-- ================= PANEL 2: DATABASES (DBMS) ================= -->
       <template v-else-if="activeMode === 'databases'">
         <!-- Action Toolbar for DB -->
-        <div class="px-3 py-2.5 flex items-center justify-between border-b border-boba-800 text-xs">
-          <div class="flex items-center space-x-1.5">
-            <Icon icon="lucide:database" class="w-3.5 h-3.5 text-emerald-400" />
-            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Databases</span>
-            <span class="text-[10px] text-slate-500 font-mono">({{ dbmsStore.databases.length }})</span>
+        <div class="px-3 py-2 flex items-center justify-between gap-1 border-b border-boba-800 text-xs">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <Icon icon="lucide:database" class="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 truncate">Databases</span>
+            <span class="text-[10px] text-slate-500 font-mono shrink-0">({{ dbmsStore.databases.length }})</span>
           </div>
-          <div class="flex items-center space-x-1">
+          <div class="flex items-center gap-0.5 shrink-0">
+            <button
+              @click="promptNewDbFolder"
+              title="Buat Folder Database"
+              aria-label="Buat Folder Database"
+              class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-amber-300 hover:bg-boba-800 transition"
+            >
+              <Icon icon="lucide:folder-plus" class="w-3.5 h-3.5" />
+            </button>
             <button
               @click="dbmsStore.openNewModal()"
-              title="Add New Database Connection"
-              class="px-2 py-1 bg-emerald-900/80 hover:bg-emerald-700 text-emerald-200 hover:text-white rounded text-[11px] font-medium border border-emerald-600/50 transition flex items-center space-x-1"
+              title="Koneksi Database Baru"
+              aria-label="Koneksi Database Baru"
+              class="w-6 h-6 flex items-center justify-center rounded text-emerald-400 hover:text-white hover:bg-emerald-600 transition"
             >
               <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
-              <span>+ DB</span>
             </button>
             <button
               @click="isCollapsed = true"
               title="Sembunyikan Sidebar (Ctrl+B)"
-              class="p-1 hover:bg-boba-800 text-slate-400 hover:text-slate-200 rounded transition ml-0.5"
+              aria-label="Sembunyikan Sidebar"
+              class="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-slate-200 hover:bg-boba-800 transition"
             >
               <Icon icon="lucide:panel-left-close" class="w-3.5 h-3.5" />
             </button>
@@ -374,9 +386,9 @@
           />
         </div>
 
-        <!-- Database Connections List -->
+        <!-- Database Connections Hierarchy List -->
         <div class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-sans">
-          <div v-if="filteredDatabases.length === 0" class="p-6 text-center text-slate-500 text-xs">
+          <div v-if="filteredDbFolders.length === 0 && unorganizedDatabases.length === 0" class="p-6 text-center text-slate-500 text-xs">
             <div class="mb-2">Belum ada koneksi database.</div>
             <button
               @click="dbmsStore.openNewModal()"
@@ -386,31 +398,39 @@
             </button>
           </div>
 
+          <!-- DB Folders -->
           <div
-            v-for="db in filteredDatabases"
-            :key="db.id"
-            @dblclick="dbmsStore.connectDatabase(db)"
-            class="p-2.5 bg-boba-950/60 hover:bg-boba-800/80 border border-boba-800 hover:border-sky-500/40 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1.5"
-            :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
+            v-for="folder in filteredDbFolders"
+            :key="folder.id"
+            class="space-y-0.5 mb-1"
           >
-            <!-- Top Row: Icon, Name, Actions -->
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-2 truncate mr-1">
-                <Icon :icon="getDbIcon(db.engine)" class="w-4 h-4 shrink-0" />
-                <span class="text-slate-200 font-bold truncate text-[12px] font-mono">{{ db.name }}</span>
+            <!-- DB Folder Header -->
+            <div
+              class="flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition select-none hover:bg-boba-800/80"
+              @click="toggleFolder(folder.id)"
+            >
+              <div class="flex items-center space-x-2 truncate mr-2">
+                <span class="text-slate-500 text-[10px] transform transition-transform duration-150 inline-block w-3 text-center">
+                  {{ collapsedFolders[folder.id] ? '▶' : '▼' }}
+                </span>
+                <span class="text-amber-400">
+                  <Icon icon="lucide:folder" class="w-3.5 h-3.5 inline" />
+                </span>
+                <span class="font-medium text-slate-200 truncate">{{ folder.name }}</span>
+                <span class="text-[10px] text-slate-500 font-mono">({{ getDatabasesInFolder(folder.id).length }})</span>
               </div>
 
               <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
                 <button
-                  @click.stop="dbmsStore.openEditModal(db)"
-                  title="Edit database connection"
+                  @click.stop="promptRenameFolder(folder)"
+                  title="Rename folder"
                   class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
                 >
                   ✎
                 </button>
                 <button
-                  @click.stop="handleDeleteDb(db)"
-                  title="Delete database connection"
+                  @click.stop="deleteFolder(folder)"
+                  title="Delete folder"
                   class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
                 >
                   ✕
@@ -418,15 +438,115 @@
               </div>
             </div>
 
-            <!-- Details Row -->
-            <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span class="truncate">{{ db.engine.toUpperCase() }} • {{ db.host || 'Local' }}:{{ db.port || 3306 }}</span>
-              <button
-                @click.stop="dbmsStore.connectDatabase(db)"
-                class="px-1.5 py-0.5 bg-sky-950 hover:bg-sky-800 text-sky-300 rounded border border-sky-800/60 text-[10px] transition"
+            <!-- Databases in Folder -->
+            <div
+              v-show="!collapsedFolders[folder.id]"
+              class="pl-3.5 space-y-1 border-l border-boba-800/80 ml-3.5 my-1"
+            >
+              <div
+                v-if="getDatabasesInFolder(folder.id).length === 0"
+                class="py-1 px-2 text-[11px] text-slate-500 italic"
               >
-                Buka
-              </button>
+                Folder kosong
+              </div>
+
+              <div
+                v-for="db in getDatabasesInFolder(folder.id)"
+                :key="db.id"
+                @dblclick="dbmsStore.connectDatabase(db)"
+                class="p-2 bg-boba-950/70 hover:bg-boba-800/80 border border-boba-800 hover:border-sky-500/40 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1"
+                :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-1.5 truncate mr-1">
+                    <span v-if="db.color" class="w-2 h-2 rounded-full shrink-0" :class="getDbColorClass(db.color)"></span>
+                    <Icon :icon="getDbIcon(db.engine)" class="w-3.5 h-3.5 shrink-0" />
+                    <span class="text-slate-200 font-bold truncate text-[11px] font-mono">{{ db.name }}</span>
+                  </div>
+
+                  <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                    <button
+                      @click.stop="dbmsStore.openEditModal(db)"
+                      title="Edit database connection"
+                      class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      @click.stop="handleDeleteDb(db)"
+                      title="Delete database connection"
+                      class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                  <span class="truncate text-[10px]">{{ db.engine.toUpperCase() }} • {{ db.host || 'Local' }}:{{ db.port || 3306 }}</span>
+                  <button
+                    @click.stop="dbmsStore.connectDatabase(db)"
+                    class="px-1.5 py-0.2 bg-sky-950 hover:bg-sky-800 text-sky-300 rounded border border-sky-800/60 text-[9px] transition"
+                  >
+                    Buka
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Unorganized / Root Databases -->
+          <div v-if="unorganizedDatabases.length > 0" class="pt-1 space-y-1">
+            <div
+              v-if="filteredDbFolders.length > 0"
+              class="px-2 py-0.5 text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+            >
+              Ungrouped
+            </div>
+
+            <div
+              v-for="db in unorganizedDatabases"
+              :key="db.id"
+              @dblclick="dbmsStore.connectDatabase(db)"
+              class="p-2.5 bg-boba-950/60 hover:bg-boba-800/80 border border-boba-800 hover:border-sky-500/40 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1.5"
+              :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
+            >
+              <!-- Top Row: Icon, Name, Actions -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2 truncate mr-1">
+                  <span v-if="db.color" class="w-2 h-2 rounded-full shrink-0" :class="getDbColorClass(db.color)"></span>
+                  <Icon :icon="getDbIcon(db.engine)" class="w-4 h-4 shrink-0" />
+                  <span class="text-slate-200 font-bold truncate text-[12px] font-mono">{{ db.name }}</span>
+                </div>
+
+                <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                  <button
+                    @click.stop="dbmsStore.openEditModal(db)"
+                    title="Edit database connection"
+                    class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-slate-200 text-xs transition"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    @click.stop="handleDeleteDb(db)"
+                    title="Delete database connection"
+                    class="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 text-xs transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <!-- Details Row -->
+              <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span class="truncate">{{ db.engine.toUpperCase() }} • {{ db.host || 'Local' }}:{{ db.port || 3306 }}</span>
+                <button
+                  @click.stop="dbmsStore.connectDatabase(db)"
+                  class="px-1.5 py-0.5 bg-sky-950 hover:bg-sky-800 text-sky-300 rounded border border-sky-800/60 text-[10px] transition"
+                >
+                  Buka
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -596,7 +716,32 @@ function handleKeyDown(e: KeyboardEvent) {
 
 const searchQuery = ref('');
 const dbSearchQuery = ref('');
-const collapsedFolders = ref<Record<string, boolean>>({});
+
+/* Folder starts open. Once the user folds one, that choice sticks across restarts,
+   so nothing is ever re-collapsed behind their back. */
+const FOLDERS_STORAGE_KEY = 'boba_collapsed_folders';
+const collapsedFolders = ref<Record<string, boolean>>(loadCollapsedFolders());
+
+function loadCollapsedFolders(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(FOLDERS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, v]) => v === true)
+        .map(([k]) => [k, true])
+    );
+  } catch {
+    return {};
+  }
+}
+
+function toggleFolder(folderId: string) {
+  collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
+  localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(collapsedFolders.value));
+}
 
 function getDbIcon(engine?: string): string {
   switch (engine?.toLowerCase()) {
@@ -617,20 +762,10 @@ function getDbIcon(engine?: string): string {
   }
 }
 
-const filteredDatabases = computed(() => {
-  if (!dbSearchQuery.value.trim()) return dbmsStore.databases;
-  const q = dbSearchQuery.value.toLowerCase();
-  return dbmsStore.databases.filter(d =>
-    d.name.toLowerCase().includes(q) ||
-    d.engine.toLowerCase().includes(q) ||
-    (d.host && d.host.toLowerCase().includes(q))
-  );
-});
-
 async function handleDeleteDb(db: DbConnectionConfig) {
   const confirmed = await dialogStore.confirm({
     title: `Hapus Koneksi "${db.name}"?`,
-    description: 'Koneksi database ini akan dihapus dari vault Anda.',
+    description: 'Koneksi database ini akan dihapus dari proteksi data Anda.',
     confirmText: 'Hapus Database',
     isDestructive: true,
   });
@@ -690,7 +825,7 @@ const contextMenu = ref<{
 
 // Computed Filters
 const filteredFolders = computed(() => {
-  const folders = vaultStore.vault.folders || [];
+  const folders = (vaultStore.vault.folders || []).filter(f => !f.type || f.type === 'session');
   if (!searchQuery.value.trim()) return folders;
   const q = searchQuery.value.toLowerCase();
 
@@ -713,6 +848,59 @@ function getSessionsInFolder(folderId: string) {
   if (!searchQuery.value.trim()) return sessions;
   const q = searchQuery.value.toLowerCase();
   return sessions.filter(s => s.name.toLowerCase().includes(q) || s.host.toLowerCase().includes(q));
+}
+
+// Database Folders and Grouping
+const filteredDbFolders = computed(() => {
+  const folders = (vaultStore.vault.folders || []).filter(f => f.type === 'db');
+  if (!dbSearchQuery.value.trim()) return folders;
+  const q = dbSearchQuery.value.toLowerCase();
+  return folders.filter(f => {
+    if (f.name.toLowerCase().includes(q)) return true;
+    const folderDbs = (vaultStore.vault.databases || []).filter(d => d.folder_id === f.id);
+    return folderDbs.some(d => d.name.toLowerCase().includes(q) || (d.host && d.host.toLowerCase().includes(q)));
+  });
+});
+
+const unorganizedDatabases = computed(() => {
+  const dbs = (vaultStore.vault.databases || []).filter(d => !d.folder_id);
+  if (!dbSearchQuery.value.trim()) return dbs;
+  const q = dbSearchQuery.value.toLowerCase();
+  return dbs.filter(d => d.name.toLowerCase().includes(q) || (d.host && d.host.toLowerCase().includes(q)));
+});
+
+function getDatabasesInFolder(folderId: string) {
+  const dbs = (vaultStore.vault.databases || []).filter(d => d.folder_id === folderId);
+  if (!dbSearchQuery.value.trim()) return dbs;
+  const q = dbSearchQuery.value.toLowerCase();
+  return dbs.filter(d => d.name.toLowerCase().includes(q) || (d.host && d.host.toLowerCase().includes(q)));
+}
+
+async function promptNewDbFolder() {
+  const folderName = await dialogStore.prompt({
+    title: 'Buat Folder Database Baru',
+    description: 'Masukkan nama folder untuk mengelompokkan koneksi database:',
+    placeholder: 'Nama folder (misal: Production, Staging, Cache)',
+    confirmText: 'Buat Folder',
+  });
+
+  if (folderName && folderName.trim()) {
+    await vaultStore.addFolder(folderName.trim(), null, 'db');
+  }
+}
+
+const colorClassMap: Record<string, string> = {
+  emerald: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]',
+  sky: 'bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.6)]',
+  amber: 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]',
+  rose: 'bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.6)]',
+  purple: 'bg-purple-400 shadow-[0_0_6px_rgba(192,132,252,0.6)]',
+  indigo: 'bg-indigo-400 shadow-[0_0_6px_rgba(129,140,248,0.6)]',
+  cyan: 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.6)]',
+};
+
+function getDbColorClass(color?: string) {
+  return color && colorClassMap[color] ? colorClassMap[color] : '';
 }
 
 function renameFolder(folderId: string, name: string) {
@@ -772,10 +960,6 @@ function duplicateSession(sessionId: string, folderId?: string) {
   };
   vaultStore.vault.sessions.push(duplicate);
   void vaultStore.persist(true);
-}
-
-function toggleFolder(folderId: string) {
-  collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
 }
 
 function connectSession(session: SshSessionConfig) {

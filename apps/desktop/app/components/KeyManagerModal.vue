@@ -4,19 +4,19 @@
       <div class="flex items-center justify-between border-b border-boba-800 pb-3">
         <div class="flex items-center space-x-2">
           <Icon icon="lucide:key" class="w-5 h-5 text-amber-400" />
-          <h3 class="text-lg font-bold text-slate-100">SSH Key Vault (E2EE Synced)</h3>
+          <h3 class="text-lg font-bold text-slate-100">Proteksi Kunci SSH (E2EE Synced)</h3>
         </div>
         <button @click="$emit('close')" class="text-slate-400 hover:text-slate-200">✕</button>
       </div>
 
       <p class="text-xs text-slate-400">
-        All SSH private keys stored here are encrypted with your Master Password and automatically synced across all your connected devices.
+        Semua SSH private key di sini dienkripsi dengan Master Password Anda dan otomatis disinkronkan ke seluruh perangkat.
       </p>
 
       <!-- Key List -->
       <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
         <div v-if="vaultStore.vault.keys.length === 0" class="text-center py-6 text-xs text-slate-500 bg-boba-950/40 rounded-lg border border-boba-800">
-          No SSH keys stored in vault. Import one below.
+          Belum ada kunci SSH di proteksi data. Impor kunci di bawah.
         </div>
 
         <div

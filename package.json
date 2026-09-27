@@ -6,9 +6,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:server": "npm.cmd --prefix apps/server run dev",
-    "dev:desktop": "npm.cmd --prefix apps/desktop run tauri dev",
-    "build:server": "npm.cmd --prefix apps/server run build",
-    "build:desktop": "npm.cmd --prefix apps/desktop run tauri build"
+    "dev:server": "bun run --cwd apps/server dev",
+    "dev:desktop": "bun run --cwd apps/desktop tauri dev",
+    "build:server": "bun run --cwd apps/server build",
+    "build:desktop": "bun run --cwd apps/desktop tauri build",
+    "generate:desktop": "bun run --cwd apps/desktop generate",
+    "typecheck:desktop": "bun run --cwd apps/desktop typecheck",
+    "test:desktop": "bun run --cwd apps/desktop test",
+    "icons": "bun run generate-icons"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
   }
 }

@@ -1070,7 +1070,7 @@
 
         <!-- Quick Save Current Query Section -->
         <div v-if="currentQueryText.trim()" class="p-3 bg-boba-950 rounded-xl border border-boba-800 space-y-2">
-          <div class="text-xs font-semibold text-sky-400">Simpan Query Aktif ke Vault:</div>
+          <div class="text-xs font-semibold text-sky-400">Simpan Query Aktif ke Proteksi Data:</div>
           <div class="flex space-x-2">
             <input
               v-model="newSnippetTitle"
@@ -1117,7 +1117,7 @@
         <!-- Saved Queries List -->
         <div class="space-y-2 max-h-64 overflow-y-auto">
           <div v-if="filteredSnippets.length === 0" class="py-6 text-center text-slate-500 text-xs">
-            Belum ada query tersimpan untuk {{ snippetScope === 'connection' ? 'koneksi ini' : 'vault' }}.
+            Belum ada query tersimpan untuk {{ snippetScope === 'connection' ? 'koneksi ini' : 'proteksi data' }}.
           </div>
           <div
             v-for="snip in filteredSnippets"

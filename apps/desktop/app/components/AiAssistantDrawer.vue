@@ -485,7 +485,7 @@
                 <div v-else class="bg-boba-900/90 border border-boba-800/60 p-2.5 rounded-lg text-[10px] text-slate-300 space-y-2">
                   <div v-if="tc.name === 'db_list_databases'" class="text-sky-300 font-mono flex items-center space-x-1.5">
                     <Icon icon="lucide:database" class="w-3.5 h-3.5 text-sky-400" />
-                    <span>Daftar Koneksi Database di Vault</span>
+                    <span>Daftar Koneksi Database Terproteksi</span>
                   </div>
                   <div v-else-if="tc.name === 'db_get_schema'" class="text-indigo-300 font-mono flex items-center space-x-1.5">
                     <Icon icon="lucide:table" class="w-3.5 h-3.5 text-indigo-400" />

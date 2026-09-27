@@ -2,11 +2,9 @@
   <div v-if="!vaultStore.isUnlocked" class="fixed inset-0 bg-boba-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none">
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-6">
       <div class="flex items-center space-x-3">
-        <div class="w-10 h-10 rounded-lg bg-boba-accent/20 border border-boba-accent/40 flex items-center justify-center text-boba-accent font-bold text-xl">
-          B
-        </div>
+        <img src="/logo.png" alt="BOBA" class="w-10 h-10 rounded-lg" />
         <div>
-          <h2 class="text-xl font-bold text-slate-100">BOBA Vault</h2>
+          <h2 class="text-xl font-bold text-slate-100">Proteksi Data BOBA</h2>
           <p class="text-xs text-slate-400">
             {{ hasExistingVault ? 'Masukkan Master Password untuk membuka sesi' : 'Buat Master Password untuk mengamankan data' }}
           </p>
@@ -35,7 +33,7 @@
             @click="handleResetVault"
             class="text-[11px] text-rose-300 underline hover:text-white font-medium"
           >
-            Lupa password? Reset data lokal & buat vault baru
+            Lupa password? Reset data lokal & buat proteksi data baru
           </button>
         </div>
 
@@ -99,7 +97,7 @@ async function handleUnlock() {
       syncStore.syncNow();
     }
   } catch (err: any) {
-    errorMessage.value = 'Password salah. Tidak dapat mendekripsi vault yang tersimpan.';
+    errorMessage.value = 'Password salah. Tidak dapat mendekripsi data yang tersimpan.';
   } finally {
     loading.value = false;
   }
@@ -107,9 +105,9 @@ async function handleUnlock() {
 
 async function handleResetVault() {
   const confirmed = await dialogStore.confirm({
-    title: 'Reset Local Vault?',
-    description: 'Yakin ingin mereset vault lokal? Data sesi lokal pada perangkat ini akan dibersihkan agar Anda dapat mengatur Master Password baru.',
-    confirmText: 'Reset Vault',
+    title: 'Reset Proteksi Data Lokal?',
+    description: 'Yakin ingin mereset proteksi data lokal? Data sesi lokal pada perangkat ini akan dibersihkan agar Anda dapat mengatur Master Password baru.',
+    confirmText: 'Reset Proteksi',
     isDestructive: true,
   });
   if (!confirmed) return;

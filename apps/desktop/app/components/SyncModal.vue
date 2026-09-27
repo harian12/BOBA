@@ -43,7 +43,7 @@
         </div>
 
         <div class="text-xs text-slate-400 flex justify-between border-t border-boba-800 pt-3">
-          <span>Vault Version: <strong class="text-slate-200">{{ vaultStore.vault.vault_version }}</strong></span>
+          <span>Versi Proteksi Data: <strong class="text-slate-200">{{ vaultStore.vault.vault_version }}</strong></span>
           <span>Last Synced: <strong class="text-slate-200">{{ syncStore.lastSyncTime || 'Never' }}</strong></span>
         </div>
 
@@ -72,7 +72,7 @@
             @click="handleForcePull"
             :disabled="syncStore.isSyncing"
             class="flex-1 py-2 bg-[#232936] hover:bg-[#2d3546] text-slate-200 rounded-lg text-xs font-medium transition disabled:opacity-50 flex items-center justify-center space-x-1"
-            title="Download latest vault from server"
+            title="Unduh data terproteksi terbaru dari server"
           >
             <span>📥</span>
             <span>Tarik dari Server</span>
@@ -124,7 +124,7 @@
               class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none"
             />
             <p class="text-[10px] text-slate-400 mt-1">
-              Hanya untuk autentikasi server. Enkripsi E2EE vault tetap menggunakan Master Password Anda.
+              Hanya untuk autentikasi server. Enkripsi E2EE proteksi data tetap menggunakan Master Password Anda.
             </p>
           </div>
 
@@ -177,7 +177,7 @@ async function handleForcePull() {
   await syncStore.forcePullRemote();
   if (syncStore.syncError && syncStore.syncError.includes('tidak cocok')) {
     const customPwd = await dialogStore.prompt({
-      title: 'Masukkan Master Password Cloud Vault',
+      title: 'Masukkan Master Password Proteksi Cloud',
       description: 'Data di server dienkripsi dengan Master Password atau salt yang berbeda. Masukkan Master Password dari PC pembuat data untuk membuka enkripsi:',
       placeholder: 'Master Password...',
       confirmText: 'Buka & Pulihkan',
@@ -206,7 +206,7 @@ async function handleAuthSubmit() {
 
 async function handleForcePush() {
   const confirmed = await dialogStore.confirm({
-    title: 'Overwrite Cloud Vault?',
+    title: 'Timpa Proteksi Data Cloud?',
     description: 'Apakah Anda yakin ingin menimpa data di cloud dengan data sesi lokal PC ini menggunakan Master Password saat ini?',
     confirmText: 'Upload & Overwrite Cloud',
     isDestructive: true,

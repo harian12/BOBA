@@ -83,25 +83,25 @@ BOBA adalah aplikasi remote terminal & SFTP manager modern untuk Windows dengan 
 ### 4. Hierarki Sesi & Folder (Tampilan Pohon)
 - **Pengorganisasian Folder**: Kelompokkan sesi SSH ke dalam folder tanpa batas.
 - **Drag & Drop Andal**: Pengorganisasian sesi dan pengurutan ulang folder menggunakan pointer-based drag-and-drop yang stabil di Windows WebView2.
-- **Folder Tertutup Secara Default**: Folder dalam kondisi tertutup saat aplikasi pertama kali dibuka untuk menjaga privasi daftar server.
+- **State Folder Diingat**: Folder terbuka secara default dan pilihan buka/tutup milik user tetap tersimpan antar restart, jadi tidak ada yang ditutup paksa di belakang punggung user.
 - **Menu Konteks Klik Kanan**:
   - Buka terminal SSH atau SFTP Manager langsung dari sesi.
   - Cut / Paste sesi antar folder.
   - Rename dan Delete folder/sesi dengan mudah.
 - **Pencarian & Filter Waktu Nyata**: Pencarian cepat sesi berdasarkan nama atau alamat host.
 
-### 5. Vault Kunci SSH & Keamanan Kredensial
+### 5. Proteksi Kunci SSH & Keamanan Kredensial
 - **Dukungan Kredensial Fleksibel**: Otentikasi sesi via Password atau SSH Private Key.
 - **Impor Kunci Beragam Format**: Mendukung format OpenSSH, PEM, RSA, Ed25519, dan ECDSA baik via file picker maupun paste manual teks kunci.
-- **Proteksi Master Password**: Akses melihat private key di vault dilindungi verifikasi master password.
+- **Proteksi Master Password**: Akses melihat private key di proteksi data dilindungi verifikasi master password.
 
 ### 6. Sinkronisasi E2EE Zero-Knowledge & Keamanan
 - **Derivasi Kunci Argon2id**: Master Password di-hash secara lokal di perangkat menggunakan Argon2id dan salt unik per pengguna.
-- **Enkripsi AES-256-GCM / ChaCha20-Poly1305**: Seluruh data vault (sesi, host, username, kredensial, SSH keys, snippets) dienkripsi sebelum disimpan di disk lokal atau dikirim ke cloud.
+- **Enkripsi AES-256-GCM / ChaCha20-Poly1305**: Seluruh data (sesi, host, username, kredensial, SSH keys, snippets) dienkripsi sebelum disimpan di disk lokal atau dikirim ke cloud.
 - **Sinkronisasi Cloud Zero-Knowledge**: Server sinkronisasi tidak memiliki akses ke master password maupun kunci enkripsi. Server hanya menyimpan ciphertext terenkripsi.
-- **Resolusi Konflik Multi-Perangkat**: Sinkronisasi otomatis berbasis timestamp versi vault saat aplikasi dibuka atau tersambung ke jaringan.
-- **Kunci / Buka Kunci Vault**: Fitur kunci manual dan prompt unlock saat aplikasi dibuka kembali.
-- **Ubah Master Password**: Ubah master password dengan re-enkripsi penuh seluruh payload vault secara lokal.
+- **Resolusi Konflik Multi-Perangkat**: Sinkronisasi otomatis berbasis timestamp versi data saat aplikasi dibuka atau tersambung ke jaringan.
+- **Kunci / Buka Proteksi Data**: Fitur kunci manual, tombol `Lock` di top bar, dan pintasan `Ctrl+Shift+L`.
+- **Ubah Master Password**: Ubah master password dengan re-enkripsi penuh seluruh payload data secara lokal.
 
 ---
 

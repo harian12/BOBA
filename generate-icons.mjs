@@ -1,104 +1,146 @@
+/**
+ * Generates the full BOBA icon set from apps/desktop/app-icon.svg (tiled app icon)
+ * and apps/desktop/app-mark.svg (transparent mark).
+ *
+ * Run from the repo root: node generate-icons.mjs
+ */
 import fs from 'fs';
 import path from 'path';
-import zlib from 'zlib';
+import { fileURLToPath } from 'url';
+import { Resvg } from '@resvg/resvg-js';
 
-const iconDir = path.resolve('apps/desktop/src-tauri/icons');
-if (!fs.existsSync(iconDir)) {
-  fs.mkdirSync(iconDir, { recursive: true });
-}
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const iconDir = path.join(root, 'apps/desktop/src-tauri/icons');
+const publicDir = path.join(root, 'apps/desktop/public');
 
-function createPng(width, height) {
-  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const tile = fs.readFileSync(path.join(root, 'apps/desktop/app-icon.svg'), 'utf8');
+const mark = fs.readFileSync(path.join(root, 'apps/desktop/app-mark.svg'), 'utf8');
 
-  // IHDR chunk
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr.writeUInt8(8, 8); // 8 bit depth
-  ihdr.writeUInt8(6, 9); // RGBA
-  ihdr.writeUInt8(0, 10);
-  ihdr.writeUInt8(0, 11);
-  ihdr.writeUInt8(0, 12);
-  const ihdrChunk = makeChunk('IHDR', ihdr);
+const markSvg = fs.readFileSync(path.join(root, 'apps/desktop/app-mark.svg'), 'utf8');
 
-  // Raw image data: height scanlines, each scanline has 1 filter byte (0) + width * 4 bytes
-  const raw = Buffer.alloc((1 + width * 4) * height);
-  for (let y = 0; y < height; y++) {
-    const rowOffset = y * (1 + width * 4);
-    raw[rowOffset] = 0; // Filter: None
-    for (let x = 0; x < width; x++) {
-      const pxOffset = rowOffset + 1 + x * 4;
-      raw[pxOffset] = 0x3b;     // R
-      raw[pxOffset + 1] = 0x82; // G
-      raw[pxOffset + 2] = 0xf6; // B
-      raw[pxOffset + 3] = 0xff; // A
-    }
+/* Android adaptive icons keep only the centre 66/108 of the canvas, so the mark
+   is re-centred and scaled to sit well inside the safe zone. */
+const androidForeground = (size) => {
+  const body = markSvg.replace(/^[\s\S]*?<defs>/, '<defs>').replace(/<\/svg>\s*$/, '');
+  const k = 0.62;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><g transform="translate(${(256 - 270 * k).toFixed(1)},${(256 - 256 * k).toFixed(1)}) scale(${k})">${body}</g></svg>`;
+  return new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng();
+};
+
+const render = (svg, size) =>
+  new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng();
+
+const emit = (file, buf) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, buf);
+};
+
+function buildIco(svg, sizes) {
+  const images = sizes.map((s) => render(svg, s));
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(images.length, 4);
+
+  const entries = [];
+  let offset = 6 + images.length * 16;
+  for (let i = 0; i < sizes.length; i++) {
+    const e = Buffer.alloc(16);
+    e.writeUInt8(sizes[i] >= 256 ? 0 : sizes[i], 0);
+    e.writeUInt8(sizes[i] >= 256 ? 0 : sizes[i], 1);
+    e.writeUInt16LE(1, 4);
+    e.writeUInt16LE(32, 6);
+    e.writeUInt32LE(images[i].length, 8);
+    e.writeUInt32LE(offset, 12);
+    offset += images[i].length;
+    entries.push(e);
   }
 
-  const idatData = zlib.deflateSync(raw);
-  const idatChunk = makeChunk('IDAT', idatData);
-
-  // IEND chunk
-  const iendChunk = makeChunk('IEND', Buffer.alloc(0));
-
-  return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
+  return Buffer.concat([header, ...entries, ...images]);
 }
 
-function crc32(buf) {
-  let c;
-  const crcTable = [];
-  for (let n = 0; n < 256; n++) {
-    c = n;
-    for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-    }
-    crcTable[n] = c;
-  }
+function buildIcns(svg, chunks) {
+  const parts = chunks.map(({ type, size }) => {
+    const data = render(svg, size);
+    const head = Buffer.alloc(8);
+    head.write(type, 0, 4, 'ascii');
+    head.writeUInt32BE(data.length + 8, 4);
+    return Buffer.concat([head, data]);
+  });
 
-  let crc = 0 ^ (-1);
-  for (let i = 0; i < buf.length; i++) {
-    crc = (crc >>> 8) ^ crcTable[(crc ^ buf[i]) & 0xff];
-  }
-  return (crc ^ (-1)) >>> 0;
+  const body = Buffer.concat(parts);
+  const header = Buffer.alloc(8);
+  header.write('icns', 0, 4, 'ascii');
+  header.writeUInt32BE(body.length + 8, 4);
+  return Buffer.concat([header, body]);
 }
 
-function makeChunk(type, data) {
-  const typeBuf = Buffer.from(type, 'ascii');
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
+/* Windows / Tauri desktop */
+const flat = {
+  '32x32.png': 32,
+  '128x128.png': 128,
+  '128x128@2x.png': 256,
+  'icon.png': 512,
+  'Square30x30Logo.png': 30,
+  'Square44x44Logo.png': 44,
+  'Square71x71Logo.png': 71,
+  'Square89x89Logo.png': 89,
+  'Square107x107Logo.png': 107,
+  'Square142x142Logo.png': 142,
+  'Square150x150Logo.png': 150,
+  'Square284x284Logo.png': 284,
+  'Square310x310Logo.png': 310,
+  'StoreLogo.png': 50,
+};
+for (const [name, size] of Object.entries(flat)) emit(path.join(iconDir, name), render(tile, size));
+emit(path.join(iconDir, 'icon.ico'), buildIco(tile, [16, 32, 48, 64, 128, 256]));
+emit(path.join(iconDir, 'icon.icns'), buildIcns(tile, [
+  { type: 'ic04', size: 16 },
+  { type: 'ic05', size: 32 },
+  { type: 'ic06', size: 64 },
+  { type: 'ic07', size: 128 },
+  { type: 'ic08', size: 256 },
+  { type: 'ic09', size: 512 },
+  { type: 'ic11', size: 64 },
+  { type: 'ic12', size: 128 },
+  { type: 'ic13', size: 256 },
+  { type: 'ic14', size: 512 },
+]));
 
-  const body = Buffer.concat([typeBuf, data]);
-  const crcBuf = Buffer.alloc(4);
-  crcBuf.writeUInt32BE(crc32(body), 0);
+/* Web assets */
+emit(path.join(publicDir, 'logo.png'), render(tile, 512));
+emit(path.join(publicDir, 'logo-mark.svg'), mark);
+emit(path.join(publicDir, 'favicon.ico'), buildIco(tile, [16, 32, 48]));
 
-  return Buffer.concat([len, body, crcBuf]);
+/* Android launcher: adaptive foreground is the mark on transparency, padded to 108dp */
+const densities = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
+for (const [name, k] of Object.entries(densities)) {
+  const dir = path.join(iconDir, 'android', `mipmap-${name}`);
+  emit(path.join(dir, 'ic_launcher.png'), render(tile, Math.round(48 * k)));
+  emit(path.join(dir, 'ic_launcher_round.png'), render(tile, Math.round(48 * k)));
+  emit(path.join(dir, 'ic_launcher_foreground.png'), androidForeground(Math.round(108 * k)));
 }
 
-const png32 = createPng(32, 32);
-const png128 = createPng(128, 128);
+/* iOS: opaque tiles only, no alpha */
+const ios = {
+  'AppIcon-20x20@2x.png': 40,
+  'AppIcon-20x20@2x-1.png': 40,
+  'AppIcon-20x20@3x.png': 60,
+  'AppIcon-29x29@1x.png': 29,
+  'AppIcon-29x29@2x.png': 58,
+  'AppIcon-29x29@2x-1.png': 58,
+  'AppIcon-29x29@3x.png': 87,
+  'AppIcon-40x40@1x.png': 40,
+  'AppIcon-40x40@2x.png': 80,
+  'AppIcon-40x40@2x-1.png': 80,
+  'AppIcon-40x40@3x.png': 120,
+  'AppIcon-60x60@2x.png': 120,
+  'AppIcon-60x60@3x.png': 180,
+  'AppIcon-76x76@1x.png': 76,
+  'AppIcon-76x76@2x.png': 152,
+  'AppIcon-83.5x83.5@2x.png': 167,
+  'AppIcon-512@2x.png': 1024,
+};
+for (const [name, size] of Object.entries(ios)) emit(path.join(iconDir, 'ios', name), render(tile, size));
 
-// Minimal ICO wrapper
-const icoHeader = Buffer.alloc(6);
-icoHeader.writeUInt16LE(0, 0); // reserved
-icoHeader.writeUInt16LE(1, 2); // type ICO
-icoHeader.writeUInt16LE(1, 4); // 1 image
-
-const icoEntry = Buffer.alloc(16);
-icoEntry.writeUInt8(32, 0);
-icoEntry.writeUInt8(32, 1);
-icoEntry.writeUInt8(0, 2);
-icoEntry.writeUInt8(0, 3);
-icoEntry.writeUInt16LE(1, 4);
-icoEntry.writeUInt16LE(32, 6);
-icoEntry.writeUInt32LE(png32.length, 8);
-icoEntry.writeUInt32LE(22, 12);
-
-const icoBuffer = Buffer.concat([icoHeader, icoEntry, png32]);
-
-fs.writeFileSync(path.join(iconDir, '32x32.png'), png32);
-fs.writeFileSync(path.join(iconDir, '128x128.png'), png128);
-fs.writeFileSync(path.join(iconDir, '128x128@2x.png'), png128);
-fs.writeFileSync(path.join(iconDir, 'icon.png'), png128);
-fs.writeFileSync(path.join(iconDir, 'icon.ico'), icoBuffer);
-
-console.log('Valid PNG & ICO files generated.');
+console.log('BOBA icon set generated.');
