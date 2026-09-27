@@ -1,4 +1,4 @@
-﻿{
+{
     "version":  "0.2.0",
     "notes":  "Release v0.2.0 - New BOBA identity, custom tooltip layer, Ctrl+K command palette, auto-lock for data protection, database folders with colour tags, terminal auto-reconnect, and bun standardisation.",
     "pub_date":  "2026-09-27T14:01:42.745Z",
