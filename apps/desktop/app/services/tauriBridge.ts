@@ -3,6 +3,10 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbProcessItem, DbForeignKeyRelation, DbUserItem } from '../types/index.js';
 
 export const tauriBridge = {
+  async getAppDataDir(): Promise<string> {
+    return await invoke('fs_get_app_data_dir');
+  },
+
   // DBMS commands
   async dbmsTestConnection(config: DbConnectionConfig): Promise<string> {
     return await invoke('dbms_test_connection', { config });
