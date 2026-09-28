@@ -522,14 +522,14 @@
                   </div>
                   <div class="flex items-center space-x-2 ml-auto">
                     <button
-                      @click="aiStore.rejectToolCall(tc.id)"
+                      @click="aiStore.rejectToolCall(tc.id, aiStore.activeThread?.sessionId)"
                       type="button"
                       class="px-2.5 py-1 bg-boba-850 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-boba-750 hover:border-rose-800/60 rounded-md text-[10.5px] font-medium transition"
                     >
                       Tolak
                     </button>
                     <button
-                      @click="aiStore.approveToolCall(tc.id)"
+                      @click="aiStore.approveToolCall(tc.id, aiStore.activeThread?.sessionId)"
                       type="button"
                       :class="[
                         'px-3 py-1 text-white font-semibold rounded-md text-[10.5px] transition shadow flex items-center space-x-1',
@@ -587,7 +587,7 @@
                         <span>Salin</span>
                       </button>
                       <button
-                        @click="aiStore.retryToolCall(tc.id)"
+                        @click="aiStore.retryToolCall(tc.id, aiStore.activeThread?.sessionId)"
                         :disabled="aiStore.isThinking"
                         type="button"
                         class="px-3 py-1 bg-rose-600/25 hover:bg-rose-600/40 text-rose-200 border border-rose-500/50 hover:border-rose-400 rounded text-[10px] font-semibold transition flex items-center space-x-1 shadow-sm disabled:opacity-50"
@@ -616,7 +616,7 @@
       >
         <button
           v-if="currentMessages[currentMessages.length - 1]?.role === 'user'"
-          @click="aiStore.continueAgentLoop(aiStore.selectedSessionId)"
+          @click="aiStore.continueAgentLoop(aiStore.activeThread?.sessionId || aiStore.selectedSessionId)"
           type="button"
           class="px-3 py-1 bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/50 rounded-lg text-[10.5px] font-semibold transition flex items-center space-x-1.5 shadow"
         >
@@ -1119,7 +1119,7 @@ async function retryConnection() {
   thread.updatedAt = Date.now();
   aiStore.saveState();
 
-  await aiStore.continueAgentLoop(aiStore.selectedSessionId);
+  await aiStore.continueAgentLoop(thread.sessionId || aiStore.selectedSessionId);
 }
 
 function scrollToBottom() {

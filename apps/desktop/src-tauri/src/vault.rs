@@ -7,6 +7,8 @@ pub struct Folder {
     pub id: String,
     pub name: String,
     pub parent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,8 +53,15 @@ pub struct DbSavedQuery {
     pub id: String,
     pub title: String,
     pub query: String,
+    #[serde(default)]
     pub engine: Option<String>,
+    #[serde(default)]
+    pub db_connection_id: Option<String>,
+    #[serde(default)]
+    pub db_name: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, alias = "createdAt", rename = "createdAt")]
     pub created_at: i64,
 }
 
@@ -80,6 +89,7 @@ impl Default for VaultData {
                     id: "default-servers".into(),
                     name: "My Servers".into(),
                     parent_id: None,
+                    r#type: Some("session".into()),
                 }
             ],
             sessions: vec![],
@@ -105,6 +115,8 @@ impl Default for VaultData {
                     title: "Check Table Status".into(),
                     query: "SHOW TABLE STATUS;".into(),
                     engine: Some("mysql".into()),
+                    db_connection_id: None,
+                    db_name: None,
                     description: Some("Show table storage, rows and data length".into()),
                     created_at: Utc::now().timestamp_millis(),
                 },
@@ -113,10 +125,39 @@ impl Default for VaultData {
                     title: "Active Connections & Activity".into(),
                     query: "SELECT pid, usename, state, query FROM pg_stat_activity WHERE state != 'idle';".into(),
                     engine: Some("postgres".into()),
+                    db_connection_id: None,
+                    db_name: None,
                     description: Some("List non-idle PostgreSQL queries and clients".into()),
                     created_at: Utc::now().timestamp_millis(),
                 }
             ],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_folder_type_persistence() {
+        let json = r#"{"id":"f1","name":"DB Prod","parent_id":null,"type":"db"}"#;
+        let folder: Folder = serde_json::from_str(json).unwrap();
+        assert_eq!(folder.r#type, Some("db".to_string()));
+
+        let serialized = serde_json::to_string(&folder).unwrap();
+        assert!(serialized.contains(r#""type":"db""#));
+    }
+
+    #[test]
+    fn test_db_config_folder_and_color_persistence() {
+        let json = r#"{"id":"db1","name":"Postgres","engine":"postgres","folder_id":"f1","color":"emerald"}"#;
+        let db: crate::dbms::DbConnectionConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(db.folder_id, Some("f1".to_string()));
+        assert_eq!(db.color, Some("emerald".to_string()));
+
+        let serialized = serde_json::to_string(&db).unwrap();
+        assert!(serialized.contains(r#""folder_id":"f1""#));
+        assert!(serialized.contains(r#""color":"emerald""#));
     }
 }

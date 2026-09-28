@@ -969,7 +969,8 @@ const filteredFolders = computed(() => {
 });
 
 const unorganizedSessions = computed(() => {
-  const sessions = (vaultStore.vault.sessions || []).filter(s => !s.folder_id);
+  const validFolderIds = new Set((vaultStore.vault.folders || []).filter(f => !f.type || f.type === 'session').map(f => f.id));
+  const sessions = (vaultStore.vault.sessions || []).filter(s => !s.folder_id || !validFolderIds.has(s.folder_id));
   if (!searchQuery.value.trim()) return sessions;
   const q = searchQuery.value.toLowerCase();
   return sessions.filter(s => s.name.toLowerCase().includes(q) || s.host.toLowerCase().includes(q));
@@ -995,7 +996,8 @@ const filteredDbFolders = computed(() => {
 });
 
 const unorganizedDatabases = computed(() => {
-  const dbs = (vaultStore.vault.databases || []).filter(d => !d.folder_id);
+  const validFolderIds = new Set((vaultStore.vault.folders || []).filter(f => f.type === 'db').map(f => f.id));
+  const dbs = (vaultStore.vault.databases || []).filter(d => !d.folder_id || !validFolderIds.has(d.folder_id));
   if (!dbSearchQuery.value.trim()) return dbs;
   const q = dbSearchQuery.value.toLowerCase();
   return dbs.filter(d => d.name.toLowerCase().includes(q) || (d.host && d.host.toLowerCase().includes(q)));

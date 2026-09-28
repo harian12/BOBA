@@ -45,6 +45,15 @@ export const useVaultStore = defineStore('vault', () => {
         }
       }
 
+      // Auto-heal folders containing databases if type was lost
+      if (vault.value.folders && vault.value.databases) {
+        for (const f of vault.value.folders) {
+          if (!f.type && vault.value.databases.some(d => d.folder_id === f.id)) {
+            f.type = 'db';
+          }
+        }
+      }
+
       masterPassword.value = password;
       salt.value = userSalt;
       isUnlocked.value = true;
@@ -142,6 +151,13 @@ export const useVaultStore = defineStore('vault', () => {
         return d;
       });
     }
+    await persist(true);
+  }
+
+  async function setFolderType(folderId: string, type: 'session' | 'db') {
+    const folder = vault.value.folders.find(f => f.id === folderId);
+    if (!folder) return;
+    folder.type = type;
     await persist(true);
   }
 
@@ -243,6 +259,7 @@ export const useVaultStore = defineStore('vault', () => {
     persist,
     addFolder,
     removeFolder,
+    setFolderType,
     saveSession,
     removeSession,
     saveKey,
