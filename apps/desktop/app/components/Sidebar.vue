@@ -8,7 +8,7 @@
       <!-- Top Modes: Sessions / Databases / SFTP -->
       <div class="flex flex-col items-center space-y-2.5 w-full">
         <!-- Brand Logo -->
-        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.2.2 (Klik untuk cek update)">
+        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.2.3 (Klik untuk cek update)">
           <img src="/logo-mark.svg" alt="BOBA" class="w-7 h-7 object-contain transition-opacity hover:opacity-70" />
         </div>
 
@@ -386,8 +386,12 @@
           />
         </div>
 
-        <!-- Database Connections Hierarchy List -->
-        <div class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-sans">
+        <!-- Database Connections Hierarchy List (Supports Drag and Drop) -->
+        <div
+          ref="dbTreeContainer"
+          class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-sans"
+          data-unorg-zone
+        >
           <div v-if="filteredDbFolders.length === 0 && unorganizedDatabases.length === 0" class="p-6 text-center text-slate-500 text-xs">
             <div class="mb-2">Belum ada koneksi database.</div>
             <button
@@ -403,17 +407,36 @@
             v-for="folder in filteredDbFolders"
             :key="folder.id"
             class="space-y-0.5 mb-1"
+            :data-folder-id="folder.id"
           >
             <!-- DB Folder Header -->
             <div
-              class="flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition select-none hover:bg-boba-800/80"
-              @click="toggleFolder(folder.id)"
+              @contextmenu.prevent="openFolderContextMenu($event, folder)"
+              @pointerdown="onPointerDownFolder($event, folder)"
+              :class="[
+                'flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer group transition select-none relative',
+                dragOverFolderId === folder.id ? 'bg-sky-950/70 border border-sky-500/60 shadow-sm' : 'hover:bg-boba-800/80',
+                draggingFolderId === folder.id ? 'opacity-40' : ''
+              ]"
             >
-              <div class="flex items-center space-x-2 truncate mr-2">
+              <!-- Folder Insertion Drop Indicators -->
+              <div
+                v-if="dragOverFolderTargetId === folder.id && dragOverFolderPos === 'top'"
+                class="absolute -top-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+              <div
+                v-if="dragOverFolderTargetId === folder.id && dragOverFolderPos === 'bottom'"
+                class="absolute -bottom-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+
+              <div
+                class="flex items-center space-x-2 truncate mr-2"
+                @click="toggleFolder(folder.id)"
+              >
                 <span class="text-slate-500 text-[10px] transform transition-transform duration-150 inline-block w-3 text-center">
                   {{ collapsedFolders[folder.id] ? '▶' : '▼' }}
                 </span>
-                <span class="text-amber-400">
+                <span class="text-slate-400 group-hover:text-amber-400 transition-colors">
                   <Icon icon="lucide:folder" class="w-3.5 h-3.5 inline" />
                 </span>
                 <span class="font-medium text-slate-200 truncate">{{ folder.name }}</span>
@@ -421,6 +444,13 @@
               </div>
 
               <div class="opacity-0 group-hover:opacity-100 flex items-center space-x-1 shrink-0 transition-opacity">
+                <button
+                  @click.stop="dbmsStore.openNewModal(folder.id)"
+                  title="Tambah Database di Folder Ini"
+                  class="w-5 h-5 flex items-center justify-center rounded hover:bg-boba-700 text-slate-400 hover:text-emerald-300 text-xs transition"
+                >
+                  +
+                </button>
                 <button
                   @click.stop="promptRenameFolder(folder)"
                   title="Rename folder"
@@ -453,10 +483,27 @@
               <div
                 v-for="db in getDatabasesInFolder(folder.id)"
                 :key="db.id"
+                :data-db-id="db.id"
+                :data-parent-folder="folder.id"
                 @dblclick="dbmsStore.connectDatabase(db)"
-                class="p-2 bg-boba-950/70 hover:bg-boba-800/80 border border-boba-800 hover:border-sky-500/40 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1"
+                @contextmenu.prevent="openDbContextMenu($event, db)"
+                @pointerdown="onPointerDownDb($event, db)"
+                :class="[
+                  'p-2 bg-boba-950/70 border border-boba-800 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1 relative',
+                  draggingDbId === db.id ? 'opacity-40' : 'hover:bg-boba-800/80 hover:border-sky-500/40'
+                ]"
                 :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
               >
+                <!-- Insertion Drop Line Indicators -->
+                <div
+                  v-if="dragOverDbId === db.id && dragOverDbPos === 'top'"
+                  class="absolute -top-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+                ></div>
+                <div
+                  v-if="dragOverDbId === db.id && dragOverDbPos === 'bottom'"
+                  class="absolute -bottom-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+                ></div>
+
                 <div class="flex items-center justify-between">
                   <div class="flex items-center space-x-1.5 truncate mr-1">
                     <span v-if="db.color" class="w-2 h-2 rounded-full shrink-0" :class="getDbColorClass(db.color)"></span>
@@ -507,10 +554,26 @@
             <div
               v-for="db in unorganizedDatabases"
               :key="db.id"
+              :data-db-id="db.id"
               @dblclick="dbmsStore.connectDatabase(db)"
-              class="p-2.5 bg-boba-950/60 hover:bg-boba-800/80 border border-boba-800 hover:border-sky-500/40 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1.5"
+              @contextmenu.prevent="openDbContextMenu($event, db)"
+              @pointerdown="onPointerDownDb($event, db)"
+              :class="[
+                'p-2.5 bg-boba-950/60 border border-boba-800 rounded-lg cursor-pointer group transition select-none flex flex-col space-y-1.5 relative',
+                draggingDbId === db.id ? 'opacity-40' : 'hover:bg-boba-800/80 hover:border-sky-500/40'
+              ]"
               :title="`Double click untuk membuka DBMS Manager (${db.engine.toUpperCase()})`"
             >
+              <!-- Insertion Drop Line Indicators -->
+              <div
+                v-if="dragOverDbId === db.id && dragOverDbPos === 'top'"
+                class="absolute -top-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+              <div
+                v-if="dragOverDbId === db.id && dragOverDbPos === 'bottom'"
+                class="absolute -bottom-1 left-0 right-0 h-0.5 bg-sky-400 rounded-full z-20 pointer-events-none shadow-[0_0_8px_#38bdf8]"
+              ></div>
+
               <!-- Top Row: Icon, Name, Actions -->
               <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2 truncate mr-1">
@@ -559,7 +622,7 @@
       class="pointer-events-none fixed z-[10000] flex items-center space-x-2 bg-[#1b2230] border border-sky-500/70 shadow-2xl rounded-md px-3 py-1.5 text-xs font-mono text-slate-100"
       :style="{ left: `${dragGhost.x}px`, top: `${dragGhost.y}px`, transform: 'translate(-50%, -130%)' }"
     >
-      <span>{{ dragGhost.type === 'folder' ? '📁' : '>' }}</span>
+      <span>{{ dragGhost.type === 'folder' ? '📁' : (dragGhost.type === 'db' ? '🗄️' : '>') }}</span>
       <span class="truncate max-w-[200px]">{{ dragGhost.label }}</span>
     </div>
 
@@ -634,6 +697,16 @@
       <!-- Folder Menu Items -->
       <template v-else-if="contextMenu.type === 'folder' && contextMenu.folder">
         <button
+          v-if="contextMenu.folder.type === 'db'"
+          @click="handleContextNewDbInFolder(contextMenu.folder)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition text-emerald-400"
+        >
+          <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+          <span>Tambah Database Baru</span>
+        </button>
+
+        <button
+          v-else
           @click="handleContextNewSessionInFolder(contextMenu.folder)"
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
         >
@@ -647,7 +720,7 @@
           class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white text-sky-400 transition"
         >
           <Icon icon="lucide:clipboard-paste" class="w-3.5 h-3.5" />
-          <span>Paste {{ clipboard.type === 'session' ? 'Session' : 'Folder' }}</span>
+          <span>Paste {{ clipboard.type === 'session' ? 'Session' : (clipboard.type === 'db' ? 'Database' : 'Folder') }}</span>
         </button>
 
         <button
@@ -666,6 +739,59 @@
         >
           <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
           <span>Delete Folder</span>
+        </button>
+      </template>
+
+      <!-- Database Menu Items -->
+      <template v-else-if="contextMenu.type === 'db' && contextMenu.db">
+        <button
+          @click="handleContextConnectDb(contextMenu.db)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <Icon icon="lucide:database" class="w-3.5 h-3.5 text-emerald-400" />
+          <span>Buka DBMS Manager</span>
+        </button>
+
+        <button
+          @click="handleContextCutDb(contextMenu.db)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <Icon icon="lucide:scissors" class="w-3.5 h-3.5" />
+          <span>Cut (Move)</span>
+        </button>
+
+        <button
+          @click="handleContextCopyDb(contextMenu.db)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <Icon icon="lucide:copy" class="w-3.5 h-3.5" />
+          <span>Copy</span>
+        </button>
+
+        <button
+          @click="handleContextDuplicateDb(contextMenu.db)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <Icon icon="lucide:copy-plus" class="w-3.5 h-3.5" />
+          <span>Duplicate</span>
+        </button>
+
+        <div class="h-px bg-[#2e3748] my-1"></div>
+
+        <button
+          @click="handleContextEditDb(contextMenu.db)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+        >
+          <Icon icon="lucide:pencil" class="w-3.5 h-3.5" />
+          <span>Edit Connection</span>
+        </button>
+
+        <button
+          @click="handleContextDeleteDb(contextMenu.db)"
+          class="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white text-rose-400 transition"
+        >
+          <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+          <span>Delete Connection</span>
         </button>
       </template>
     </div>
@@ -775,8 +901,9 @@ async function handleDeleteDb(db: DbConnectionConfig) {
 }
 
 // Drag and Drop States (Pointer-based, works reliably in WebView2)
-const dragType = ref<'session' | 'folder' | null>(null);
+const dragType = ref<'session' | 'db' | 'folder' | null>(null);
 const draggingSessionId = ref<string | null>(null);
+const draggingDbId = ref<string | null>(null);
 const draggingFolderId = ref<string | null>(null);
 
 const dragOverFolderId = ref<string | null>(null);
@@ -785,10 +912,14 @@ const dragOverFolderPos = ref<'top' | 'bottom' | null>(null);
 
 const dragOverSessionId = ref<string | null>(null);
 const dragOverSessionPos = ref<'top' | 'bottom' | null>(null);
+
+const dragOverDbId = ref<string | null>(null);
+const dragOverDbPos = ref<'top' | 'bottom' | null>(null);
+
 const dragOverRoot = ref(false);
 
 const dragGhost = ref<{
-  type: 'session' | 'folder';
+  type: 'session' | 'db' | 'folder';
   id: string;
   label: string;
   x: number;
@@ -799,13 +930,13 @@ const dragGhost = ref<{
 let dragStartX = 0;
 let dragStartY = 0;
 let isDragging = false;
-let pendingDragItem: { type: 'session' | 'folder'; item: any } | null = null;
+let pendingDragItem: { type: 'session' | 'db' | 'folder'; item: any } | null = null;
 
 // Clipboard State for Cut/Copy/Paste
 const clipboard = ref<{
   action: 'cut' | 'copy';
-  type: 'session' | 'folder';
-  data: SshSessionConfig | Folder;
+  type: 'session' | 'db' | 'folder';
+  data: SshSessionConfig | DbConnectionConfig | Folder;
 } | null>(null);
 
 // Context Menu State
@@ -813,8 +944,9 @@ const contextMenu = ref<{
   show: boolean;
   x: number;
   y: number;
-  type: 'session' | 'folder' | null;
+  type: 'session' | 'db' | 'folder' | null;
   session?: SshSessionConfig;
+  db?: DbConnectionConfig;
   folder?: Folder;
 }>({
   show: false,
@@ -925,6 +1057,14 @@ function moveSessionToFolder(sessionId: string, folderId: string | null) {
   void vaultStore.persist(true);
 }
 
+function moveDbToFolder(dbId: string, folderId: string | null) {
+  if (!vaultStore.vault.databases) return;
+  const db = vaultStore.vault.databases.find(item => item.id === dbId);
+  if (!db) return;
+  db.folder_id = folderId;
+  void vaultStore.persist(true);
+}
+
 function reorderSession(sessionId: string, targetSessionId: string, position: 'top' | 'bottom', targetFolderId: string | null) {
   const sourceIndex = vaultStore.vault.sessions.findIndex(item => item.id === sessionId);
   let targetIndex = vaultStore.vault.sessions.findIndex(item => item.id === targetSessionId);
@@ -934,6 +1074,19 @@ function reorderSession(sessionId: string, targetSessionId: string, position: 't
   vaultStore.vault.sessions.splice(sourceIndex, 1);
   if (sourceIndex < targetIndex) targetIndex--;
   vaultStore.vault.sessions.splice(targetIndex + (position === 'bottom' ? 1 : 0), 0, session);
+  void vaultStore.persist(true);
+}
+
+function reorderDb(dbId: string, targetDbId: string, position: 'top' | 'bottom', targetFolderId: string | null) {
+  if (!vaultStore.vault.databases) return;
+  const sourceIndex = vaultStore.vault.databases.findIndex(item => item.id === dbId);
+  let targetIndex = vaultStore.vault.databases.findIndex(item => item.id === targetDbId);
+  const db = vaultStore.vault.databases[sourceIndex];
+  if (!db || sourceIndex === -1 || targetIndex === -1) return;
+  db.folder_id = targetFolderId;
+  vaultStore.vault.databases.splice(sourceIndex, 1);
+  if (sourceIndex < targetIndex) targetIndex--;
+  vaultStore.vault.databases.splice(targetIndex + (position === 'bottom' ? 1 : 0), 0, db);
   void vaultStore.persist(true);
 }
 
@@ -959,6 +1112,20 @@ function duplicateSession(sessionId: string, folderId?: string) {
     snippets: source.snippets?.map(snippet => ({ ...snippet })),
   };
   vaultStore.vault.sessions.push(duplicate);
+  void vaultStore.persist(true);
+}
+
+function duplicateDb(dbId: string, folderId?: string) {
+  if (!vaultStore.vault.databases) return;
+  const source = vaultStore.vault.databases.find(item => item.id === dbId);
+  if (!source) return;
+  const duplicate: DbConnectionConfig = {
+    ...source,
+    id: `db_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    name: `${source.name} (Copy)`,
+    folder_id: folderId === undefined ? source.folder_id : folderId,
+  };
+  vaultStore.vault.databases.push(duplicate);
   void vaultStore.persist(true);
 }
 
@@ -1020,6 +1187,15 @@ async function deleteSession(session: SshSessionConfig) {
 }
 
 // Pointer Drag and Drop Handlers
+function onPointerDownDb(e: PointerEvent, db: DbConnectionConfig) {
+  if (e.button !== 0) return;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  pendingDragItem = { type: 'db', item: db };
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+}
+
 function onPointerDownSession(e: PointerEvent, session: SshSessionConfig) {
   if (e.button !== 0) return;
   dragStartX = e.clientX;
@@ -1050,6 +1226,15 @@ function onPointerMove(e: PointerEvent) {
         draggingSessionId.value = pendingDragItem.item.id;
         dragGhost.value = {
           type: 'session',
+          id: pendingDragItem.item.id,
+          label: pendingDragItem.item.name,
+          x: e.clientX,
+          y: e.clientY,
+        };
+      } else if (pendingDragItem.type === 'db') {
+        draggingDbId.value = pendingDragItem.item.id;
+        dragGhost.value = {
+          type: 'db',
           id: pendingDragItem.item.id,
           label: pendingDragItem.item.name,
           x: e.clientX,
@@ -1109,6 +1294,40 @@ function onPointerMove(e: PointerEvent) {
         dragOverRoot.value = true;
         return;
       }
+    } else if (dragType.value === 'db') {
+      const dbCard = elem.closest('[data-db-id]') as HTMLElement | null;
+      const folderCard = elem.closest('[data-folder-id]') as HTMLElement | null;
+      const unorgZone = elem.closest('[data-unorg-zone]') as HTMLElement | null;
+
+      if (dbCard) {
+        const targetId = dbCard.getAttribute('data-db-id');
+        if (targetId && targetId !== draggingDbId.value) {
+          const rect = dbCard.getBoundingClientRect();
+          const relY = e.clientY - rect.top;
+          dragOverDbId.value = targetId;
+          dragOverDbPos.value = relY < rect.height / 2 ? 'top' : 'bottom';
+          dragOverFolderId.value = null;
+          dragOverRoot.value = false;
+          return;
+        }
+      }
+
+      if (folderCard) {
+        const folderId = folderCard.getAttribute('data-folder-id');
+        if (folderId) {
+          dragOverFolderId.value = folderId;
+          dragOverDbId.value = null;
+          dragOverRoot.value = false;
+          return;
+        }
+      }
+
+      if (unorgZone && !dbCard && !folderCard) {
+        dragOverFolderId.value = null;
+        dragOverDbId.value = null;
+        dragOverRoot.value = true;
+        return;
+      }
     } else if (dragType.value === 'folder') {
       const folderCard = elem.closest('[data-folder-id]') as HTMLElement | null;
       if (folderCard) {
@@ -1126,6 +1345,7 @@ function onPointerMove(e: PointerEvent) {
     dragOverFolderId.value = null;
     dragOverFolderTargetId.value = null;
     dragOverSessionId.value = null;
+    dragOverDbId.value = null;
     dragOverRoot.value = false;
   }
 }
@@ -1153,6 +1373,20 @@ async function onPointerUp() {
     } else if (dragOverRoot.value) {
       moveSessionToFolder(sessId, null);
     }
+  } else if (dragType.value === 'db' && draggingDbId.value) {
+    const dbId = draggingDbId.value;
+
+    if (dragOverFolderId.value) {
+      moveDbToFolder(dbId, dragOverFolderId.value);
+    } else if (dragOverDbId.value && dragOverDbPos.value) {
+      const targetDbId = dragOverDbId.value;
+      const targetDb = vaultStore.vault.databases?.find(d => d.id === targetDbId);
+      const targetFolderId = targetDb?.folder_id ?? null;
+
+      reorderDb(dbId, targetDbId, dragOverDbPos.value, targetFolderId);
+    } else if (dragOverRoot.value) {
+      moveDbToFolder(dbId, null);
+    }
   } else if (dragType.value === 'folder' && draggingFolderId.value) {
     const srcFolderId = draggingFolderId.value;
     if (dragOverFolderTargetId.value && dragOverFolderPos.value) {
@@ -1164,12 +1398,15 @@ async function onPointerUp() {
   pendingDragItem = null;
   dragType.value = null;
   draggingSessionId.value = null;
+  draggingDbId.value = null;
   draggingFolderId.value = null;
   dragOverFolderId.value = null;
   dragOverFolderTargetId.value = null;
   dragOverFolderPos.value = null;
   dragOverSessionId.value = null;
   dragOverSessionPos.value = null;
+  dragOverDbId.value = null;
+  dragOverDbPos.value = null;
   dragOverRoot.value = false;
   dragGhost.value = null;
 }
@@ -1239,6 +1476,11 @@ function handleContextNewSessionInFolder(folder: Folder) {
   emit('new-session', folder.id);
 }
 
+function handleContextNewDbInFolder(folder: Folder) {
+  closeContextMenu();
+  dbmsStore.openNewModal(folder.id);
+}
+
 function handleContextRenameFolder(folder: Folder) {
   closeContextMenu();
   promptRenameFolder(folder);
@@ -1261,7 +1503,56 @@ function handleContextPasteIntoFolder(folder: Folder) {
     } else {
       duplicateSession(session.id, folder.id);
     }
+  } else if (clipboard.value.type === 'db') {
+    const db = clipboard.value.data as DbConnectionConfig;
+    if (clipboard.value.action === 'cut') {
+      moveDbToFolder(db.id, folder.id);
+      clipboard.value = null;
+    } else {
+      duplicateDb(db.id, folder.id);
+    }
   }
+}
+
+// DBMS Context Menu Handlers
+function openDbContextMenu(e: MouseEvent, db: DbConnectionConfig) {
+  contextMenu.value = {
+    show: true,
+    x: e.clientX,
+    y: e.clientY,
+    type: 'db',
+    db,
+  };
+}
+
+function handleContextConnectDb(db: DbConnectionConfig) {
+  closeContextMenu();
+  dbmsStore.connectDatabase(db);
+}
+
+function handleContextCutDb(db: DbConnectionConfig) {
+  closeContextMenu();
+  clipboard.value = { action: 'cut', type: 'db', data: db };
+}
+
+function handleContextCopyDb(db: DbConnectionConfig) {
+  closeContextMenu();
+  clipboard.value = { action: 'copy', type: 'db', data: db };
+}
+
+function handleContextDuplicateDb(db: DbConnectionConfig) {
+  closeContextMenu();
+  duplicateDb(db.id);
+}
+
+function handleContextEditDb(db: DbConnectionConfig) {
+  closeContextMenu();
+  dbmsStore.openEditModal(db);
+}
+
+function handleContextDeleteDb(db: DbConnectionConfig) {
+  closeContextMenu();
+  handleDeleteDb(db);
 }
 
 onMounted(() => {

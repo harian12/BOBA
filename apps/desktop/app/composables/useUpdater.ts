@@ -15,7 +15,7 @@ const rawUpdate = shallowRef<Update | null>(null);
 const downloadProgress = ref(0);
 const downloadedBytes = ref(0);
 const totalBytes = ref(0);
-const currentAppVersion = ref('0.2.2');
+const currentAppVersion = ref('0.2.3');
 const newVersion = ref('');
 const releaseNotes = ref('');
 let checkInFlight: Promise<CheckResult> | null = null;
@@ -35,7 +35,7 @@ export function useUpdater() {
         if (version) currentAppVersion.value = version;
       }
     } catch {
-      currentAppVersion.value = '0.2.2';
+      currentAppVersion.value = '0.2.3';
     }
   };
 

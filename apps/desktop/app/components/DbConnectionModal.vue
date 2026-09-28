@@ -317,7 +317,7 @@ watch(
   (open) => {
     if (open) {
       testResult.value = null;
-      if (props.dbConfig) {
+      if (props.dbConfig && props.dbConfig.id) {
         form.value = JSON.parse(JSON.stringify(props.dbConfig));
       } else {
         form.value = {
@@ -333,7 +333,7 @@ watch(
           sqlite_path: '',
           ssh_tunnel_enabled: false,
           ssh_session_id: '',
-          folder_id: null,
+          folder_id: props.dbConfig?.folder_id || null,
           color: '',
         };
       }

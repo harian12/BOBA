@@ -61,8 +61,8 @@ export const useDbmsStore = defineStore('dbms', () => {
     await vaultStore.persist(true);
   }
 
-  function openNewModal() {
-    editingDbConfig.value = null;
+  function openNewModal(folderId: string | null = null) {
+    editingDbConfig.value = folderId ? ({ folder_id: folderId } as any) : null;
     isModalOpen.value = true;
   }
 

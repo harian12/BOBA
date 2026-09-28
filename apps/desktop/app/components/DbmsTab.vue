@@ -2467,7 +2467,7 @@ function toggleLineComment() {
   const newLines = lines.map(line => {
     if (allCommented) {
       const match = line.match(/^(\s*)--\s?(.*)$/);
-      return match ? match[1] + match[2] : line;
+      return (match && match[1] !== undefined && match[2] !== undefined) ? match[1] + match[2] : line;
     } else {
       if (line.trim().length === 0) return line;
       const match = line.match(/^(\s*)(.*)$/);
