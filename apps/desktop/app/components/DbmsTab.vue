@@ -4,7 +4,11 @@
     @click="closeAllContextMenus"
   >
     <!-- Left Pane: Schema & Object Explorer -->
-    <div v-show="!isSidebarCollapsed" class="w-64 border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full">
+    <div
+      v-show="!isSidebarCollapsed"
+      :style="{ width: `${sidebarWidth}px` }"
+      class="relative border-r border-boba-800 bg-[#111622] flex flex-col shrink-0 h-full"
+    >
       <!-- Database Header & Selector -->
       <div class="p-2.5 border-b border-boba-800 space-y-2.5">
         <!-- DB Connection Name & Refresh -->
@@ -111,31 +115,43 @@
           <div
             v-for="tbl in filteredTables"
             :key="tbl.name"
-          @click="handleSelectTable(tbl)"
-          @contextmenu.prevent.stop="openTableContextMenu($event, tbl)"
-          :class="[
-            'flex items-center justify-between px-2.5 py-1.5 rounded cursor-pointer transition select-none group',
-            activeTable?.name === tbl.name
-              ? 'bg-sky-950/80 text-sky-200 border border-sky-500/40'
-              : 'text-slate-300 hover:bg-boba-800/80 hover:text-white'
-          ]"
-        >
-          <div class="flex items-center space-x-2 truncate mr-1.5">
-            <svg v-if="tbl.table_type === 'VIEW'" class="w-3.5 h-3.5 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            <svg v-else class="w-3.5 h-3.5 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
-            </svg>
-            <span class="truncate text-[11px]">{{ tbl.name }}</span>
-          </div>
+            @click="handleSelectTable(tbl)"
+            @contextmenu.prevent.stop="openTableContextMenu($event, tbl)"
+            :title="tbl.name"
+            :data-tip="tbl.name"
+            :class="[
+              'flex items-center justify-between px-2.5 py-1.5 rounded cursor-pointer transition select-none group',
+              activeTable?.name === tbl.name
+                ? 'bg-sky-950/80 text-sky-200 border border-sky-500/40'
+                : 'text-slate-300 hover:bg-boba-800/80 hover:text-white'
+            ]"
+          >
+            <div class="flex items-center space-x-2 truncate mr-1.5">
+              <svg v-if="tbl.table_type === 'VIEW'" class="w-3.5 h-3.5 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              <svg v-else class="w-3.5 h-3.5 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
+              </svg>
+              <span class="truncate text-[11px]">{{ tbl.name }}</span>
+            </div>
 
-          <span class="text-[9px] px-1 py-0.2 bg-boba-950/80 text-slate-500 rounded group-hover:text-slate-400 shrink-0 font-sans">
-            {{ tbl.table_type }}
-          </span>
-        </div>
+            <span class="text-[9px] px-1 py-0.2 bg-boba-950/80 text-slate-500 rounded group-hover:text-slate-400 shrink-0 font-sans">
+              {{ tbl.table_type }}
+            </span>
+          </div>
         </template>
+      </div>
+
+      <!-- Resize Handle (Right Edge) -->
+      <div
+        @mousedown="startResizeSidebar"
+        @dblclick="resetSidebarWidth"
+        class="absolute -right-1.5 top-0 bottom-0 w-3 cursor-col-resize hover:bg-sky-500/40 active:bg-sky-500/70 transition-colors z-20 group flex items-center justify-center select-none"
+        title="Tarik untuk melebarkan sidebar (klik ganda untuk reset)"
+      >
+        <div class="h-8 w-0.5 rounded-full bg-slate-600/40 group-hover:bg-sky-400 group-active:bg-sky-300 transition-colors"></div>
       </div>
     </div>
 
@@ -165,7 +181,8 @@
                 ? 'bg-[#121724] text-sky-300 border-t-sky-500 font-bold'
                 : 'text-slate-400 hover:bg-boba-850 hover:text-slate-200 border-t-transparent'
             ]"
-            title="Klik untuk memilih, Double click untuk ubah nama, Ctrl+W atau Klik Tengah untuk menutup"
+            :title="qTab.tableName || `${qTab.title} • Klik ganda untuk ubah nama`"
+            :data-tip="qTab.tableName || `${qTab.title} • Klik ganda untuk ubah nama`"
           >
             <svg v-if="qTab.tableName" class="w-3 h-3 text-sky-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M9 3v18M3 4a1 1 0 011-1h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
@@ -318,22 +335,34 @@
           </div>
         </div>
 
-        <!-- SQL Editor Textarea with IntelliSense Autocomplete -->
+        <!-- SQL Editor Textarea with Syntax Highlighting & IntelliSense Autocomplete -->
         <div class="p-2 relative">
-          <textarea
-            ref="sqlEditorTextareaRef"
-            v-model="currentQueryText"
-            @input="handleEditorInput"
-            @keydown="handleEditorKeyDown"
-            @blur="handleEditorBlur"
-            spellcheck="false"
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            placeholder="Ketik query SQL di sini (Gunakan Tab / Enter untuk autocomplete, Ctrl+Enter untuk eksekusi)..."
-            rows="4"
-            class="w-full bg-[#07090e] border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 placeholder-slate-600 focus:outline-none focus:border-sky-500/80 resize-y leading-relaxed"
-          ></textarea>
+          <div class="relative w-full rounded-lg border border-boba-800 bg-[#07090e] focus-within:border-sky-500/80 overflow-hidden">
+            <!-- Syntax Highlighting Backdrop -->
+            <pre
+              ref="sqlEditorHighlightRef"
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-0 overflow-hidden p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words select-none m-0 border border-transparent text-slate-200"
+              v-html="highlightedQueryHtml"
+            ></pre>
+
+            <!-- Interactive Textarea -->
+            <textarea
+              ref="sqlEditorTextareaRef"
+              v-model="currentQueryText"
+              @input="handleEditorInput"
+              @keydown="handleEditorKeyDown"
+              @blur="handleEditorBlur"
+              @scroll="syncEditorScroll"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              placeholder="Ketik query SQL di sini (Gunakan Tab / Enter untuk autocomplete, Ctrl+Enter untuk eksekusi)..."
+              rows="4"
+              class="relative w-full bg-transparent p-3 text-xs font-mono text-transparent caret-sky-400 placeholder-slate-600 focus:outline-none resize-y leading-relaxed whitespace-pre-wrap break-words selection:bg-sky-500/30 selection:text-transparent block border border-transparent"
+            ></textarea>
+          </div>
 
           <!-- Floating IntelliSense Suggestions Box (Positioned Below Cursor / Word) -->
           <div
@@ -1422,12 +1451,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
-import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine } from '../utils/dbmsSql.js';
+import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql } from '../utils/dbmsSql.js';
 import DataImporterModal from './DataImporterModal.vue';
 import ProcesslistModal from './ProcesslistModal.vue';
 import TableDesignerModal from './TableDesignerModal.vue';
@@ -1444,6 +1473,54 @@ const dbmsStore = useDbmsStore();
 
 const isSidebarCollapsed = ref(false);
 
+const DEFAULT_SIDEBAR_WIDTH = 256;
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 800;
+const sidebarWidth = ref(DEFAULT_SIDEBAR_WIDTH);
+const isResizingSidebar = ref(false);
+
+function startResizeSidebar(e: MouseEvent) {
+  e.preventDefault();
+  isResizingSidebar.value = true;
+  const startX = e.clientX;
+  const startWidth = sidebarWidth.value;
+
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  function onMouseMove(moveEvent: MouseEvent) {
+    const deltaX = moveEvent.clientX - startX;
+    const maxWidth = Math.min(window.innerWidth * 0.7, MAX_SIDEBAR_WIDTH);
+    const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, startWidth + deltaX));
+    sidebarWidth.value = Math.round(newWidth);
+  }
+
+  function onMouseUp() {
+    isResizingSidebar.value = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try {
+      localStorage.setItem('boba_dbms_sidebar_width', String(sidebarWidth.value));
+    } catch {
+      // Ignore storage errors
+    }
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  }
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+}
+
+function resetSidebarWidth() {
+  sidebarWidth.value = DEFAULT_SIDEBAR_WIDTH;
+  try {
+    localStorage.setItem('boba_dbms_sidebar_width', String(DEFAULT_SIDEBAR_WIDTH));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 const editingTabId = ref<string | null>(null);
 const editingTabTitle = ref('');
 
@@ -1452,6 +1529,7 @@ const vFocus = {
 };
 
 function startRenameTab(qTab: SubQueryTab) {
+  if (qTab.tableName) return;
   editingTabId.value = qTab.id;
   editingTabTitle.value = qTab.title;
 }
@@ -1984,6 +2062,7 @@ function handleSelectTable(tbl: DbTableMeta) {
   if (existingTab) {
     activeQueryTabId.value = existingTab.id;
     existingTab.activeTable = tbl;
+    if (!existingTab.tableName) existingTab.tableName = tbl.name;
     if (existingTab.queryResults.length === 0) {
       if (!existingTab.text.trim()) existingTab.text = generatedSql;
       executeQuery();
@@ -2234,6 +2313,22 @@ const suggestionQuery = ref('');
 const activeSuggestionIndex = ref(0);
 const suggestionPos = ref({ top: 38, left: 16 });
 const sqlEditorTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const sqlEditorHighlightRef = ref<HTMLPreElement | null>(null);
+
+const highlightedQueryHtml = computed(() => {
+  return highlightSql(currentQueryText.value);
+});
+
+function syncEditorScroll() {
+  if (sqlEditorTextareaRef.value && sqlEditorHighlightRef.value) {
+    sqlEditorHighlightRef.value.scrollTop = sqlEditorTextareaRef.value.scrollTop;
+    sqlEditorHighlightRef.value.scrollLeft = sqlEditorTextareaRef.value.scrollLeft;
+  }
+}
+
+watch(currentQueryText, () => {
+  nextTick(syncEditorScroll);
+});
 
 function updateCursorPosition() {
   const textarea = sqlEditorTextareaRef.value;
@@ -2308,6 +2403,7 @@ const filteredSuggestions = computed<SuggestionItem[]>(() => {
 });
 
 function handleEditorInput() {
+  syncEditorScroll();
   const textarea = sqlEditorTextareaRef.value;
   if (!textarea) return;
   const cursor = textarea.selectionStart;
@@ -2350,7 +2446,58 @@ function insertSuggestion(sug: SuggestionItem) {
   showSuggestions.value = false;
 }
 
+function toggleLineComment() {
+  const textarea = sqlEditorTextareaRef.value;
+  if (!textarea) return;
+
+  const text = textarea.value;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  let lineEnd = text.indexOf('\n', end);
+  if (lineEnd === -1) lineEnd = text.length;
+
+  const selectedBlock = text.slice(lineStart, lineEnd);
+  const lines = selectedBlock.split('\n');
+
+  const nonEmpties = lines.filter(l => l.trim().length > 0);
+  const allCommented = nonEmpties.length > 0 && nonEmpties.every(l => l.trimStart().startsWith('--'));
+
+  const newLines = lines.map(line => {
+    if (allCommented) {
+      const match = line.match(/^(\s*)--\s?(.*)$/);
+      return match ? match[1] + match[2] : line;
+    } else {
+      if (line.trim().length === 0) return line;
+      const match = line.match(/^(\s*)(.*)$/);
+      return match ? `${match[1]}-- ${match[2]}` : `-- ${line}`;
+    }
+  });
+
+  const replaced = newLines.join('\n');
+  const lengthDiff = replaced.length - selectedBlock.length;
+  currentQueryText.value = text.slice(0, lineStart) + replaced + text.slice(lineEnd);
+
+  nextTick(() => {
+    if (start === end) {
+      const newPos = Math.max(lineStart, Math.min(lineStart + replaced.length, start + lengthDiff));
+      textarea.selectionStart = textarea.selectionEnd = newPos;
+    } else {
+      textarea.selectionStart = start;
+      textarea.selectionEnd = Math.max(start, end + lengthDiff);
+    }
+    syncEditorScroll();
+  });
+}
+
 function handleEditorKeyDown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === '/' || e.code === 'Slash')) {
+    e.preventDefault();
+    toggleLineComment();
+    return;
+  }
+
   if (showSuggestions.value && filteredSuggestions.value.length > 0) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -3010,6 +3157,17 @@ function handleNewSubTabEvent(e: any) {
 }
 
 onMounted(() => {
+  try {
+    const savedWidth = localStorage.getItem('boba_dbms_sidebar_width');
+    if (savedWidth) {
+      const parsed = parseInt(savedWidth, 10);
+      if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH && parsed <= MAX_SIDEBAR_WIDTH) {
+        sidebarWidth.value = parsed;
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
   loadSchemaOverview();
   window.addEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
   window.addEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);

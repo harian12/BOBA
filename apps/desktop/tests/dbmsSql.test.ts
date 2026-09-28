@@ -6,6 +6,7 @@ import {
   supportsTruncate,
   isSqlEngine,
   normalizeEngine,
+  highlightSql,
 } from '../app/utils/dbmsSql.ts';
 
 test('normalizeEngine lowercases and tolerates empty input', () => {
@@ -76,4 +77,16 @@ test('supportsTruncate is true only where TRUNCATE exists', () => {
   assert.equal(supportsTruncate('sqlite'), false);
   assert.equal(supportsTruncate('redis'), false);
   assert.equal(supportsTruncate('mongodb'), false);
+});
+
+test('highlightSql formats comments, keywords, and strings with distinct classes', () => {
+  assert.equal(highlightSql(''), '');
+  const out1 = highlightSql('-- ini komentar\nSELECT * FROM users;');
+  assert.match(out1, /<span class="text-slate-500 italic">-- ini komentar<\/span>/);
+  assert.match(out1, /<span class="text-sky-400 font-semibold">SELECT<\/span>/);
+  assert.match(out1, /<span class="text-sky-400 font-semibold">FROM<\/span>/);
+
+  const out2 = highlightSql('/* blok komentar */ WHERE name = \'boba\'');
+  assert.match(out2, /<span class="text-slate-500 italic">\/\* blok komentar \*\/<\/span>/);
+  assert.match(out2, /<span class="text-emerald-400">&#39;boba&#39;<\/span>/);
 });
