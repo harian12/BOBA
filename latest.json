@@ -1,15 +1,15 @@
 {
-  "version": "0.2.1",
-  "notes": "Release v0.2.1 - DBMS sidebar resizer, table tab hover tooltips and rename guards, SQL syntax highlighter with distinct comment styling, Ctrl+/ line comment toggle, and raw SQL execution for dynamic prepared statements.",
-  "pub_date": "2026-09-28T06:30:00.000Z",
+  "version": "0.2.2",
+  "notes": "Release v0.2.2 - Hotfix: raw SQL execution for dynamic prepared statements, isolated Ctrl+/ comment toggle, resizable DBMS sidebar, and table tab hover tooltips.",
+  "pub_date": "2026-09-28T07:05:00.000Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBLc3FheDY1OVlKMHlEWlBhbHo2dTduLzFrL2NsSGNaSkljcDV0NjMrUlQxMEpkc3UzWENQcFp1UDN5a3M5WndKWnYxOHdhNm4vOUhPWld2bE02M0FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTc2OTM3CWZpbGU6Qk9CQV8wLjIuMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjEKaGFHV3dIcjB0cVR5dVlqdWZwZ1pYajFxaEppby9QTFZFS1BDTkNrc0JwYktDOElqMENMOWgyVXZuK0QxZFVBa3NTVEJjb21CaDgxQTN0djZlSk1aRHc9PQo=",
-      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.1/BOBA_0.2.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYnhQNmN3MER6ZTVXcnZ2WDZsd2VPTVZuaWtVa2U3VkprbmI1VFJ2c3JZcFVVcWdwS2VmQ2VmMTBDUWJPTC9sSW4zUWRyVThjTHJMRGk1dVo5TVo4TmdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTc4OTc4CWZpbGU6Qk9CQV8wLjIuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjIKcm12bXhOWkpCRTZYWkdiS2xYRVp5Y0RwSUdyeUVFU1NCM09ubGk5eGFzSUROcHN4RkxPTXRyRXg2UkN5TzkwWG13b3I5czNod0x1QnFaOFNPWnpaQmc9PQo=",
+      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.2/BOBA_0.2.2_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBLc3FheDY1OVlKMHlEWlBhbHo2dTduLzFrL2NsSGNaSkljcDV0NjMrUlQxMEpkc3UzWENQcFp1UDN5a3M5WndKWnYxOHdhNm4vOUhPWld2bE02M0FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTc2OTM3CWZpbGU6Qk9CQV8wLjIuMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjEKaGFHV3dIcjB0cVR5dVlqdWZwZ1pYajFxaEppby9QTFZFS1BDTkNrc0JwYktDOElqMENMOWgyVXZuK0QxZFVBa3NTVEJjb21CaDgxQTN0djZlSk1aRHc9PQo=",
-      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.1/BOBA_0.2.1_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYnhQNmN3MER6ZTVXcnZ2WDZsd2VPTVZuaWtVa2U3VkprbmI1VFJ2c3JZcFVVcWdwS2VmQ2VmMTBDUWJPTC9sSW4zUWRyVThjTHJMRGk1dVo5TVo4TmdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTc4OTc4CWZpbGU6Qk9CQV8wLjIuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjIKcm12bXhOWkpCRTZYWkdiS2xYRVp5Y0RwSUdyeUVFU1NCM09ubGk5eGFzSUROcHN4RkxPTXRyRXg2UkN5TzkwWG13b3I5czNod0x1QnFaOFNPWnpaQmc9PQo=",
+      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.2/BOBA_0.2.2_x64-setup.exe"
     }
   }
 }
