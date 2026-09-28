@@ -8,7 +8,7 @@
       <!-- Top Modes: Sessions / Databases / SFTP -->
       <div class="flex flex-col items-center space-y-2.5 w-full">
         <!-- Brand Logo -->
-        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.2.3 (Klik untuk cek update)">
+        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.2.4 (Klik untuk cek update)">
           <img src="/logo-mark.svg" alt="BOBA" class="w-7 h-7 object-contain transition-opacity hover:opacity-70" />
         </div>
 

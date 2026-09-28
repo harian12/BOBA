@@ -337,12 +337,15 @@
 
         <!-- SQL Editor Textarea with Syntax Highlighting & IntelliSense Autocomplete -->
         <div class="p-2 relative">
-          <div class="relative w-full rounded-lg border border-boba-800 bg-[#07090e] focus-within:border-sky-500/80 overflow-hidden">
+          <div
+            class="relative w-full rounded-lg border border-boba-800 bg-[#07090e] focus-within:border-sky-500/80 overflow-hidden"
+            :style="{ height: `${queryEditorHeight}px` }"
+          >
             <!-- Syntax Highlighting Backdrop -->
             <pre
               ref="sqlEditorHighlightRef"
               aria-hidden="true"
-              class="pointer-events-none absolute inset-0 overflow-hidden p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words select-none m-0 border border-transparent text-slate-200"
+              class="pointer-events-none absolute inset-0 overflow-auto p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words select-none m-0 border border-transparent text-slate-200 no-scrollbar"
               v-html="highlightedQueryHtml"
             ></pre>
 
@@ -359,8 +362,7 @@
               autocorrect="off"
               autocapitalize="off"
               placeholder="Ketik query SQL di sini (Gunakan Tab / Enter untuk autocomplete, Ctrl+Enter untuk eksekusi)..."
-              rows="4"
-              class="relative w-full bg-transparent p-3 text-xs font-mono text-transparent caret-sky-400 placeholder-slate-600 focus:outline-none resize-y leading-relaxed whitespace-pre-wrap break-words selection:bg-sky-500/30 selection:text-transparent block border border-transparent"
+              class="relative w-full h-full bg-transparent p-3 text-xs font-mono text-transparent caret-sky-400 placeholder-slate-600 focus:outline-none resize-none leading-relaxed whitespace-pre-wrap break-words selection:bg-sky-500/30 selection:text-transparent block border border-transparent"
             ></textarea>
           </div>
 
@@ -400,6 +402,16 @@
               </span>
             </div>
           </div>
+        </div>
+
+        <!-- Horizontal Resizer Bar for Query Editor (Drag row to adjust height) -->
+        <div
+          @mousedown="startResizeQueryEditor"
+          @dblclick="resetQueryEditorHeight"
+          class="h-2 w-full cursor-row-resize hover:bg-sky-500/40 active:bg-sky-500/70 transition-colors group flex items-center justify-center select-none border-t border-boba-800/80 -mt-1 relative z-10"
+          title="Tarik untuk mengubah tinggi editor SQL (klik ganda untuk reset)"
+        >
+          <div class="w-10 h-0.5 rounded-full bg-slate-600/50 group-hover:bg-sky-400 group-active:bg-sky-300 transition-colors"></div>
         </div>
       </div>
 
@@ -508,7 +520,7 @@
 
         <!-- Multi-Query Result Set Switcher Bar -->
         <div
-          v-if="queryResults && queryResults.length > 1 && activeViewTab === 'data'"
+          v-if="hasTabularResults && queryResults.length > 1 && activeViewTab === 'data'"
           class="px-3 py-1.5 bg-[#141a29] border-b border-boba-800 flex items-center space-x-2 text-xs font-mono select-none overflow-x-auto shrink-0 shadow-inner"
         >
           <span class="text-[11px] text-slate-400 font-sans font-bold shrink-0">Hasil Query ({{ queryResults.length }} Query):</span>
@@ -838,13 +850,33 @@
               </tbody>
             </table>
 
-            <!-- Empty State Grid -->
+            <!-- Empty State / DDL Execution Success State Grid -->
             <div
               v-else-if="!executing && !errorMessage"
-              class="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500 space-y-1.5"
+              class="h-full flex flex-col items-center justify-center p-8 text-center space-y-2 select-none"
             >
-              <div class="text-xs text-slate-400 font-medium">Belum ada data ditampilkan</div>
-              <div class="text-[11px] text-slate-600">Pilih tabel di navigasi kiri atau jalankan query SQL.</div>
+              <template v-if="queryResults && queryResults.length > 0">
+                <div class="w-10 h-10 rounded-full bg-emerald-950/80 border border-emerald-600/50 flex items-center justify-center text-emerald-400">
+                  <Icon icon="lucide:check-circle-2" class="w-5 h-5" />
+                </div>
+                <div class="text-xs text-slate-200 font-medium">
+                  {{ queryResults.length > 1 ? `${queryResults.length} statement berhasil dieksekusi.` : 'Query berhasil dieksekusi.' }}
+                </div>
+                <div class="text-[11px] text-slate-400 font-mono max-w-md bg-boba-950/80 border border-boba-800 rounded-lg p-2 text-left space-y-1">
+                  <div class="text-slate-500 text-[10px] font-sans">Ringkasan Eksekusi:</div>
+                  <div v-for="(r, idx) in queryResults" :key="idx" class="flex items-center justify-between text-[10px]">
+                    <span class="truncate mr-2 text-slate-300">Statement {{ idx + 1 }}</span>
+                    <span class="text-emerald-400 shrink-0 font-sans">
+                      {{ r.affected_rows > 0 ? `${r.affected_rows} baris terpengaruh` : 'OK (0 baris)' }}
+                      <span class="text-slate-500 ml-1">({{ r.execution_time_ms || 0 }}ms)</span>
+                    </span>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="text-xs text-slate-400 font-medium">Belum ada data ditampilkan</div>
+                <div class="text-[11px] text-slate-600">Pilih tabel di navigasi kiri atau jalankan query SQL.</div>
+              </template>
             </div>
           </div>
 
@@ -1144,41 +1176,44 @@
         </div>
 
         <!-- Saved Queries List -->
-        <div class="space-y-2 max-h-64 overflow-y-auto">
+        <div class="space-y-1.5 max-h-64 overflow-y-auto">
           <div v-if="filteredSnippets.length === 0" class="py-6 text-center text-slate-500 text-xs">
             Belum ada query tersimpan untuk {{ snippetScope === 'connection' ? 'koneksi ini' : 'proteksi data' }}.
           </div>
           <div
             v-for="snip in filteredSnippets"
             :key="snip.id"
-            class="p-3 bg-boba-950/70 border border-boba-800 rounded-xl hover:border-amber-500/50 transition space-y-1.5 group"
+            class="px-3 py-2 bg-boba-950/70 border border-boba-800 rounded-xl hover:border-amber-500/50 transition group flex items-center justify-between"
           >
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-2 truncate mr-2">
-                <span class="font-bold text-xs text-slate-200 truncate">{{ snip.title }}</span>
-                <span v-if="snip.db_name" class="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-mono shrink-0">
-                  {{ snip.db_name }}
-                </span>
-                <span v-else class="text-[9px] px-1.5 py-0.2 rounded bg-boba-800 text-slate-400 font-mono shrink-0">
-                  Global
-                </span>
-              </div>
-              <div class="flex items-center space-x-1 shrink-0">
-                <button
-                  @click="useSnippet(snip.query)"
-                  class="px-2 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-[10px] font-medium"
-                >
-                  Gunakan
-                </button>
-                <button
-                  @click="dbmsStore.removeSavedQuery(snip.id)"
-                  class="p-1 text-slate-500 hover:text-rose-400 rounded text-xs"
-                >
-                  ✕
-                </button>
-              </div>
+            <div class="flex items-center space-x-2 truncate mr-2 min-w-0">
+              <span class="text-amber-400 shrink-0">
+                <Icon icon="lucide:code-2" class="w-4 h-4" />
+              </span>
+              <span class="font-bold text-xs text-slate-200 truncate">{{ snip.title }}</span>
+              <span v-if="snip.db_name" class="text-[9px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 border border-sky-800/60 font-mono shrink-0">
+                {{ snip.db_name }}
+              </span>
+              <span v-else class="text-[9px] px-1.5 py-0.2 rounded bg-boba-800 text-slate-400 font-mono shrink-0">
+                Global
+              </span>
             </div>
-            <pre class="text-[11px] font-mono text-emerald-300 bg-black/40 p-2 rounded max-h-20 overflow-auto whitespace-pre-wrap">{{ snip.query }}</pre>
+            <div class="flex items-center space-x-1 shrink-0">
+              <button
+                @click="useSnippet(snip.query)"
+                title="Salin query ke editor"
+                class="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-md text-[11px] font-medium flex items-center space-x-1 transition"
+              >
+                <Icon icon="lucide:copy" class="w-3 h-3" />
+                <span>Gunakan</span>
+              </button>
+              <button
+                @click="confirmDeleteSnippet(snip)"
+                title="Hapus snippet"
+                class="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded transition text-xs"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1521,6 +1556,54 @@ function resetSidebarWidth() {
   }
 }
 
+// Horizontal Query Editor Height Resizer
+const DEFAULT_QUERY_EDITOR_HEIGHT = 100;
+const MIN_QUERY_EDITOR_HEIGHT = 50;
+const MAX_QUERY_EDITOR_HEIGHT = 600;
+const queryEditorHeight = ref(DEFAULT_QUERY_EDITOR_HEIGHT);
+const isResizingQueryEditor = ref(false);
+
+function startResizeQueryEditor(e: MouseEvent) {
+  e.preventDefault();
+  isResizingQueryEditor.value = true;
+  const startY = e.clientY;
+  const startHeight = queryEditorHeight.value;
+
+  document.body.style.cursor = 'row-resize';
+  document.body.style.userSelect = 'none';
+
+  function onMouseMove(moveEvent: MouseEvent) {
+    const deltaY = moveEvent.clientY - startY;
+    const newHeight = Math.max(MIN_QUERY_EDITOR_HEIGHT, Math.min(MAX_QUERY_EDITOR_HEIGHT, startHeight + deltaY));
+    queryEditorHeight.value = Math.round(newHeight);
+  }
+
+  function onMouseUp() {
+    isResizingQueryEditor.value = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try {
+      localStorage.setItem('boba_dbms_query_height', String(queryEditorHeight.value));
+    } catch {
+      // Ignore storage errors
+    }
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  }
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+}
+
+function resetQueryEditorHeight() {
+  queryEditorHeight.value = DEFAULT_QUERY_EDITOR_HEIGHT;
+  try {
+    localStorage.setItem('boba_dbms_query_height', String(DEFAULT_QUERY_EDITOR_HEIGHT));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 const editingTabId = ref<string | null>(null);
 const editingTabTitle = ref('');
 
@@ -1720,6 +1803,10 @@ const queryResult = computed({
       }
     }
   },
+});
+
+const hasTabularResults = computed(() => {
+  return queryResults.value.some(r => (r.rows && r.rows.length > 0) || (r.columns && r.columns.length > 0));
 });
 
 const gridSearchQuery = ref('');
@@ -2224,7 +2311,13 @@ async function executeQuery(customQuery?: string) {
       q
     );
     queryResults.value = resList;
-    activeResultIndex.value = 0;
+    // Auto pilih result terakhir atau result yang menghasilkan dataset tabular
+    const firstTabularIdx = resList.findIndex(r => r.rows && r.rows.length > 0);
+    if (firstTabularIdx >= 0) {
+      activeResultIndex.value = firstTabularIdx;
+    } else {
+      activeResultIndex.value = Math.max(0, resList.length - 1);
+    }
     if (resList.length > 0) {
       const totalTime = resList.reduce((acc, r) => acc + (r.execution_time_ms || 0), 0);
       lastExecutionTime.value = totalTime;
@@ -2293,7 +2386,18 @@ function handleSaveSnippet() {
 function useSnippet(sql: string) {
   currentQueryText.value = sql;
   isSnippetsDrawerOpen.value = false;
-  executeQuery();
+}
+
+async function confirmDeleteSnippet(snippet: { id: string; title: string }) {
+  const confirmed = await dialogStore.confirm({
+    title: `Hapus Snippet "${snippet.title}"?`,
+    description: 'Snippet SQL ini akan dihapus secara permanen dari proteksi data Anda.',
+    confirmText: 'Hapus Snippet',
+    isDestructive: true,
+  });
+  if (confirmed) {
+    await dbmsStore.removeSavedQuery(snippet.id);
+  }
 }
 
 function loadHistoryQuery(q: string) {
@@ -3164,6 +3268,13 @@ onMounted(() => {
       const parsed = parseInt(savedWidth, 10);
       if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH && parsed <= MAX_SIDEBAR_WIDTH) {
         sidebarWidth.value = parsed;
+      }
+    }
+    const savedHeight = localStorage.getItem('boba_dbms_query_height');
+    if (savedHeight) {
+      const parsedH = parseInt(savedHeight, 10);
+      if (!isNaN(parsedH) && parsedH >= MIN_QUERY_EDITOR_HEIGHT && parsedH <= MAX_QUERY_EDITOR_HEIGHT) {
+        queryEditorHeight.value = parsedH;
       }
     }
   } catch {

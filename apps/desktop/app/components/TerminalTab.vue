@@ -1375,6 +1375,10 @@ async function connectSsh() {
     props.tab.connected = false;
     props.tab.error = String(err);
     if (term) term.writeln(`\x1b[31mConnection error: ${err}\x1b[0m\r\n`);
+    // Jika koneksi gagal saat mencoba menyambungkan ulang, jadwalkan retry kembali
+    if (!isExplicitlyClosed) {
+      scheduleAutoReconnect();
+    }
   }
 }
 
