@@ -1,15 +1,15 @@
 {
-  "version": "0.2.4",
-  "notes": "Release v0.2.4 - Horizontal query editor resizer, clean multi-query execution summary (suppressing extra non-SELECT result tabs), query snippet UI and delete confirmation, and persistent SSH auto-reconnect retry loop.",
-  "pub_date": "2026-09-28T10:47:00.000Z",
+  "version": "0.2.5",
+  "notes": "Release v0.2.5 - Performance and usability improvements: horizontal query editor resizer, clean multi-statement summary, snippet management modal confirm, and persistent SSH auto-reconnect retry loop.",
+  "pub_date": "2026-09-28T10:55:00.000Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYnhRL0FxVE5XUzZqa0pzeDJXQmhUS0s5b1JFVU5yWFFLZllPWjE4N1hreDR1MnJiQ2w1NkFiMk9iRmJmTWo0MHYzWE90Z0d1cWRRanVlSnVzR1E3aFE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTkyMzU5CWZpbGU6Qk9CQV8wLjIuNF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjQKaC95NC9GZUVucnhqckJxU2RDeGhkSjlPbnpRZHdGZXIvZkxweWRseUtzR1VydHJOcmlrMngyUVlDRlpZRnE3bm56Z2lRaXc0VHlTdm5DNDdmNTkxQUE9PQo=",
-      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.4/BOBA_0.2.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVVSG81cHhJMGk1V2h5TjZMKzFGeXZyQXAyMlhsQzY2bkhJaVQ0ZEVlNGU5SmFQNHZZaDhFSVYwd2R5d2NDUjQ3Z09xNC9vY3FJeU5yTWE1LzcyYmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTkyNzg2CWZpbGU6Qk9CQV8wLjIuNV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjUKdjUxY2t4eVllenNCMmp2aG81M0hxVHJGZGQzN1pFeGRWWk9wcXBRMk1qdjY1Q2syVXJlTHllNnEzL25rV3ZQVDJaSFljOTA3eVZ4RGlJbmNEMEdmQWc9PQo=",
+      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.5/BOBA_0.2.5_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYnhRL0FxVE5XUzZqa0pzeDJXQmhUS0s5b1JFVU5yWFFLZllPWjE4N1hreDR1MnJiQ2w1NkFiMk9iRmJmTWo0MHYzWE90Z0d1cWRRanVlSnVzR1E3aFE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTkyMzU5CWZpbGU6Qk9CQV8wLjIuNF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjQKaC95NC9GZUVucnhqckJxU2RDeGhkSjlPbnpRZHdGZXIvZkxweWRseUtzR1VydHJOcmlrMngyUVlDRlpZRnE3bm56Z2lRaXc0VHlTdm5DNDdmNTkxQUE9PQo=",
-      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.4/BOBA_0.2.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVVSG81cHhJMGk1V2h5TjZMKzFGeXZyQXAyMlhsQzY2bkhJaVQ0ZEVlNGU5SmFQNHZZaDhFSVYwd2R5d2NDUjQ3Z09xNC9vY3FJeU5yTWE1LzcyYmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwNTkyNzg2CWZpbGU6Qk9CQV8wLjIuNV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC4yLjUKdjUxY2t4eVllenNCMmp2aG81M0hxVHJGZGQzN1pFeGRWWk9wcXBRMk1qdjY1Q2syVXJlTHllNnEzL25rV3ZQVDJaSFljOTA3eVZ4RGlJbmNEMEdmQWc9PQo=",
+      "url": "https://github.com/harian12/BOBA/releases/download/v0.2.5/BOBA_0.2.5_x64-setup.exe"
     }
   }
 }
