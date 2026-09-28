@@ -680,6 +680,9 @@ async function handleCloseTab(tab: ActiveTab) {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null;
+  const isEditable = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
   // Ctrl+K: Toggle Command Palette
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === 'k') {
     e.preventDefault();
@@ -687,8 +690,9 @@ function handleKeyDown(e: KeyboardEvent) {
     return;
   }
 
-  // Ctrl+/: Toggle Shortcuts panel
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === '/') {
+  // Ctrl+/: Toggle Shortcuts panel (ignore if inside input/editor to allow line commenting)
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === '/' || e.code === 'Slash')) {
+    if (isEditable) return;
     e.preventDefault();
     if (!isCommandPaletteOpen.value) isShortcutsOpen.value = !isShortcutsOpen.value;
     return;

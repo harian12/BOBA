@@ -2494,6 +2494,7 @@ function toggleLineComment() {
 function handleEditorKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && (e.key === '/' || e.code === 'Slash')) {
     e.preventDefault();
+    e.stopPropagation();
     toggleLineComment();
     return;
   }

@@ -879,7 +879,7 @@ impl DbmsManager {
                             error: None,
                         });
                     } else {
-                        let res = sqlx::query(trimmed)
+                        let res = sqlx::raw_sql(trimmed)
                             .execute(&pool)
                             .await
                             .map_err(|e| format!("Execution error on '{}': {}", trimmed, e))?;
@@ -994,7 +994,7 @@ impl DbmsManager {
                             error: None,
                         });
                     } else {
-                        let res = sqlx::query(trimmed)
+                        let res = sqlx::raw_sql(trimmed)
                             .execute(&pool)
                             .await
                             .map_err(|e| format!("Execution error on '{}': {}", trimmed, e))?;
@@ -1098,7 +1098,7 @@ impl DbmsManager {
                             error: None,
                         });
                     } else {
-                        let res = sqlx::query(trimmed)
+                        let res = sqlx::raw_sql(trimmed)
                             .execute(&pool)
                             .await
                             .map_err(|e| format!("Execution error on '{}': {}", trimmed, e))?;
