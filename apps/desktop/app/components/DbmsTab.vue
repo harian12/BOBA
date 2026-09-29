@@ -173,9 +173,14 @@
               <span class="truncate text-[11px]">{{ tbl.name }}</span>
             </div>
 
-            <span class="text-[9px] px-1 py-0.2 bg-boba-950/80 text-slate-500 rounded group-hover:text-slate-400 shrink-0 font-sans">
-              {{ tbl.table_type }}
-            </span>
+            <div class="flex items-center space-x-1 shrink-0">
+              <span v-if="tbl.row_count !== undefined && tbl.row_count !== null" class="text-[9px] text-slate-500 font-sans group-hover:text-slate-400">
+                {{ tbl.row_count.toLocaleString() }}r
+              </span>
+              <span class="text-[9px] px-1 py-0.2 bg-boba-950/80 text-slate-500 rounded group-hover:text-slate-400 font-sans">
+                {{ tbl.table_type }}
+              </span>
+            </div>
           </div>
         </template>
       </div>
@@ -794,12 +799,13 @@
                     v-for="(col, cIdx) in queryResult.columns"
                     :key="col"
                     @click="toggleSortColumn(cIdx)"
-                    class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap cursor-pointer hover:bg-sky-950/60 transition group"
+                    :style="columnWidths[col] ? { width: `${columnWidths[col]}px`, minWidth: `${columnWidths[col]}px` } : {}"
+                    class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap cursor-pointer hover:bg-sky-950/60 transition group relative"
                     :title="`Klik untuk mengurutkan (Sort ${sortState.colIdx === cIdx ? (sortState.direction === 'asc' ? 'Descending' : 'Default') : 'Ascending'})`"
                   >
-                    <div class="flex items-center space-x-1.5 justify-between">
-                      <span>{{ col }}</span>
-                      <div class="flex items-center text-[10px]">
+                    <div class="flex items-center space-x-1.5 justify-between pr-2">
+                      <span class="truncate">{{ col }}</span>
+                      <div class="flex items-center text-[10px] shrink-0">
                         <span v-if="sortState.colIdx === cIdx" class="text-amber-400 font-bold">
                           {{ sortState.direction === 'asc' ? '▲' : '▼' }}
                         </span>
@@ -807,6 +813,17 @@
                           ⇅
                         </span>
                       </div>
+                    </div>
+
+                    <!-- Column Resizer Handle -->
+                    <div
+                      @click.stop
+                      @mousedown.stop="startResizeGridColumn($event, col)"
+                      @dblclick.stop="resetGridColumnWidth(col)"
+                      class="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-sky-400/80 active:bg-sky-400 transition z-20 group/resizer flex items-center justify-center"
+                      title="Tarik untuk ubah lebar kolom (klik ganda untuk reset)"
+                    >
+                      <div class="h-full w-px bg-boba-800 group-hover/resizer:bg-sky-400"></div>
                     </div>
                   </th>
                   <th class="px-3 py-1.5 text-slate-400 select-none w-24 text-center">
@@ -840,6 +857,7 @@
                     :key="cIdx"
                     @dblclick="startInlineCellEdit(rIdx, cIdx, val)"
                     @contextmenu.prevent.stop="openCellContextMenu($event, rIdx, cIdx, row, val)"
+                    :style="queryResult.columns[cIdx] && columnWidths[queryResult.columns[cIdx]] ? { maxWidth: `${columnWidths[queryResult.columns[cIdx]]}px`, width: `${columnWidths[queryResult.columns[cIdx]]}px` } : {}"
                     :class="[
                       'px-3 py-1 border-r border-boba-850 text-slate-300 whitespace-nowrap max-w-xs truncate cursor-pointer transition-colors relative',
                       editingCell?.rIdx === rIdx && editingCell?.cIdx === cIdx
@@ -2273,10 +2291,17 @@
         <span>Modifikasi Desain Tabel</span>
       </button>
       <button
+        @click="handleContextAction('clone_table')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-sky-400" />
+        <span>Duplikat Tabel (Clone)</span>
+      </button>
+      <button
         @click="handleContextAction('copy_name')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
       >
-        <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-slate-400" />
+        <Icon icon="lucide:clipboard" class="w-3.5 h-3.5 text-slate-400" />
         <span>Salin Nama Tabel</span>
       </button>
       <button
@@ -2798,6 +2823,47 @@ async function executeAddColumn() {
   } finally {
     executing.value = false;
   }
+}
+
+// Custom Column Widths State & Resize
+const columnWidths = ref<Record<string, number>>({});
+const isResizingGridCol = ref<string | null>(null);
+
+function startResizeGridColumn(e: MouseEvent, colName: string) {
+  e.preventDefault();
+  isResizingGridCol.value = colName;
+  const startX = e.clientX;
+  const th = (e.target as HTMLElement).closest('th');
+  const startWidth = th ? th.offsetWidth : (columnWidths.value[colName] || 150);
+
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+
+  function onMouseMove(moveEvent: MouseEvent) {
+    const deltaX = moveEvent.clientX - startX;
+    const newWidth = Math.max(60, Math.min(800, startWidth + deltaX));
+    columnWidths.value = {
+      ...columnWidths.value,
+      [colName]: Math.round(newWidth),
+    };
+  }
+
+  function onMouseUp() {
+    isResizingGridCol.value = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+  }
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+}
+
+function resetGridColumnWidth(colName: string) {
+  const updated = { ...columnWidths.value };
+  delete updated[colName];
+  columnWidths.value = updated;
 }
 
 const isSidebarCollapsed = ref(false);
@@ -5091,7 +5157,77 @@ async function openRenameTableModal(tbl: DbTableMeta) {
   }
 }
 
-async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
+async function handleCloneTable(tbl: DbTableMeta) {
+  if (!isSqlEngine(engine.value) || !props.tab.dbConnection) {
+    await dialogStore.alert({
+      title: 'Operasi Tidak Didukung',
+      description: `Engine ${engine.value} tidak mendukung clone table secara otomatis.`,
+      variant: 'error',
+    });
+    return;
+  }
+
+  const defaultNewName = `${tbl.name}_copy`;
+  const targetName = window.prompt(`Masukkan nama tabel baru untuk menduplikasi "${tbl.name}":`, defaultNewName);
+  if (!targetName || !targetName.trim() || targetName.trim() === tbl.name) return;
+
+  const newTbl = targetName.trim();
+  const withData = await dialogStore.confirm({
+    title: 'Duplikat Termasuk Data?',
+    description: `Apakah Anda ingin menyalin data dari "${tbl.name}" ke tabel baru "${newTbl}" juga? (Pilih 'Batal' untuk struktur saja)`,
+    confirmText: 'Struktur + Data',
+    cancelText: 'Hanya Struktur',
+  });
+
+  const eng = engine.value;
+  let queries: string[] = [];
+
+  if (eng === 'mysql' || eng === 'mariadb') {
+    queries.push(`CREATE TABLE ${qi(newTbl)} LIKE ${qi(tbl.name)};`);
+    if (withData) {
+      queries.push(`INSERT INTO ${qi(newTbl)} SELECT * FROM ${qi(tbl.name)};`);
+    }
+  } else if (eng === 'postgres' || eng === 'postgresql') {
+    if (withData) {
+      queries.push(`CREATE TABLE ${qi(newTbl)} AS TABLE ${qi(tbl.name)};`);
+    } else {
+      queries.push(`CREATE TABLE ${qi(newTbl)} (LIKE ${qi(tbl.name)} INCLUDING ALL);`);
+    }
+  } else if (eng === 'sqlite') {
+    if (withData) {
+      queries.push(`CREATE TABLE ${qi(newTbl)} AS SELECT * FROM ${qi(tbl.name)};`);
+    } else {
+      queries.push(`CREATE TABLE ${qi(newTbl)} AS SELECT * FROM ${qi(tbl.name)} WHERE 1=0;`);
+    }
+  }
+
+  executing.value = true;
+  try {
+    for (const q of queries) {
+      await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        q
+      );
+    }
+    dialogStore.showToast(`Tabel "${newTbl}" berhasil dibuat!`, 'success', 3000);
+    await loadSchemaOverview();
+    const cloned = schemaOverview.value?.tables.find(t => t.name === newTbl);
+    if (cloned) {
+      handleSelectTable(cloned);
+    }
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menduplikasi Tabel',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
+async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'clone_table' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
   const tbl = tableContextMenu.value.table;
   closeTableContextMenu();
   if (!tbl) return;
@@ -5103,6 +5239,8 @@ async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'c
     activeViewTab.value = 'structure';
   } else if (action === 'alter') {
     openTableDesigner(tbl);
+  } else if (action === 'clone_table') {
+    await handleCloneTable(tbl);
   } else if (action === 'copy_name') {
     await navigator.clipboard.writeText(tbl.name);
   } else if (action === 'ddl') {
