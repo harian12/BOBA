@@ -1338,12 +1338,12 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <select
-                :value="addColumnForm.dataType"
+                :value="addColumnForm.dataType.toUpperCase()"
                 @change="handleDataTypeSelect(($event.target as HTMLSelectElement).value)"
                 class="bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-2 text-xs text-slate-200 font-mono focus:outline-none transition"
               >
                 <optgroup v-for="grp in engineDataTypes" :key="grp.category" :label="grp.category">
-                  <option v-for="t in grp.options" :key="t" :value="t">{{ t }}</option>
+                  <option v-for="t in grp.options" :key="t" :value="t.toUpperCase()">{{ t }}</option>
                 </optgroup>
               </select>
 
@@ -1576,12 +1576,12 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <select
-                :value="editColumnForm.dataType"
+                :value="editColumnForm.dataType.toUpperCase()"
                 @change="handleEditDataTypeSelect(($event.target as HTMLSelectElement).value)"
                 class="bg-boba-950 border border-boba-700 focus:border-amber-500 rounded px-2.5 py-2 text-xs text-slate-200 font-mono focus:outline-none transition"
               >
                 <optgroup v-for="grp in engineDataTypes" :key="grp.category" :label="grp.category">
-                  <option v-for="t in grp.options" :key="t" :value="t">{{ t }}</option>
+                  <option v-for="t in grp.options" :key="t" :value="t.toUpperCase()">{{ t }}</option>
                 </optgroup>
               </select>
 
@@ -3453,15 +3453,23 @@ function handleEditDataTypeSelect(val: string) {
 
 function openEditColumnModal(col: DbColumnMeta) {
   if (!activeTable.value) return;
+  // Normalize uppercase representation for standard types so dropdown option matches
+  const rawType = col.data_type.trim();
+  const matchedOpt = engineDataTypes.value
+    .flatMap(g => g.options)
+    .find(opt => opt.toUpperCase() === rawType.toUpperCase());
+
+  const initialDataType = matchedOpt || rawType.toUpperCase();
+
   editColumnForm.value = {
     originalName: col.name,
     name: col.name,
-    dataType: col.data_type,
+    dataType: initialDataType,
     isNullable: col.is_nullable,
     defaultValue: col.default_value ?? '',
   };
 
-  const upper = col.data_type.trim().toUpperCase();
+  const upper = rawType.toUpperCase();
   if (upper.startsWith('ENUM') || upper.startsWith('SET')) {
     const match = col.data_type.match(/\((.*)\)/);
     if (match && match[1]) {
