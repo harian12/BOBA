@@ -989,12 +989,21 @@
                       <!-- Outgoing Foreign Key Badge (Kolom ini merujuk ke tabel lain) -->
                       <span
                         v-for="fk in getColumnOutgoingFks(activeTable.name, col.name)"
-                        :key="'out_' + fk.to_table + '_' + fk.to_column"
-                        :title="`📤 Relasi Foreign Key: Merujuk ke ${fk.to_table}.${fk.to_column}`"
-                        class="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded bg-sky-950 border border-sky-600/70 text-[10px] text-sky-300 font-sans font-normal"
+                        :key="'out_' + (fk.constraint_name || fk.to_table + '_' + fk.to_column)"
+                        :title="`📤 Relasi Foreign Key (${fk.constraint_name || 'FK'}): Merujuk ke ${fk.to_table}.${fk.to_column}`"
+                        class="group inline-flex items-center space-x-1 pl-1.5 pr-1 py-0.5 rounded bg-sky-950 border border-sky-600/70 text-[10px] text-sky-300 font-sans font-normal"
                       >
                         <Icon icon="lucide:arrow-right-to-line" class="w-3 h-3 text-sky-400 shrink-0" />
                         <span class="truncate max-w-[130px] font-mono">{{ fk.to_table }}.{{ fk.to_column }}</span>
+                        <button
+                          v-if="fk.constraint_name"
+                          type="button"
+                          @click.stop="confirmDropForeignKey(fk)"
+                          class="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/80 hover:text-red-300 rounded text-slate-400 transition"
+                          title="Hapus Constraint Foreign Key Ini"
+                        >
+                          <Icon icon="lucide:x" class="w-2.5 h-2.5" />
+                        </button>
                       </span>
 
                       <!-- Incoming Foreign Key Badge (Kolom ini dirujuk oleh tabel lain) -->
@@ -2678,6 +2687,58 @@ async function executeAddFk() {
   } catch (err: any) {
     dialogStore.alert({
       title: 'Gagal Menambah Foreign Key',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
+async function confirmDropForeignKey(fk: DbForeignKeyRelation) {
+  if (!fk.constraint_name || !props.tab.dbConnection) return;
+  const cName = fk.constraint_name;
+  const srcTable = fk.from_table;
+  const tgtTable = fk.to_table;
+  const srcCol = fk.from_column;
+  const tgtCol = fk.to_column;
+
+  const confirmed = await dialogStore.confirm({
+    title: 'Hapus Foreign Key?',
+    description: `Apakah Anda yakin ingin menghapus relasi Foreign Key "${cName}" (${srcTable}.${srcCol} ➔ ${tgtTable}.${tgtCol})?`,
+    confirmText: 'Hapus Relasi',
+    isDestructive: true,
+  });
+
+  if (!confirmed) return;
+
+  const eng = engine.value;
+  let dropSql = '';
+  if (eng === 'mysql' || eng === 'mariadb') {
+    dropSql = `ALTER TABLE ${qi(srcTable)} DROP FOREIGN KEY ${qi(cName)};`;
+  } else if (eng === 'postgres' || eng === 'postgresql') {
+    dropSql = `ALTER TABLE ${qi(srcTable)} DROP CONSTRAINT ${qi(cName)};`;
+  } else {
+    dialogStore.alert({
+      title: 'Tidak Didukung',
+      description: `Engine ${eng} tidak mendukung DROP FOREIGN KEY secara langsung.`,
+      variant: 'error',
+    });
+    return;
+  }
+
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      dropSql
+    );
+    dialogStore.showToast(`Relasi FK ${cName} berhasil dihapus`, 'success', 3000);
+    await loadSchemaOverview();
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menghapus Foreign Key',
       description: String(err?.message || err),
       variant: 'error',
     });
