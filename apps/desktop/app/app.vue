@@ -795,6 +795,14 @@ async function checkUpdateSilently() {
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('click', closeTabContextMenu);
+  window.addEventListener('contextmenu', (e: MouseEvent) => {
+    // Prevent browser default context menu unless target is an input or textarea
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      return;
+    }
+    e.preventDefault();
+  });
   queueStore.initListener();
   checkUpdateSilently();
 });
