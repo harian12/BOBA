@@ -32,10 +32,16 @@ File installer `.exe` yang dihasilkan akan berada di:
 ---
 
 ## 4. Tandatangani Binary (*Signing Minisign Signature*)
-Tauri updater **wajib** memverifikasi tanda tangan digital (*minisign signature*). Tandatangani binary installer menggunakan private key:
-```bash
-$env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw "C:\Users\USER\.tauri\boba.key").Trim()
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "boba"
+Tauri updater **wajib** memverifikasi tanda tangan digital (*minisign signature*). Konfigurasi private key dan password diambil dari file `apps/desktop/src-tauri/.env`:
+
+```powershell
+# Baca konfigurasi dari .env
+$envContent = Get-Content "D:\MYP\BOBA\apps\desktop\src-tauri\.env"
+$keyPath = ($envContent | Where-Object { $_ -match "^TAURI_SIGNING_PRIVATE_KEY=(.*)$" } | ForEach-Object { $matches[1].Trim() })
+$password = ($envContent | Where-Object { $_ -match "^TAURI_SIGNING_PRIVATE_KEY_PASSWORD=(.*)$" } | ForEach-Object { $matches[1].Trim() })
+
+$env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw $keyPath).Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $password
 
 bun run --cwd apps/desktop tauri signer sign "D:\MYP\BOBA\apps\desktop\src-tauri\target\release\bundle\nsis\BOBA_<version>_x64-setup.exe"
 ```
