@@ -1220,6 +1220,17 @@
                 />
                 <button
                   type="button"
+                  @click="setDefaultEnumValue(enumValues[idx] || '')"
+                  :disabled="!(enumValues[idx] && enumValues[idx]?.trim())"
+                  :class="addColumnForm.defaultValue === enumValues[idx] && enumValues[idx]?.trim() ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-boba-900 text-slate-400 hover:text-emerald-300 border-boba-700 hover:border-emerald-600/60'"
+                  class="px-2 py-0.5 border rounded text-[10px] font-sans transition shrink-0 flex items-center space-x-1 disabled:opacity-30 disabled:pointer-events-none"
+                  title="Jadikan nilai ini sebagai Default Value"
+                >
+                  <Icon icon="lucide:check-circle-2" class="w-3 h-3" />
+                  <span>{{ addColumnForm.defaultValue === enumValues[idx] && enumValues[idx]?.trim() ? 'Default' : 'Set Default' }}</span>
+                </button>
+                <button
+                  type="button"
                   @click="removeEnumValue(idx)"
                   :disabled="enumValues.length <= 1"
                   class="p-1 text-slate-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-500 transition rounded"
@@ -2085,9 +2096,18 @@ function addEnumValue() {
   enumValues.value.push('');
 }
 
+function setDefaultEnumValue(val: string) {
+  if (!val || !val.trim()) return;
+  addColumnForm.value.defaultValue = val.trim();
+}
+
 function removeEnumValue(index: number) {
+  const removedVal = enumValues.value[index];
   if (enumValues.value.length > 1) {
     enumValues.value.splice(index, 1);
+    if (addColumnForm.value.defaultValue === removedVal) {
+      addColumnForm.value.defaultValue = '';
+    }
     syncEnumToDataType();
   }
 }

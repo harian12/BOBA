@@ -186,6 +186,17 @@
               />
               <button
                 type="button"
+                @click="setTableDesignerDefaultEnumValue(enumBuilderOptions[optIdx] || '')"
+                :disabled="!(enumBuilderOptions[optIdx] && enumBuilderOptions[optIdx]?.trim())"
+                :class="(enumBuilderCol?.default_value === enumBuilderOptions[optIdx] || enumBuilderCol?.default_value === `'${enumBuilderOptions[optIdx]}'`) && enumBuilderOptions[optIdx]?.trim() ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-boba-900 text-slate-400 hover:text-emerald-300 border-boba-700 hover:border-emerald-600/60'"
+                class="px-2 py-0.5 border rounded text-[10px] font-sans transition shrink-0 flex items-center space-x-1 disabled:opacity-30 disabled:pointer-events-none"
+                title="Jadikan nilai ini sebagai Default Value"
+              >
+                <Icon icon="lucide:check-circle-2" class="w-3 h-3" />
+                <span>{{ (enumBuilderCol?.default_value === enumBuilderOptions[optIdx] || enumBuilderCol?.default_value === `'${enumBuilderOptions[optIdx]}'`) && enumBuilderOptions[optIdx]?.trim() ? 'Default' : 'Set Default' }}</span>
+              </button>
+              <button
+                type="button"
                 @click="removeEnumOption(optIdx)"
                 :disabled="enumBuilderOptions.length <= 1"
                 class="p-1 text-slate-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-500 transition rounded"
@@ -278,9 +289,18 @@ function addEnumOption() {
   enumBuilderOptions.value.push('');
 }
 
+function setTableDesignerDefaultEnumValue(val: string) {
+  if (!enumBuilderCol.value || !val || !val.trim()) return;
+  enumBuilderCol.value.default_value = `'${val.trim()}'`;
+}
+
 function removeEnumOption(idx: number) {
   if (enumBuilderOptions.value.length > 1) {
+    const removed = enumBuilderOptions.value[idx];
     enumBuilderOptions.value.splice(idx, 1);
+    if (enumBuilderCol.value && (enumBuilderCol.value.default_value === removed || enumBuilderCol.value.default_value === `'${removed}'`)) {
+      enumBuilderCol.value.default_value = null;
+    }
     syncEnumBuilder();
   }
 }
