@@ -15,7 +15,7 @@
         </h3>
         <p
           v-if="dialogStore.options.description"
-          class="text-xs text-slate-300 leading-relaxed break-words"
+          class="text-xs text-slate-300 leading-relaxed break-words whitespace-pre-line"
         >
           {{ dialogStore.options.description }}
         </p>

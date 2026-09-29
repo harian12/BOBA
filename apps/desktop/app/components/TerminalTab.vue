@@ -76,6 +76,17 @@
           <Icon icon="lucide:folder-sync" class="w-3 h-3 text-sky-400" />
           <span>SFTP</span>
         </button>
+
+        <!-- Docker Manager Modal Button (Hanya muncul jika server memiliki Docker) -->
+        <button
+          v-if="hasDocker"
+          @click.stop="isDockerModalOpen = true"
+          class="px-2 py-0.5 bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 border border-sky-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Buka Docker Manager"
+        >
+          <Icon icon="lucide:container" class="w-3 h-3 text-sky-400" />
+          <span>Docker</span>
+        </button>
       </div>
     </div>
 
@@ -300,6 +311,18 @@
         </div>
       </button>
 
+      <!-- Open Docker Manager Context Menu -->
+      <button
+        v-if="hasDocker"
+        @click="closeContextMenu(); isDockerModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-sky-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">🐳</span>
+          <span>Docker Manager</span>
+        </div>
+      </button>
+
       <div class="h-px bg-[#232936] my-1"></div>
 
       <!-- Reconnect -->
@@ -464,6 +487,16 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Docker Manager Modal -->
+    <DockerManagerModal
+      v-if="isDockerModalOpen"
+      :isOpen="isDockerModalOpen"
+      :sessionId="tab.id"
+      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+      :initialUseSudo="dockerNeedsSudo"
+      @close="isDockerModalOpen = false"
+    />
   </div>
 </template>
 
@@ -481,6 +514,7 @@ import { useDialogStore } from '../stores/dialogStore.js';
 import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import type { ActiveTab, SnippetItem, ServerMetrics } from '../types/index.js';
+import DockerManagerModal from './DockerManagerModal.vue';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -497,6 +531,11 @@ const isReconnecting = ref(false);
 const reconnectCountdown = ref(3);
 let reconnectTimer: any = null;
 let isExplicitlyClosed = false;
+
+// Docker Manager State
+const hasDocker = ref(false);
+const dockerNeedsSudo = ref(false);
+const isDockerModalOpen = ref(false);
 
 // Resource Metrics
 const metrics = ref<ServerMetrics | null>(null);
@@ -1370,6 +1409,7 @@ async function connectSsh() {
     // Fetch initial metrics
     setTimeout(() => {
       fetchMetrics();
+      checkDockerAvailability();
     }, 1000);
   } catch (err: any) {
     props.tab.connected = false;
@@ -1379,6 +1419,30 @@ async function connectSsh() {
     if (!isExplicitlyClosed) {
       scheduleAutoReconnect();
     }
+  }
+}
+
+async function checkDockerAvailability() {
+  if (!props.tab.connected) return;
+  try {
+    const checkOut = await tauriBridge.sshExecCommand(props.tab.id, 'which docker || command -v docker');
+    if (checkOut && checkOut.trim() && !checkOut.toLowerCase().includes('not found') && !checkOut.toLowerCase().includes('no docker')) {
+      hasDocker.value = true;
+
+      // Check if docker needs sudo
+      try {
+        const testPs = await tauriBridge.sshExecCommand(props.tab.id, 'docker ps -q');
+        if (testPs.toLowerCase().includes('permission denied')) {
+          dockerNeedsSudo.value = true;
+        }
+      } catch {
+        dockerNeedsSudo.value = true;
+      }
+    } else {
+      hasDocker.value = false;
+    }
+  } catch {
+    hasDocker.value = false;
   }
 }
 
