@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { useVaultStore } from './vaultStore.js';
 import { useSessionStore } from './sessionStore.js';
+import { tauriBridge } from '../services/tauriBridge.js';
 import type { DbConnectionConfig, DbSavedQuery } from '../types/index.js';
 
 export const useDbmsStore = defineStore('dbms', () => {
@@ -18,6 +19,40 @@ export const useDbmsStore = defineStore('dbms', () => {
   const savedQueries = computed<DbSavedQuery[]>(() => {
     return vaultStore.vault.db_snippets || [];
   });
+
+  async function getErdLayoutPath(dbId: string, dbName: string): Promise<string> {
+    const appData = await tauriBridge.getAppDataDir();
+    // Use .boba/erd-layouts to keep it clean. For simplicity, just appData + boba-erd-layouts
+    // because getAppDataDir already includes the app bundle identifier on some platforms,
+    // but on dev it might just be Roaming\com.boba.app.
+    const dir = `${appData}/erd-layouts`;
+    await tauriBridge.fsCreateDir(dir).catch(() => {}); // ignore if exists
+    // Sanitize dbName to prevent path traversal
+    const safeDbName = dbName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `${dir}/erd_layout_${dbId}_${safeDbName}.json`;
+  }
+
+  async function loadErdLayout(dbId: string, dbName: string): Promise<Record<string, { x: number; y: number }>> {
+    try {
+      const path = await getErdLayoutPath(dbId, dbName);
+      const content = await tauriBridge.fsReadTextFile(path);
+      const parsed = JSON.parse(content);
+      return parsed?.tables || {};
+    } catch (e) {
+      // File doesn't exist or invalid JSON
+      return {};
+    }
+  }
+
+  async function saveErdLayout(dbId: string, dbName: string, tables: Record<string, { x: number; y: number }>) {
+    try {
+      const path = await getErdLayoutPath(dbId, dbName);
+      const content = JSON.stringify({ tables }, null, 2);
+      await tauriBridge.fsWriteTextFile(path, content);
+    } catch (e) {
+      console.error('Failed to save ERD layout', e);
+    }
+  }
 
   async function saveDatabase(config: DbConnectionConfig) {
     if (!vaultStore.vault.databases) {
@@ -84,6 +119,8 @@ export const useDbmsStore = defineStore('dbms', () => {
     removeDatabase,
     saveSavedQuery,
     removeSavedQuery,
+    loadErdLayout,
+    saveErdLayout,
     openNewModal,
     openEditModal,
     connectDatabase,

@@ -316,6 +316,8 @@ import {
 } from '../utils/erdLayout.js';
 import type { DbConnectionConfig, DbTableMeta, DbForeignKeyRelation } from '../types/index.js';
 
+import { useDbmsStore } from '../stores/dbmsStore.js';
+
 const uid = `erd${Math.random().toString(36).slice(2, 8)}`;
 
 const props = defineProps<{
@@ -323,6 +325,8 @@ const props = defineProps<{
   activeDb?: string;
   tables: DbTableMeta[];
 }>();
+
+const dbmsStore = useDbmsStore();
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
@@ -467,27 +471,52 @@ const storageKey = computed(() => {
   return `boba_erd_pos_${dbId}_${dbName}`;
 });
 
-function savePositionsToStorage() {
+async function savePositionsToStorage() {
+  const dbId = props.dbConfig?.id;
+  if (!dbId) return;
+  const dbName = props.activeDb || 'default';
   try {
-    localStorage.setItem(storageKey.value, JSON.stringify(tablePositions.value));
+    await dbmsStore.saveErdLayout(dbId, dbName, tablePositions.value);
   } catch (e) {
     console.debug('Failed to save ERD positions:', e);
   }
 }
 
-function loadPositionsFromStorage() {
+async function loadPositionsFromStorage() {
+  const dbId = props.dbConfig?.id;
+  if (!dbId) {
+    tablePositions.value = {};
+    return;
+  }
+  const dbName = props.activeDb || 'default';
+  try {
+    const parsed = await dbmsStore.loadErdLayout(dbId, dbName);
+    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+      tablePositions.value = parsed as any;
+      return;
+    }
+  } catch (e) {
+    console.debug('Failed to load ERD positions:', e);
+  }
+  
+  // Try to migrate from localStorage as fallback
   try {
     const saved = localStorage.getItem(storageKey.value);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object') {
         tablePositions.value = parsed;
+        // Clean up old localStorage
+        localStorage.removeItem(storageKey.value);
+        savePositionsToStorage();
         return;
       }
     }
   } catch (e) {
-    console.debug('Failed to load ERD positions:', e);
+    // Ignore migration error
   }
+  
+  // If nothing found
   tablePositions.value = {};
 }
 
@@ -640,14 +669,17 @@ watch(
 
 watch(
   [() => props.dbConfig?.id, () => props.activeDb],
-  () => {
-    loadPositionsFromStorage();
+  async () => {
+    await loadPositionsFromStorage();
+    if (Object.keys(tablePositions.value).length === 0 && props.tables.length > 0) {
+      resetGridLayout();
+    }
   },
 );
 
-onMounted(() => {
-  loadPositionsFromStorage();
-  if (Object.keys(tablePositions.value).length === 0) {
+onMounted(async () => {
+  await loadPositionsFromStorage();
+  if (Object.keys(tablePositions.value).length === 0 && props.tables.length > 0) {
     resetGridLayout();
   }
   loadForeignKeys();

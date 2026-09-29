@@ -731,14 +731,20 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     }
   }
 
-  async function approveToolCall(toolCallId: string) {
-    const thread = getOrCreateActiveThread(selectedSessionId.value);
+  async function approveToolCall(toolCallId: string, targetSessionId?: string) {
+    let thread = targetSessionId
+      ? threads.value.find(t => t.sessionId === targetSessionId && t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId)))
+      : null;
+    if (!thread) {
+      thread = threads.value.find(t => t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId))) || getOrCreateActiveThread(selectedSessionId.value);
+    }
+    const sid = thread.sessionId;
     const list = thread.messages;
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
       if (tc && tc.status === 'pending_approval') {
         try {
-          const result = await executeTool(selectedSessionId.value, tc);
+          const result = await executeTool(sid, tc);
           const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
           // Masukkan tool result ke riwayat pesan dan picu AI untuk analisis lanjutan
           list.push({
@@ -750,13 +756,13 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
           });
           thread.updatedAt = Date.now();
           saveState();
-          await continueAgentLoop(selectedSessionId.value);
+          await continueAgentLoop(sid);
         } catch (e: any) {
           list.push({
             id: `msg_tool_err_${Date.now()}`,
             role: 'tool',
             toolCallId: tc.id,
-            content: `Error executing ${tc.name}: ${e}`,
+            content: `Error executing ${tc.name}: ${e.message || String(e)}`,
             createdAt: Date.now(),
           });
           thread.updatedAt = Date.now();
@@ -767,8 +773,13 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     }
   }
 
-  function rejectToolCall(toolCallId: string) {
-    const thread = getOrCreateActiveThread(selectedSessionId.value);
+  function rejectToolCall(toolCallId: string, targetSessionId?: string) {
+    let thread = targetSessionId
+      ? threads.value.find(t => t.sessionId === targetSessionId && t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId)))
+      : null;
+    if (!thread) {
+      thread = threads.value.find(t => t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId))) || getOrCreateActiveThread(selectedSessionId.value);
+    }
     const list = thread.messages;
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
@@ -788,8 +799,14 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     }
   }
 
-  async function retryToolCall(toolCallId: string) {
-    const thread = getOrCreateActiveThread(selectedSessionId.value);
+  async function retryToolCall(toolCallId: string, targetSessionId?: string) {
+    let thread = targetSessionId
+      ? threads.value.find(t => t.sessionId === targetSessionId && t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId)))
+      : null;
+    if (!thread) {
+      thread = threads.value.find(t => t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId))) || getOrCreateActiveThread(selectedSessionId.value);
+    }
+    const sid = thread.sessionId;
     const list = thread.messages;
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
@@ -801,7 +818,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         saveState();
 
         try {
-          const result = await executeTool(selectedSessionId.value, tc);
+          const result = await executeTool(sid, tc);
           const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
 
           const existingToolMsg = list.find(m => m.role === 'tool' && m.toolCallId === tc.id);
@@ -818,7 +835,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
           }
           thread.updatedAt = Date.now();
           saveState();
-          await continueAgentLoop(selectedSessionId.value);
+          await continueAgentLoop(sid);
         } catch (e: any) {
           const existingToolMsg = list.find(m => m.role === 'tool' && m.toolCallId === tc.id);
           const errContent = `Error executing ${tc.name}: ${e.message || String(e)}`;
@@ -977,7 +994,7 @@ You have access to tools to inspect and configure the server and database:
     thread.updatedAt = Date.now();
     saveState();
 
-    await continueAgentLoop(selectedSessionId.value);
+    await continueAgentLoop(sid);
   }
 
   async function continueAgentLoop(sessionId: string) {
@@ -1013,7 +1030,7 @@ You have access to tools to inspect and configure the server and database:
     thread.updatedAt = Date.now();
     saveState();
 
-    const systemPrompt = buildSystemPrompt(sessionId);
+    const systemPrompt = buildSystemPrompt(sid);
 
     try {
       await streamChat(
@@ -1062,7 +1079,7 @@ You have access to tools to inspect and configure the server and database:
                   } else {
                     let executed = false;
                     try {
-                      const result = await executeTool(selectedSessionId.value, pendingCall);
+                      const result = await executeTool(sid, pendingCall);
                       const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
                       chatList.push({
                         id: `msg_tool_${Date.now()}`,
@@ -1085,7 +1102,7 @@ You have access to tools to inspect and configure the server and database:
                     if (executed) {
                       thread.updatedAt = Date.now();
                       saveState();
-                      await continueAgentLoop(selectedSessionId.value);
+                      await continueAgentLoop(sid);
                     }
                   }
                 }

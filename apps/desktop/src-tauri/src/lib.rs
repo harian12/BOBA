@@ -69,6 +69,7 @@ pub fn run() {
             commands::sftp_fix_permissions,
             commands::fs_list_local_dir,
             commands::fs_get_local_drives,
+            commands::fs_get_app_data_dir,
             commands::fs_read_text_file,
             commands::fs_write_text_file,
             commands::fs_create_dir,

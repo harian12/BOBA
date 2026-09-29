@@ -501,7 +501,7 @@ impl SshManager {
         Ok(())
     }
 
-    /// Execute a quick command in a dedicated session channel and collect output (with 15s timeout)
+    /// Execute a quick command in a dedicated session channel and collect output (with 10-minute / 600s timeout)
     pub async fn exec_command(&self, session_id: &str, command: &str) -> Result<String, String> {
         let handle_opt = {
             let sessions = self.sessions.lock();
@@ -541,9 +541,9 @@ impl SshManager {
                 String::from_utf8(output).map_err(|e| format!("Exec output not UTF-8: {}", e))
             };
 
-            return match tokio::time::timeout(std::time::Duration::from_secs(180), exec_fut).await {
+            return match tokio::time::timeout(std::time::Duration::from_secs(600), exec_fut).await {
                 Ok(res) => res,
-                Err(_) => Err("Command timed out after 180s".into()),
+                Err(_) => Err("Command timed out after 600s (10 menit)".into()),
             };
         }
 

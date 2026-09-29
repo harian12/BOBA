@@ -547,6 +547,16 @@ pub fn fs_get_local_drives() -> Vec<crate::ssh_session::LocalDriveItem> {
 }
 
 #[tauri::command]
+pub fn fs_get_app_data_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    app_handle
+        .path()
+        .app_data_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| format!("Failed to get app data dir: {}", e))
+}
+
+#[tauri::command]
 pub async fn sftp_download_folder(
     app: AppHandle,
     state: State<'_, AppState>,

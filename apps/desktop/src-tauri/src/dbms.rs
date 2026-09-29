@@ -20,6 +20,10 @@ pub struct DbConnectionConfig {
     pub is_remote_sqlite: Option<bool>,
     pub ssh_tunnel_enabled: Option<bool>,
     pub ssh_session_id: Option<String>,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -1941,6 +1945,8 @@ mod tests {
             is_remote_sqlite: None,
             ssh_tunnel_enabled: None,
             ssh_session_id: None,
+            folder_id: None,
+            color: None,
         }
     }
 
