@@ -1138,7 +1138,8 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <select
-                v-model="addColumnForm.dataType"
+                :value="addColumnForm.dataType"
+                @change="handleDataTypeSelect(($event.target as HTMLSelectElement).value)"
                 class="bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-2 text-xs text-slate-200 font-mono focus:outline-none transition"
               >
                 <optgroup v-for="grp in engineDataTypes" :key="grp.category" :label="grp.category">
@@ -1153,6 +1154,46 @@
                 placeholder="Ketik tipe data custom..."
                 class="bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
               />
+            </div>
+          </div>
+
+          <!-- ENUM / SET Value Builder -->
+          <div v-if="isEnumType" class="p-3 bg-boba-950/80 border border-emerald-900/40 rounded-lg space-y-2.5 animate-in fade-in duration-200">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-emerald-400 flex items-center space-x-1.5">
+                <Icon icon="lucide:list-plus" class="w-3.5 h-3.5" />
+                <span>Opsi Nilai ENUM / SET</span>
+              </span>
+              <button
+                type="button"
+                @click="addEnumValue"
+                class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition flex items-center space-x-1"
+              >
+                <Icon icon="lucide:plus" class="w-3 h-3" />
+                <span>Tambah Opsi</span>
+              </button>
+            </div>
+            
+            <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+              <div v-for="(_, idx) in enumValues" :key="idx" class="flex items-center space-x-1.5">
+                <span class="text-[10px] text-slate-500 font-mono w-4 text-right">{{ idx + 1 }}.</span>
+                <input
+                  v-model="enumValues[idx]"
+                  @input="syncEnumToDataType"
+                  type="text"
+                  placeholder="Nilai opsi (misal: active)"
+                  class="flex-1 bg-boba-900 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-1 text-xs text-slate-100 font-mono focus:outline-none transition"
+                />
+                <button
+                  type="button"
+                  @click="removeEnumValue(idx)"
+                  :disabled="enumValues.length <= 1"
+                  class="p-1 text-slate-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-500 transition rounded"
+                  title="Hapus opsi"
+                >
+                  <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1813,6 +1854,53 @@ const addColumnForm = ref<{
   isNullable: true,
   defaultValue: '',
 });
+
+const enumValues = ref<string[]>(['active', 'inactive']);
+
+const isEnumType = computed(() => {
+  const dt = addColumnForm.value.dataType.trim().toUpperCase();
+  return dt.startsWith('ENUM') || dt.startsWith('SET');
+});
+
+function addEnumValue() {
+  enumValues.value.push('');
+}
+
+function removeEnumValue(index: number) {
+  if (enumValues.value.length > 1) {
+    enumValues.value.splice(index, 1);
+    syncEnumToDataType();
+  }
+}
+
+function syncEnumToDataType() {
+  const isSet = addColumnForm.value.dataType.trim().toUpperCase().startsWith('SET');
+  const tag = isSet ? 'SET' : 'ENUM';
+  const formatted = enumValues.value
+    .map(v => v.trim())
+    .filter(v => v.length > 0)
+    .map(v => `'${v.replace(/'/g, "\\'")}'`)
+    .join(', ');
+  addColumnForm.value.dataType = `${tag}(${formatted || "''"})`;
+}
+
+function handleDataTypeSelect(val: string) {
+  addColumnForm.value.dataType = val;
+  const upper = val.trim().toUpperCase();
+  if (upper.startsWith('ENUM') || upper.startsWith('SET')) {
+    // Extract inner values
+    const match = val.match(/\((.*)\)/);
+    if (match && match[1]) {
+      const items = match[1]
+        .split(',')
+        .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+        .filter(s => s.length > 0);
+      enumValues.value = items.length > 0 ? items : [''];
+    } else {
+      enumValues.value = ['active', 'inactive'];
+    }
+  }
+}
 
 const engineDataTypes = computed(() => {
   const eng = engine.value;
