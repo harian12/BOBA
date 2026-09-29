@@ -51,6 +51,7 @@
           <table class="w-full text-left border-collapse">
             <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
               <tr>
+                <th class="px-2 py-2 border-r border-boba-800 w-8 text-center" title="Urutan / Drag Handle">#</th>
                 <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
                 <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
                 <th class="px-3 py-2 border-r border-boba-800 text-center w-16">PK</th>
@@ -60,7 +61,26 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-boba-850">
-              <tr v-for="(col, idx) in columns" :key="idx" class="hover:bg-boba-800/40">
+              <tr
+                v-for="(col, idx) in columns"
+                :key="idx"
+                draggable="true"
+                @dragstart="onColDragStart(idx, $event)"
+                @dragover.prevent="onColDragOver(idx)"
+                @drop="onColDrop(idx)"
+                @dragend="onColDragEnd"
+                :class="[
+                  'hover:bg-boba-800/40 transition-colors',
+                  draggedColIdx === idx ? 'opacity-40 bg-indigo-950/60' : '',
+                  dragOverColIdx === idx && draggedColIdx !== idx ? 'border-t-2 border-indigo-400 bg-indigo-950/30' : ''
+                ]"
+              >
+                <td class="p-1 border-r border-boba-850 text-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-indigo-300 select-none">
+                  <div class="flex items-center justify-center space-x-1">
+                    <Icon icon="lucide:grip-vertical" class="w-3.5 h-3.5" />
+                    <span class="text-[10px]">{{ idx + 1 }}</span>
+                  </div>
+                </td>
                 <td class="p-1 border-r border-boba-850">
                   <input
                     v-model="col.name"
@@ -69,21 +89,34 @@
                   />
                 </td>
                 <td class="p-1 border-r border-boba-850">
-                  <select
-                    v-model="col.data_type"
-                    class="w-full bg-boba-900 border border-boba-700 rounded px-2 py-1 text-xs text-amber-300 focus:outline-none font-mono"
-                  >
-                    <option value="INT">INT</option>
-                    <option value="BIGINT">BIGINT</option>
-                    <option value="VARCHAR(255)">VARCHAR(255)</option>
-                    <option value="VARCHAR(100)">VARCHAR(100)</option>
-                    <option value="TEXT">TEXT</option>
-                    <option value="BOOLEAN">BOOLEAN</option>
-                    <option value="DATETIME">DATETIME</option>
-                    <option value="TIMESTAMP">TIMESTAMP</option>
-                    <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-                    <option value="JSON">JSON</option>
-                  </select>
+                  <div class="flex items-center space-x-1">
+                    <select
+                      :value="col.data_type"
+                      @change="handleColumnDataTypeSelect(col, ($event.target as HTMLSelectElement).value)"
+                      class="w-1/2 bg-boba-900 border border-boba-700 rounded px-1.5 py-1 text-xs text-amber-300 focus:outline-none font-mono"
+                    >
+                      <optgroup v-for="grp in engineDataTypes" :key="grp.category" :label="grp.category">
+                        <option v-for="t in grp.options" :key="t" :value="t">{{ t }}</option>
+                      </optgroup>
+                    </select>
+
+                    <input
+                      v-model="col.data_type"
+                      placeholder="Tipe data custom..."
+                      class="w-1/2 bg-boba-900 border border-boba-700 rounded px-2 py-1 text-xs text-amber-200 focus:outline-none font-mono"
+                    />
+
+                    <!-- Tombol Builder jika tipe ENUM / SET -->
+                    <button
+                      v-if="isEnumOrSet(col.data_type)"
+                      type="button"
+                      @click="openEnumBuilder(col)"
+                      class="p-1 bg-emerald-950/80 hover:bg-emerald-800 border border-emerald-600/70 text-emerald-300 rounded transition shrink-0"
+                      title="Buka Builder Opsi ENUM / SET"
+                    >
+                      <Icon icon="lucide:list-plus" class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </td>
                 <td class="p-1 text-center border-r border-boba-850">
                   <input
@@ -121,16 +154,79 @@
         </div>
       </div>
 
-      <!-- DDL Preview -->
-      <div class="space-y-1">
-        <div class="text-[11px] font-semibold text-slate-400 uppercase">
-          Preview {{ tableToEdit ? 'ALTER TABLE' : 'DDL' }} Script ({{ engine || 'unknown engine' }}):
+        <!-- DDL Preview -->
+        <div class="space-y-1">
+          <div class="text-[11px] font-semibold text-slate-400 uppercase">
+            Preview {{ tableToEdit ? 'ALTER TABLE' : 'DDL' }} Script ({{ engine || 'unknown engine' }}):
+          </div>
+          <pre class="bg-black/60 border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 max-h-32 overflow-auto whitespace-pre-wrap">{{ generatedDdl }}</pre>
+          <div v-if="unsupportedChanges.length > 0" class="text-[11px] text-amber-300 space-y-0.5">
+            <div v-for="(issue, i) in unsupportedChanges" :key="i">⚠ {{ issue }}</div>
+          </div>
         </div>
-        <pre class="bg-black/60 border border-boba-800 rounded-lg p-3 text-xs font-mono text-emerald-300 max-h-32 overflow-auto whitespace-pre-wrap">{{ generatedDdl }}</pre>
-        <div v-if="unsupportedChanges.length > 0" class="text-[11px] text-amber-300 space-y-0.5">
-          <div v-for="(issue, i) in unsupportedChanges" :key="i">⚠ {{ issue }}</div>
+
+        <!-- ENUM / SET Option Builder Popup Modal -->
+        <div
+          v-if="enumBuilderCol"
+          class="p-3 bg-boba-950 border border-emerald-700/60 rounded-xl space-y-2.5 shadow-lg animate-in fade-in duration-150"
+        >
+          <div class="flex items-center justify-between border-b border-boba-800 pb-2">
+            <div class="flex items-center space-x-1.5 text-emerald-400 text-xs font-semibold">
+              <Icon icon="lucide:list-plus" class="w-4 h-4" />
+              <span>Opsi ENUM / SET untuk kolom: <strong class="text-white font-mono">{{ enumBuilderCol.name || 'Kolom' }}</strong></span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button
+                type="button"
+                @click="addEnumOption"
+                class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-medium transition flex items-center space-x-1"
+              >
+                <Icon icon="lucide:plus" class="w-3 h-3" />
+                <span>Tambah Opsi</span>
+              </button>
+              <button
+                type="button"
+                @click="closeEnumBuilder"
+                class="text-slate-400 hover:text-white p-1 rounded hover:bg-boba-800 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+            <div v-for="(_, optIdx) in enumBuilderOptions" :key="optIdx" class="flex items-center space-x-1.5">
+              <span class="text-[10px] text-slate-500 font-mono w-4 text-right">{{ optIdx + 1 }}.</span>
+              <input
+                v-model="enumBuilderOptions[optIdx]"
+                @input="syncEnumBuilder"
+                type="text"
+                placeholder="Nilai opsi (misal: active)"
+                class="flex-1 bg-boba-900 border border-boba-700 focus:border-emerald-500 rounded px-2 py-1 text-xs text-slate-100 font-mono focus:outline-none transition"
+              />
+              <button
+                type="button"
+                @click="setTableDesignerDefaultEnumValue(enumBuilderOptions[optIdx] || '')"
+                :disabled="!(enumBuilderOptions[optIdx] && enumBuilderOptions[optIdx]?.trim())"
+                :class="(enumBuilderCol?.default_value === enumBuilderOptions[optIdx] || enumBuilderCol?.default_value === `'${enumBuilderOptions[optIdx]}'`) && enumBuilderOptions[optIdx]?.trim() ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-boba-900 text-slate-400 hover:text-emerald-300 border-boba-700 hover:border-emerald-600/60'"
+                class="px-2 py-0.5 border rounded text-[10px] font-sans transition shrink-0 flex items-center space-x-1 disabled:opacity-30 disabled:pointer-events-none"
+                title="Jadikan nilai ini sebagai Default Value"
+              >
+                <Icon icon="lucide:check-circle-2" class="w-3 h-3" />
+                <span>{{ (enumBuilderCol?.default_value === enumBuilderOptions[optIdx] || enumBuilderCol?.default_value === `'${enumBuilderOptions[optIdx]}'`) && enumBuilderOptions[optIdx]?.trim() ? 'Default' : 'Set Default' }}</span>
+              </button>
+              <button
+                type="button"
+                @click="removeEnumOption(optIdx)"
+                :disabled="enumBuilderOptions.length <= 1"
+                class="p-1 text-slate-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-500 transition rounded"
+                title="Hapus opsi"
+              >
+                <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
 
       <!-- Actions -->
       <div class="border-t border-boba-800 pt-3 flex items-center justify-end space-x-2">
@@ -179,8 +275,186 @@ const columns = ref<DbColumnMeta[]>([]);
 const originalColumns = ref<DbColumnMeta[]>([]);
 const executing = ref(false);
 
+// Drag and drop column reordering
+const draggedColIdx = ref<number | null>(null);
+const dragOverColIdx = ref<number | null>(null);
+
+function onColDragStart(idx: number, e: DragEvent) {
+  draggedColIdx.value = idx;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+  }
+}
+
+function onColDragOver(idx: number) {
+  dragOverColIdx.value = idx;
+}
+
+function onColDrop(targetIdx: number) {
+  if (draggedColIdx.value === null || draggedColIdx.value === targetIdx) return;
+  const item = columns.value.splice(draggedColIdx.value, 1)[0];
+  if (item) {
+    columns.value.splice(targetIdx, 0, item);
+  }
+  onColDragEnd();
+}
+
+function onColDragEnd() {
+  draggedColIdx.value = null;
+  dragOverColIdx.value = null;
+}
+
 const engine = computed(() => normalizeEngine(props.dbConfig?.engine));
 const isSqlite = computed(() => engine.value === 'sqlite');
+
+// ENUM / SET Builder State
+const enumBuilderCol = ref<DbColumnMeta | null>(null);
+const enumBuilderOptions = ref<string[]>(['active', 'inactive']);
+
+function isEnumOrSet(dataType: string): boolean {
+  const upper = dataType?.trim().toUpperCase() || '';
+  return upper.startsWith('ENUM') || upper.startsWith('SET');
+}
+
+function openEnumBuilder(col: DbColumnMeta) {
+  enumBuilderCol.value = col;
+  const match = col.data_type.match(/\((.*)\)/);
+  if (match && match[1]) {
+    const items = match[1]
+      .split(',')
+      .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(s => s.length > 0);
+    enumBuilderOptions.value = items.length > 0 ? items : [''];
+  } else {
+    enumBuilderOptions.value = ['active', 'inactive'];
+  }
+}
+
+function closeEnumBuilder() {
+  enumBuilderCol.value = null;
+}
+
+function addEnumOption() {
+  enumBuilderOptions.value.push('');
+}
+
+function setTableDesignerDefaultEnumValue(val: string) {
+  if (!enumBuilderCol.value || !val || !val.trim()) return;
+  enumBuilderCol.value.default_value = `'${val.trim()}'`;
+}
+
+function removeEnumOption(idx: number) {
+  if (enumBuilderOptions.value.length > 1) {
+    const removed = enumBuilderOptions.value[idx];
+    enumBuilderOptions.value.splice(idx, 1);
+    if (enumBuilderCol.value && (enumBuilderCol.value.default_value === removed || enumBuilderCol.value.default_value === `'${removed}'`)) {
+      enumBuilderCol.value.default_value = null;
+    }
+    syncEnumBuilder();
+  }
+}
+
+function syncEnumBuilder() {
+  if (!enumBuilderCol.value) return;
+  const isSet = enumBuilderCol.value.data_type.trim().toUpperCase().startsWith('SET');
+  const tag = isSet ? 'SET' : 'ENUM';
+  const formatted = enumBuilderOptions.value
+    .map(v => v.trim())
+    .filter(v => v.length > 0)
+    .map(v => `'${v.replace(/'/g, "\\'")}'`)
+    .join(', ');
+  enumBuilderCol.value.data_type = `${tag}(${formatted || "''"})`;
+}
+
+function handleColumnDataTypeSelect(col: DbColumnMeta, val: string) {
+  col.data_type = val;
+  const upper = val.trim().toUpperCase();
+  if (upper.startsWith('ENUM') || upper.startsWith('SET')) {
+    openEnumBuilder(col);
+  }
+}
+
+const engineDataTypes = computed(() => {
+  const eng = engine.value;
+  if (eng === 'postgres' || eng === 'postgresql') {
+    return [
+      {
+        category: 'Teks & Karakter',
+        options: [
+          'VARCHAR(255)', 'VARCHAR(100)', 'VARCHAR(50)', 'TEXT', 'CHAR(1)', 'CHAR(36)', 'CITEXT'
+        ]
+      },
+      {
+        category: 'Numerik & Angka',
+        options: [
+          'INTEGER', 'BIGINT', 'SMALLINT', 'SERIAL', 'BIGSERIAL', 'NUMERIC(10,2)', 'DECIMAL(10,2)', 'REAL', 'DOUBLE PRECISION', 'BOOLEAN'
+        ]
+      },
+      {
+        category: 'Tanggal & Waktu',
+        options: [
+          'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITHOUT TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP', 'DATE', 'TIME', 'INTERVAL'
+        ]
+      },
+      {
+        category: 'JSON, UUID & Khusus',
+        options: [
+          'JSONB', 'JSON', 'UUID', 'BYTEA', 'INET', 'CIDR', 'MACADDR', 'XML'
+        ]
+      }
+    ];
+  }
+
+  if (eng === 'sqlite') {
+    return [
+      {
+        category: 'Tipe Data Standar SQLite',
+        options: [
+          'TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATETIME', 'VARCHAR(255)'
+        ]
+      }
+    ];
+  }
+
+  // MySQL & MariaDB default
+  return [
+    {
+      category: 'Teks & String',
+      options: [
+        'VARCHAR(255)', 'VARCHAR(100)', 'VARCHAR(50)', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'CHAR(36)', 'CHAR(1)'
+      ]
+    },
+    {
+      category: 'ENUM & Pilihan Nilai',
+      options: [
+        "ENUM('active', 'inactive')",
+        "ENUM('pending', 'approved', 'rejected')",
+        "ENUM('yes', 'no')",
+        "ENUM('draft', 'published', 'archived')",
+        "SET('a', 'b', 'c')"
+      ]
+    },
+    {
+      category: 'Numerik & Angka',
+      options: [
+        'INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'DECIMAL(10,2)', 'FLOAT', 'DOUBLE', 'BOOLEAN'
+      ]
+    },
+    {
+      category: 'Tanggal & Waktu',
+      options: [
+        'DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR'
+      ]
+    },
+    {
+      category: 'Biner, JSON & Khusus',
+      options: [
+        'JSON', 'UUID', 'BLOB', 'LONGBLOB', 'VARBINARY(255)'
+      ]
+    }
+  ];
+});
 
 watch(
   () => props.isOpen,
