@@ -103,6 +103,29 @@ BOBA adalah aplikasi remote terminal & SFTP manager modern untuk Windows dengan 
 - **Kunci / Buka Proteksi Data**: Fitur kunci manual, tombol `Lock` di top bar, dan pintasan `Ctrl+Shift+L`.
 - **Ubah Master Password**: Ubah master password dengan re-enkripsi penuh seluruh payload data secara lokal.
 
+### 7. Manajer Docker & Container (v0.2.7)
+- **Empat Tab Inventaris**: `Containers`, `Images`, `Volumes`, dan `Networks`, masing-masing lengkap dengan konfirmasi hapus dan penghitung jumlah.
+- **Kontrol Siklus Hidup Container**: `Start`, `Stop`, dan `Restart` langsung dari tabel, dengan dialog konfirmasi untuk aksi yang mengganggu.
+- **Log Viewer Container**: Buka log tiap container dengan pilihan jumlah baris (`Tail`), aksi salin, dan analisis log langsung oleh AI Copilot.
+- **Shell Interaktif**: Buka shell di dalam container tanpa harus keluar dari BOBA.
+- **Deteksi Akses Docker**: Pemindaian otomatis mencoba tanpa `sudo` lalu jatuh ke `sudo -n`. Bila Docker hanya dapat diakses sebagai root, aplikasi menandai kebutuhan tersebut dan menawarkan tombol untuk mengaktifkan mode sudo, alih-alih diam-diam menampilkan daftar container kosong.
+- **Dukungan Path Docker Non-Standar**: Pencarian biner di `command -v`, `/usr/bin`, `/usr/local/bin`, dan `/snap/bin` agar instalasi Snap dan instalasi kustom tetap terdeteksi.
+
+### 8. Server Monitoring & Apps & Log Viewer (v0.2.8)
+- **Jendela Monitoring Terpisah**: Dibuka sebagai window Tauri tersendiri dari tab terminal, sehingga dashboard yang dibiarkan terbuka tidak ikut terputus oleh idle timeout terminal.
+- **Metrik Real-time**: CPU, RAM, Swap, Disk, Uptime, dan Load Average dengan sparkline 60 titik, tooltip hover, label waktu, dan tabel Top 10 proses yang bisa diurutkan berdasarkan CPU atau MEM.
+- **Load Average Relatif terhadap Core**: Load dinilai dibanding jumlah core, karena load 2 itu longgar pada server 16 core namun sudah jenuh pada server single-core. Keterkangnya disajikan dalam bahasa alami (Normal, Mulai penuh, Bebani, Kritis) beserta arah trennya, bukan angka mentah saja.
+- **Pita Peringatan Per Sumber Daya**: Ambang bertingkat untuk CPU, RAM, Swap, dan Disk membuat kartu KPI berubah warna dan memunculkan banner gabungan. Swap dinilai lebih awal (25% sudah berstatus perlu perhatian) karena swap terpakai menandakan tekanan memori. Disk 95% penuh tidak lagi tampil sebagai angka hijau yang tenang.
+- **Notifikasi Eskalasi**: Notifikasi desktop berbunyi hanya saat sebuah sumber daya berpindah pita atau mulai pulih, dengan jeda 90 detik per sumber daya, sehingga tidak membanjir setiap polling.
+- **Diagnosa AI Kesehatan Server**: Analisis dilayani AI Copilot dengan data yang sudah dibaca (rata-rata dan puncak CPU, load terhadap jumlah core, seluruh proses, daftar ambang terlampaui) dan hasilnya ditampilkan inline di jendela monitoring.
+- **Penemuan Aplikasi Otomatis**: Pendeteksian aplikasi dari **PM2**, **Docker**, **systemd**, dan **document root** (`/var/www`, `/srv/http`, `/usr/share/nginx/html`). Pemindaian document root mengenali Laravel, WordPress, Django, Next.js, Nuxt, Symfony, PHP, dan Node.js. Pemindaian ini penting karena instalasi Laravel atau WordPress tidak memiliki proses PM2 maupun unit systemd, sehingga sebelumnya tidak pernah terlihat.
+- **Log Viewer Langsung**: Snapshot awal (pilihan 100/200/500/1000 baris) lalu live tail streaming, pencarian log, penghitung baris baru, jeda, bersihkan, salin, word wrap, auto-follow, dan tombol *Log terbaru*.
+- **Reconnect Cerdas**: Koneksi log yang putus mencoba menyambung ulang dengan exponential backoff (1/2/4/8/15 detik, maksimum 5 percobaan) dan menampilkan status `LIVE`, `RECONNECT x/5`, atau `PUTUS`.
+- **Dukungan Multi-Format PM2**: Parser menoleransi output array JSON (PM2 3/4) maupun JSON Lines (PM2 5+), kebisingan ANSI dan CRLF, serta memungkinkan pembacaan log PSQL, termasuk mode stdout/stderr.
+- **Path Log PM2 yang Akurat**: Path log diambil dari metadata daemon (`pm_out_log_path` / `pm_err_log_path`) alih-alih menebak `~/.pm2/logs/<name>-out.log`, karena file ecosystem bisa menamai log berbeda.
+- **Analisa Log dengan AI**: Baris log yang mencurigakan dikirim ke AI Copilot untuk dianalisa, termasuk jumlah error dan warning pada log tersebut.
+- **Batas Keamanan Stream**: Maksimal 3 live stream aktif, dan setiap stream memakai channel SSH khusus yang tidak di-*detach*, sehingga otomatis berhenti saat jendela ditutup dan tidak meninggalkan proses `tail` yatim di server.
+
 ---
 
 ## Arsitektur & Teknologi
