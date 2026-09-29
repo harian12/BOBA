@@ -1752,7 +1752,7 @@ impl DbmsManager {
                 let rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(
                     "SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, CONSTRAINT_NAME
                      FROM information_schema.KEY_COLUMN_USAGE
-                     WHERE TABLE_SCHEMA = $1 AND REFERENCED_TABLE_NAME IS NOT NULL"
+                     WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL"
                 )
                 .bind(&target_db)
                 .fetch_all(&pool)
