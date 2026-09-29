@@ -78,10 +78,22 @@
           </button>
         </div>
 
-        <!-- Database/Schema Selector Dropdown (if multiple databases exist) -->
-        <div v-if="schemaOverview?.databases && schemaOverview.databases.length > 1" class="space-y-1">
-          <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Database:</label>
+        <!-- Database/Schema Selector Dropdown & Create Database -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between">
+            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Database:</label>
+            <button
+              v-if="engine !== 'sqlite' && engine !== 'redis' && engine !== 'mongodb'"
+              @click="openCreateDbModal"
+              class="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 font-sans font-medium hover:underline transition"
+              title="Buat Database Baru"
+            >
+              <Icon icon="lucide:plus-circle" class="w-3 h-3" />
+              <span>Database Baru</span>
+            </button>
+          </div>
           <select
+            v-if="schemaOverview?.databases && schemaOverview.databases.length > 1"
             v-model="activeDatabase"
             @change="handleDatabaseChange"
             class="w-full bg-boba-950 border border-boba-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none font-mono"
@@ -90,15 +102,28 @@
               {{ db }}
             </option>
           </select>
+          <div v-else class="text-xs font-mono text-slate-300 px-2 py-1 bg-boba-950/60 border border-boba-800/80 rounded truncate">
+            {{ activeDatabase || tab.dbConnection?.database || 'Default Database' }}
+          </div>
         </div>
 
-        <!-- Filter Tables Input -->
-        <input
-          v-model="tableFilter"
-          type="text"
-          placeholder="Filter objek/tabel..."
-          class="w-full bg-boba-950 border border-boba-800 focus:border-boba-accent rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
-        />
+        <!-- Filter Tables Input & Create Table Button -->
+        <div class="flex items-center space-x-1.5">
+          <input
+            v-model="tableFilter"
+            type="text"
+            placeholder="Filter tabel..."
+            class="flex-1 bg-boba-950 border border-boba-800 focus:border-boba-accent rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
+          />
+          <button
+            @click="openTableDesigner()"
+            class="px-2 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-xs transition flex items-center space-x-1 shrink-0 shadow"
+            title="Buat Tabel Baru"
+          >
+            <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+            <span class="text-[11px] font-medium font-sans">Tabel</span>
+          </button>
+        </div>
       </div>
 
       <!-- Objects Tree List (Tables, Views, Collections, Keys) -->
@@ -1326,6 +1351,86 @@
             >
               <Icon icon="lucide:play" class="w-3.5 h-3.5" />
               <span>Simpan Kolom</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Create Database Modal -->
+    <div
+      v-if="isCreateDbModalOpen"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <Icon icon="lucide:database" class="w-4 h-4 text-emerald-400" />
+            <h3 class="text-base font-bold text-slate-100">Buat Database Baru</h3>
+          </div>
+          <button @click="isCreateDbModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-boba-800 transition">
+            <Icon icon="lucide:x" class="w-4 h-4" />
+          </button>
+        </div>
+
+        <form @submit.prevent="executeCreateDatabase" class="space-y-4">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Nama Database</label>
+            <input
+              v-model="newDbForm.name"
+              type="text"
+              required
+              placeholder="misal: db_ecommerce, inventory_system"
+              class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+            />
+          </div>
+
+          <div v-if="engine === 'mysql' || engine === 'mariadb'" class="grid grid-cols-2 gap-3">
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-300">Charset (Opsional)</label>
+              <select
+                v-model="newDbForm.charset"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none font-mono transition"
+              >
+                <option value="utf8mb4">utf8mb4 (Recommended)</option>
+                <option value="utf8">utf8</option>
+                <option value="latin1">latin1</option>
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-300">Collation (Opsional)</label>
+              <select
+                v-model="newDbForm.collation"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none font-mono transition"
+              >
+                <option value="utf8mb4_unicode_ci">utf8mb4_unicode_ci</option>
+                <option value="utf8mb4_general_ci">utf8mb4_general_ci</option>
+                <option value="utf8_general_ci">utf8_general_ci</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Generated SQL Preview -->
+          <div v-if="createDbSqlPreview" class="pt-1">
+            <div class="text-[10px] text-slate-500 mb-1">Preview SQL Query:</div>
+            <pre class="bg-black/60 border border-boba-800 p-2 rounded text-[9px] text-emerald-300 font-mono whitespace-pre-wrap">{{ createDbSqlPreview }}</pre>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-3 border-t border-boba-800 mt-4">
+            <button
+              type="button"
+              @click="isCreateDbModalOpen = false"
+              class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="!newDbForm.name.trim()"
+              class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition"
+            >
+              <Icon icon="lucide:play" class="w-3.5 h-3.5" />
+              <span>Buat Database</span>
             </button>
           </div>
         </form>
@@ -2734,6 +2839,66 @@ const tableContextMenu = ref<{
   y: 0,
   table: null,
 });
+
+// --- Create Database State ---
+const isCreateDbModalOpen = ref(false);
+const newDbForm = ref<{
+  name: string;
+  charset: string;
+  collation: string;
+}>({
+  name: '',
+  charset: 'utf8mb4',
+  collation: 'utf8mb4_unicode_ci',
+});
+
+const createDbSqlPreview = computed(() => {
+  if (!newDbForm.value.name.trim()) return '';
+  const dbName = qi(newDbForm.value.name.trim());
+  const eng = engine.value;
+  if (eng === 'postgres' || eng === 'postgresql') {
+    return `CREATE DATABASE ${dbName};`;
+  }
+  if (eng === 'mysql' || eng === 'mariadb') {
+    return `CREATE DATABASE ${dbName} CHARACTER SET ${newDbForm.value.charset} COLLATE ${newDbForm.value.collation};`;
+  }
+  return `CREATE DATABASE ${dbName};`;
+});
+
+function openCreateDbModal() {
+  newDbForm.value = {
+    name: '',
+    charset: 'utf8mb4',
+    collation: 'utf8mb4_unicode_ci',
+  };
+  isCreateDbModalOpen.value = true;
+}
+
+async function executeCreateDatabase() {
+  if (!createDbSqlPreview.value || !props.tab.dbConnection) return;
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      undefined,
+      createDbSqlPreview.value
+    );
+    dialogStore.showToast(`Database ${newDbForm.value.name} berhasil dibuat`, 'success', 3000);
+    const createdName = newDbForm.value.name.trim();
+    isCreateDbModalOpen.value = false;
+    await loadSchemaOverview();
+    activeDatabase.value = createdName;
+    await loadSchemaOverview();
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Membuat Database',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
 
 // --- Add Foreign Key State ---
 const isAddFkModalOpen = ref(false);
