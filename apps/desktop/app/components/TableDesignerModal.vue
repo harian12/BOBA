@@ -51,6 +51,7 @@
           <table class="w-full text-left border-collapse">
             <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
               <tr>
+                <th class="px-2 py-2 border-r border-boba-800 w-8 text-center" title="Urutan / Drag Handle">#</th>
                 <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
                 <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
                 <th class="px-3 py-2 border-r border-boba-800 text-center w-16">PK</th>
@@ -60,7 +61,26 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-boba-850">
-              <tr v-for="(col, idx) in columns" :key="idx" class="hover:bg-boba-800/40">
+              <tr
+                v-for="(col, idx) in columns"
+                :key="idx"
+                draggable="true"
+                @dragstart="onColDragStart(idx, $event)"
+                @dragover.prevent="onColDragOver(idx)"
+                @drop="onColDrop(idx)"
+                @dragend="onColDragEnd"
+                :class="[
+                  'hover:bg-boba-800/40 transition-colors',
+                  draggedColIdx === idx ? 'opacity-40 bg-indigo-950/60' : '',
+                  dragOverColIdx === idx && draggedColIdx !== idx ? 'border-t-2 border-indigo-400 bg-indigo-950/30' : ''
+                ]"
+              >
+                <td class="p-1 border-r border-boba-850 text-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-indigo-300 select-none">
+                  <div class="flex items-center justify-center space-x-1">
+                    <Icon icon="lucide:grip-vertical" class="w-3.5 h-3.5" />
+                    <span class="text-[10px]">{{ idx + 1 }}</span>
+                  </div>
+                </td>
                 <td class="p-1 border-r border-boba-850">
                   <input
                     v-model="col.name"
@@ -254,6 +274,36 @@ const tableName = ref('');
 const columns = ref<DbColumnMeta[]>([]);
 const originalColumns = ref<DbColumnMeta[]>([]);
 const executing = ref(false);
+
+// Drag and drop column reordering
+const draggedColIdx = ref<number | null>(null);
+const dragOverColIdx = ref<number | null>(null);
+
+function onColDragStart(idx: number, e: DragEvent) {
+  draggedColIdx.value = idx;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+  }
+}
+
+function onColDragOver(idx: number) {
+  dragOverColIdx.value = idx;
+}
+
+function onColDrop(targetIdx: number) {
+  if (draggedColIdx.value === null || draggedColIdx.value === targetIdx) return;
+  const item = columns.value.splice(draggedColIdx.value, 1)[0];
+  if (item) {
+    columns.value.splice(targetIdx, 0, item);
+  }
+  onColDragEnd();
+}
+
+function onColDragEnd() {
+  draggedColIdx.value = null;
+  dragOverColIdx.value = null;
+}
 
 const engine = computed(() => normalizeEngine(props.dbConfig?.engine));
 const isSqlite = computed(() => engine.value === 'sqlite');

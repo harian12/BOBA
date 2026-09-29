@@ -984,8 +984,9 @@
 
           <div class="flex-1 overflow-auto p-3">
             <table v-if="activeTable?.columns && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
-              <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
+              <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300 select-none">
                 <tr>
+                  <th class="px-2 py-2 border-r border-boba-800 w-8 text-center" title="Urutan / Drag Handle">#</th>
                   <th class="px-3 py-2 border-r border-boba-800 w-12 text-center">Aksi</th>
                   <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
                   <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
@@ -995,7 +996,30 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-boba-850">
-                <tr v-for="col in activeTable.columns" :key="col.name" class="hover:bg-boba-800/40">
+                <tr
+                  v-for="(col, sIdx) in activeTable.columns"
+                  :key="col.name"
+                  :draggable="engine === 'mysql' || engine === 'mariadb'"
+                  @dragstart="onStructDragStart(sIdx, $event)"
+                  @dragover.prevent="onStructDragOver(sIdx)"
+                  @drop="onStructDrop(sIdx)"
+                  @dragend="onStructDragEnd"
+                  :class="[
+                    'hover:bg-boba-800/40 transition-colors',
+                    draggedStructIdx === sIdx ? 'opacity-40 bg-sky-950/60' : '',
+                    dragOverStructIdx === sIdx && draggedStructIdx !== sIdx ? 'border-t-2 border-sky-400 bg-sky-950/30' : ''
+                  ]"
+                >
+                  <td
+                    class="p-1 border-r border-boba-850 text-center select-none"
+                    :class="(engine === 'mysql' || engine === 'mariadb') ? 'cursor-grab active:cursor-grabbing text-slate-500 hover:text-sky-300' : 'text-slate-600'"
+                    :title="(engine === 'mysql' || engine === 'mariadb') ? 'Tarik untuk memindahkan urutan kolom' : 'Reorder kolom hanya didukung di MySQL / MariaDB'"
+                  >
+                    <div class="flex items-center justify-center space-x-0.5">
+                      <Icon v-if="engine === 'mysql' || engine === 'mariadb'" icon="lucide:grip-vertical" class="w-3.5 h-3.5" />
+                      <span class="text-[10px] font-mono">{{ sIdx + 1 }}</span>
+                    </div>
+                  </td>
                   <td class="px-2 py-1.5 border-r border-boba-850 text-center">
                     <button
                       @click="openAddFkModal(col.name)"
@@ -2859,6 +2883,100 @@ const tableContextMenu = ref<{
   y: 0,
   table: null,
 });
+
+// Drag & Drop Structure Columns Reordering
+const draggedStructIdx = ref<number | null>(null);
+const dragOverStructIdx = ref<number | null>(null);
+
+function onStructDragStart(idx: number, e: DragEvent) {
+  if (engine.value !== 'mysql' && engine.value !== 'mariadb') return;
+  draggedStructIdx.value = idx;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+  }
+}
+
+function onStructDragOver(idx: number) {
+  if (engine.value !== 'mysql' && engine.value !== 'mariadb') return;
+  dragOverStructIdx.value = idx;
+}
+
+function onStructDragEnd() {
+  draggedStructIdx.value = null;
+  dragOverStructIdx.value = null;
+}
+
+async function onStructDrop(targetIdx: number) {
+  if (engine.value !== 'mysql' && engine.value !== 'mariadb') return;
+  const srcIdx = draggedStructIdx.value;
+  onStructDragEnd();
+
+  if (srcIdx === null || srcIdx === targetIdx || !activeTable.value) return;
+
+  const cols = [...activeTable.value.columns];
+  const movedCol = cols[srcIdx];
+  if (!movedCol) return;
+
+  const targetCol = cols[targetIdx];
+  if (!targetCol) return;
+
+  // Build target position clause for MySQL (FIRST or AFTER col)
+  let positionClause = '';
+  if (targetIdx === 0) {
+    positionClause = 'FIRST';
+  } else {
+    // If moving downwards, target column is targetIdx; if moving upwards, target column is targetIdx-1
+    const afterColName = targetIdx > srcIdx ? cols[targetIdx]?.name : cols[targetIdx - 1]?.name;
+    if (afterColName) {
+      positionClause = `AFTER ${qi(afterColName)}`;
+    } else {
+      positionClause = 'FIRST';
+    }
+  }
+
+  // Construct column full definition
+  let colDef = `${qi(movedCol.name)} ${movedCol.data_type.toUpperCase()}`;
+  if (!movedCol.is_nullable) colDef += ' NOT NULL';
+  if (movedCol.default_value) {
+    colDef += ` DEFAULT ${movedCol.default_value}`;
+  }
+  if (movedCol.is_primary_key) colDef += ' PRIMARY KEY';
+
+  const reorderSql = `ALTER TABLE ${qi(activeTable.value.name)} MODIFY COLUMN ${colDef} ${positionClause};`;
+
+  const confirmed = await dialogStore.confirm({
+    title: 'Konfirmasi Perubahan Urutan Kolom',
+    description: `Pindahkan kolom "${movedCol.name}" ke posisi ${positionClause}?\n\nQuery yang akan dijalankan:\n${reorderSql}`,
+    confirmText: 'Pindahkan Kolom',
+    isDestructive: false,
+  });
+
+  if (!confirmed) return;
+
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection!,
+      activeDatabase.value || undefined,
+      reorderSql
+    );
+    dialogStore.showToast(`Urutan kolom "${movedCol.name}" berhasil diubah!`, 'success', 2500);
+    await loadSchemaOverview();
+    if (activeTable.value) {
+      const updatedTbl = schemaOverview.value?.tables.find(t => t.name === activeTable.value?.name);
+      if (updatedTbl) activeTable.value = updatedTbl;
+    }
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Mengubah Urutan Kolom',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
 
 // --- Create Database State ---
 const isCreateDbModalOpen = ref(false);
