@@ -131,6 +131,41 @@ $manifestHeaders = @{
 Invoke-RestMethod -Uri $uploadManifestUrl -Method Post -Headers $manifestHeaders -Body $jsonBytes
 ```
 
+### WAJIB: Kirim Body sebagai Byte UTF-8
+
+Windows PowerShell 5.1 mengirim body `Invoke-RestMethod` yang berupa **string** memakai code page ANSI warisan, bukan UTF-8. Akibatnya setiap karakter non-ASCII rusak, dan GitHub menolak payload dengan `400 Problems parsing JSON`.
+
+Bukan masalah pada `ConvertTo-Json`; JSON-nya sendiri valid. Gejalanya mudah salah didiagnosis karena error-nya menyebut JSON, padahal yang rusak adalah encoding-nya.
+
+Karena itu **body apa pun yang bisa memuat teks non-ASCII harus dikirim sebagai byte**, sama seperti `latest.json` di atas:
+
+```powershell
+# SALAH: string body, karakter non-ASCII akan rusak
+Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $json -ContentType "application/json"
+
+# BENAR: byte UTF-8 eksplisit
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $bytes -ContentType "application/json; charset=utf-8"
+```
+
+Berlaku untuk:
+- `body` saat membuat GitHub Release (`POST /releases`)
+- `body` saat memperbaiki release yang sudah ada (`PATCH /releases/{id}`)
+- `latest.json`
+
+### Memo: Hindari Em-Dash pada File Commit
+
+Untuk-notes yang dibaca manusia, pakai `-` (hyphen) dan bukan em-dash. Em-dash (`—`) sering tersaji sebagai mojibake (`â€"`) ketika file commit ditulis lewat `Set-Content` atau `Add-Content` dari PowerShell, karena encoding file yang diasumsikan berbeda dengan encoding yang sebenarnya.
+
+Kalau karakter rusak sudah telanjur ter-push ke commit yang sudah ditag, memperbaikinya butuh `git commit --amend` plus `git tag -f` dan `git push --force-with-lease`. Itu menimpa riwayat publik, jadi **tanyakan dulu** sebelum dilakukan.
+
+Setelah menulis pesan commit, periksa sekilas:
+
+```powershell
+$notes = [System.IO.File]::ReadAllText("path\commit-msg.txt")
+if ($notes -match "[^\x00-\x7E]") { "ADA karakter non-ASCII, periksa" }
+```
+
 ---
 
 ## 7. Bahasa Dokumentasi Releases
