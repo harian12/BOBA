@@ -1,6 +1,6 @@
 # Panduan Alur Push, Build Bundle, & Auto-Updater Release BOBA
 
-Dokumen ini berisi SOP dan alur lengkap untuk menaikkan versi, mem-build bundle desktop, membuat Git tag, dan mempublikasikan release ke GitHub agar fitur **Cek Pembaruan (Auto-Updater)** di aplikasi mendeteksi update.
+Dokumen ini berisi SOP dan alur lengkap untuk menaikkan versi, mem-build bundle desktop, menandatangani binary (*signing*), membuat Git tag, dan mempublikasikan release ke GitHub agar fitur **Cek Pembaruan (Auto-Updater)** di aplikasi dapat memverifikasi *signature minisign* dan memasang update.
 
 ---
 
@@ -31,7 +31,20 @@ File installer `.exe` yang dihasilkan akan berada di:
 
 ---
 
-## 4. Commit, Push ke Main, & Buat Git Tag
+## 4. Tandatangani Binary (*Signing Minisign Signature*)
+Tauri updater **wajib** memverifikasi tanda tangan digital (*minisign signature*). Tandatangani binary installer menggunakan private key:
+```bash
+$env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw "C:\Users\USER\.tauri\boba.key").Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "boba"
+
+bun run --cwd apps/desktop tauri signer sign "D:\MYP\BOBA\apps\desktop\src-tauri\target\release\bundle\nsis\BOBA_<version>_x64-setup.exe"
+```
+Perintah ini akan menghasilkan file signature di:
+`apps/desktop/src-tauri/target/release/bundle/nsis/BOBA_<version>_x64-setup.exe.sig`
+
+---
+
+## 5. Commit, Push ke Main, & Buat Git Tag
 Commit perubahan versi, push ke branch `main`, dan buat tag rilis:
 ```bash
 git add apps/desktop/package.json apps/desktop/src-tauri/Cargo.lock apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/tauri.conf.json
@@ -43,17 +56,18 @@ git push origin vx.y.z
 
 ---
 
-## 5. Publikasikan GitHub Release & Auto-Updater Manifest (`latest.json`)
+## 6. Publikasikan GitHub Release & Auto-Updater Manifest (`latest.json`)
 Auto-updater Tauri mengecek pembaruan dari URL:
 `https://github.com/harian12/BOBA/releases/latest/download/latest.json`
 
-Gunakan script PowerShell berikut untuk membuat Release dan mengunggah binary serta `latest.json`:
+Gunakan script PowerShell berikut untuk membuat Release dan mengunggah binary serta `latest.json` yang berisi signature valid:
 
 ```powershell
 $version = "x.y.z"
 $tag = "vx.y.z"
 $repo = "harian12/BOBA"
 $installerPath = "apps/desktop/src-tauri/target/release/bundle/nsis/BOBA_${version}_x64-setup.exe"
+$sigPath = "$installerPath.sig"
 
 # 1. Ambil token GitHub dari credential manager lokal
 $gitCred = "protocol=https`nhost=github.com`n" | git credential fill
@@ -87,14 +101,15 @@ $uploadHeaders = @{
 }
 Invoke-RestMethod -Uri $uploadUrl -Method Post -Headers $uploadHeaders -Body $fileBytes
 
-# 4. Upload latest.json Manifest untuk Auto-Updater
+# 4. Upload latest.json Manifest untuk Auto-Updater (dengan minisign signature)
+$signature = (Get-Content -Raw (Resolve-Path $sigPath)).Trim()
 $latestJson = @{
     version = $version
     notes = "Release $tag"
     pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     platforms = @{
         "windows-x86_64" = @{
-            signature = ""
+            signature = $signature
             url = "https://github.com/$repo/releases/download/$tag/BOBA_${version}_x64-setup.exe"
         }
     }
@@ -109,3 +124,4 @@ $manifestHeaders = @{
 }
 Invoke-RestMethod -Uri $uploadManifestUrl -Method Post -Headers $manifestHeaders -Body $jsonBytes
 ```
+
