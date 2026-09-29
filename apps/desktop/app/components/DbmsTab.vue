@@ -1141,39 +1141,8 @@
                 v-model="addColumnForm.dataType"
                 class="bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-2 text-xs text-slate-200 font-mono focus:outline-none transition"
               >
-                <optgroup label="Teks & String">
-                  <option value="VARCHAR(255)">VARCHAR(255)</option>
-                  <option value="VARCHAR(100)">VARCHAR(100)</option>
-                  <option value="VARCHAR(50)">VARCHAR(50)</option>
-                  <option value="TEXT">TEXT</option>
-                  <option value="MEDIUMTEXT">MEDIUMTEXT</option>
-                  <option value="LONGTEXT">LONGTEXT</option>
-                  <option value="CHAR(36)">CHAR(36) (UUID)</option>
-                  <option value="CHAR(1)">CHAR(1)</option>
-                </optgroup>
-                <optgroup label="Numerik & Angka">
-                  <option value="INT">INT</option>
-                  <option value="BIGINT">BIGINT</option>
-                  <option value="TINYINT">TINYINT</option>
-                  <option value="SMALLINT">SMALLINT</option>
-                  <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-                  <option value="FLOAT">FLOAT</option>
-                  <option value="DOUBLE">DOUBLE</option>
-                  <option value="BOOLEAN">BOOLEAN</option>
-                </optgroup>
-                <optgroup label="Tanggal & Waktu">
-                  <option value="DATETIME">DATETIME</option>
-                  <option value="TIMESTAMP">TIMESTAMP</option>
-                  <option value="DATE">DATE</option>
-                  <option value="TIME">TIME</option>
-                  <option value="YEAR">YEAR</option>
-                </optgroup>
-                <optgroup label="Biner, JSON & Khusus">
-                  <option value="JSON">JSON</option>
-                  <option value="UUID">UUID</option>
-                  <option value="BLOB">BLOB</option>
-                  <option value="LONGBLOB">LONGBLOB</option>
-                  <option value="VARBINARY(255)">VARBINARY(255)</option>
+                <optgroup v-for="grp in engineDataTypes" :key="grp.category" :label="grp.category">
+                  <option v-for="t in grp.options" :key="t" :value="t">{{ t }}</option>
                 </optgroup>
               </select>
 
@@ -1845,6 +1814,87 @@ const addColumnForm = ref<{
   defaultValue: '',
 });
 
+const engineDataTypes = computed(() => {
+  const eng = engine.value;
+  if (eng === 'postgres' || eng === 'postgresql') {
+    return [
+      {
+        category: 'Teks & Karakter',
+        options: [
+          'VARCHAR(255)', 'VARCHAR(100)', 'VARCHAR(50)', 'TEXT', 'CHAR(1)', 'CHAR(36)', 'CITEXT'
+        ]
+      },
+      {
+        category: 'Numerik & Angka',
+        options: [
+          'INTEGER', 'BIGINT', 'SMALLINT', 'SERIAL', 'BIGSERIAL', 'NUMERIC(10,2)', 'DECIMAL(10,2)', 'REAL', 'DOUBLE PRECISION', 'BOOLEAN'
+        ]
+      },
+      {
+        category: 'Tanggal & Waktu',
+        options: [
+          'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITHOUT TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP', 'DATE', 'TIME', 'INTERVAL'
+        ]
+      },
+      {
+        category: 'JSON, UUID & Khusus',
+        options: [
+          'JSONB', 'JSON', 'UUID', 'BYTEA', 'INET', 'CIDR', 'MACADDR', 'XML'
+        ]
+      }
+    ];
+  }
+
+  if (eng === 'sqlite') {
+    return [
+      {
+        category: 'Tipe Data Standar SQLite',
+        options: [
+          'TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATETIME', 'VARCHAR(255)'
+        ]
+      }
+    ];
+  }
+
+  // MySQL & MariaDB default
+  return [
+    {
+      category: 'Teks & String',
+      options: [
+        'VARCHAR(255)', 'VARCHAR(100)', 'VARCHAR(50)', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'CHAR(36)', 'CHAR(1)'
+      ]
+    },
+    {
+      category: 'ENUM & Pilihan Nilai',
+      options: [
+        "ENUM('active', 'inactive')",
+        "ENUM('pending', 'approved', 'rejected')",
+        "ENUM('yes', 'no')",
+        "ENUM('draft', 'published', 'archived')",
+        "SET('a', 'b', 'c')"
+      ]
+    },
+    {
+      category: 'Numerik & Angka',
+      options: [
+        'INT', 'BIGINT', 'TINYINT', 'SMALLINT', 'DECIMAL(10,2)', 'FLOAT', 'DOUBLE', 'BOOLEAN'
+      ]
+    },
+    {
+      category: 'Tanggal & Waktu',
+      options: [
+        'DATETIME', 'TIMESTAMP', 'DATE', 'TIME', 'YEAR'
+      ]
+    },
+    {
+      category: 'Biner, JSON & Khusus',
+      options: [
+        'JSON', 'UUID', 'BLOB', 'LONGBLOB', 'VARBINARY(255)'
+      ]
+    }
+  ];
+});
+
 const addColumnSqlPreview = computed(() => {
   if (!activeTable.value || !addColumnForm.value.name.trim() || !addColumnForm.value.dataType.trim()) return '';
   const tbl = qi(activeTable.value.name);
@@ -1856,6 +1906,8 @@ const addColumnSqlPreview = computed(() => {
     const defVal = addColumnForm.value.defaultValue.trim();
     if (defVal.toUpperCase() === 'NULL') {
       defaultConstraint = ' DEFAULT NULL';
+    } else if (defVal.toUpperCase() === 'CURRENT_TIMESTAMP' || defVal.toUpperCase() === 'NOW()') {
+      defaultConstraint = ` DEFAULT ${defVal}`;
     } else if (!isNaN(Number(defVal))) {
       defaultConstraint = ` DEFAULT ${defVal}`;
     } else {
@@ -1866,10 +1918,11 @@ const addColumnSqlPreview = computed(() => {
 });
 
 function openAddColumnModal() {
-  if (!activeTable.value) return;
+  if (!activeTable.value || engine.value === 'redis' || engine.value === 'mongodb') return;
+  const defaultType = (engine.value === 'postgres' || engine.value === 'postgresql') ? 'VARCHAR(255)' : (engine.value === 'sqlite' ? 'TEXT' : 'VARCHAR(255)');
   addColumnForm.value = {
     name: '',
-    dataType: 'VARCHAR(255)',
+    dataType: defaultType,
     isNullable: true,
     defaultValue: '',
   };
