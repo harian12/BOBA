@@ -83,7 +83,7 @@ BOBA adalah aplikasi remote terminal & SFTP manager modern untuk Windows dengan 
 ### 4. Hierarki Sesi & Folder (Tampilan Pohon)
 - **Pengorganisasian Folder**: Kelompokkan sesi SSH ke dalam folder tanpa batas.
 - **Drag & Drop Andal**: Pengorganisasian sesi dan pengurutan ulang folder menggunakan pointer-based drag-and-drop yang stabil di Windows WebView2.
-- **State Folder Diingat**: Folder terbuka secara default dan pilihan buka/tutup milik user tetap tersimpan antar restart, jadi tidak ada yang ditutup paksa di belakang punggung user.
+- **State Folder Sesi-Saja**: Lipatan folder hanya berlaku selama aplikasi terbuka. Setelah restart semua folder kembali terbuka, dan status lipatan tidak pernah disimpan ke vault maupun ke storage lokal.
 - **Menu Konteks Klik Kanan**:
   - Buka terminal SSH atau SFTP Manager langsung dari sesi.
   - Cut / Paste sesi antar folder.

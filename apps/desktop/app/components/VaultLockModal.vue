@@ -61,6 +61,7 @@ import { ref, onMounted } from 'vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useSyncStore } from '../stores/syncStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { safeSetItem } from '../utils/safeStorage';
 
 const vaultStore = useVaultStore();
 const syncStore = useSyncStore();
@@ -76,7 +77,7 @@ onMounted(() => {
   hasExistingVault.value = !!localBlob;
   const cachedSalt = localStorage.getItem('boba_user_salt') || 'boba_default_offline_salt_123';
   if (!cachedSalt) {
-    localStorage.setItem('boba_user_salt', cachedSalt);
+    safeSetItem('boba_user_salt', cachedSalt);
   }
 });
 

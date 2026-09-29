@@ -843,30 +843,15 @@ function handleKeyDown(e: KeyboardEvent) {
 const searchQuery = ref('');
 const dbSearchQuery = ref('');
 
-/* Folder starts open. Once the user folds one, that choice sticks across restarts,
-   so nothing is ever re-collapsed behind their back. */
-const FOLDERS_STORAGE_KEY = 'boba_collapsed_folders';
-const collapsedFolders = ref<Record<string, boolean>>(loadCollapsedFolders());
-
-function loadCollapsedFolders(): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(FOLDERS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter(([, v]) => v === true)
-        .map(([k]) => [k, true])
-    );
-  } catch {
-    return {};
-  }
-}
+/* Collapse state is session-only. Persisting it put a write on every folder
+   click, and it was the straw that broke once the origin hit its storage quota.
+   Folders simply start open again on the next launch. */
+const collapsedFolders = ref<Record<string, boolean>>({});
 
 function toggleFolder(folderId: string) {
-  collapsedFolders.value[folderId] = !collapsedFolders.value[folderId];
-  localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(collapsedFolders.value));
+  // Replace the object rather than mutating it: assigning a property on a ref's
+  // `.value` does not trigger reactivity.
+  collapsedFolders.value = { ...collapsedFolders.value, [folderId]: !collapsedFolders.value[folderId] };
 }
 
 function getDbIcon(engine?: string): string {

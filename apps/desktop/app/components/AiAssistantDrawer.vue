@@ -764,6 +764,7 @@ import { useSessionStore } from '../stores/sessionStore.js';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { explainBashCommand } from '../services/commandExplainer.js';
+import { safeSetItem } from '../utils/safeStorage';
 
 const aiStore = useAiAgentStore();
 const sessionStore = useSessionStore();
@@ -828,7 +829,7 @@ function startResize(e: MouseEvent) {
 
   function onMouseUp() {
     isResizing.value = false;
-    localStorage.setItem('boba_ai_drawer_width', String(drawerWidth.value));
+    safeSetItem('boba_ai_drawer_width', String(drawerWidth.value));
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
   }
@@ -844,7 +845,7 @@ function toggleExpandWidth() {
   } else {
     drawerWidth.value = Math.round(expandedWidth);
   }
-  localStorage.setItem('boba_ai_drawer_width', String(drawerWidth.value));
+  safeSetItem('boba_ai_drawer_width', String(drawerWidth.value));
 }
 
 function toggleCopilotMode() {

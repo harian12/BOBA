@@ -1,6 +1,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { safeSetItem, safeGetItem } from '../utils/safeStorage';
 
 const timeoutMinutes = ref(15);
 const remainingSeconds = ref(0)
@@ -44,12 +45,12 @@ export const useAutoLock = () => {
 
   const setTimeoutMinutes = (m: number) => {
     timeoutMinutes.value = m
-    localStorage.setItem('boba_auto_lock_timeout', m.toString())
+    safeSetItem('boba_auto_lock_timeout', m.toString())
     ping()
   }
 
   onMounted(() => {
-    const saved = localStorage.getItem('boba_auto_lock_timeout')
+    const saved = safeGetItem('boba_auto_lock_timeout')
     if (saved !== null) timeoutMinutes.value = parseInt(saved, 10)
 
     watch([() => vaultStore.isUnlocked, timeoutMinutes], ([unlocked, minutes]) => {

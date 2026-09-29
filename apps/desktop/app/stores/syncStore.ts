@@ -2,16 +2,17 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useVaultStore } from './vaultStore.js';
+import { safeSetItem, safeGetItem } from '../utils/safeStorage';
 
 export const useSyncStore = defineStore('sync', () => {
-  const serverUrl = ref<string>(localStorage.getItem('boba_server_url') || 'http://localhost:8787');
-  const token = ref<string>(localStorage.getItem('boba_auth_token') || '');
-  const userEmail = ref<string>(localStorage.getItem('boba_user_email') || '');
-  const userId = ref<string>(localStorage.getItem('boba_user_id') || '');
-  const userSalt = ref<string>(localStorage.getItem('boba_user_salt') || '');
+  const serverUrl = ref<string>(safeGetItem('boba_server_url') || 'http://localhost:8787');
+  const token = ref<string>(safeGetItem('boba_auth_token') || '');
+  const userEmail = ref<string>(safeGetItem('boba_user_email') || '');
+  const userId = ref<string>(safeGetItem('boba_user_id') || '');
+  const userSalt = ref<string>(safeGetItem('boba_user_salt') || '');
   
   const isSyncing = ref(false);
-  const lastSyncTime = ref<string | null>(localStorage.getItem('boba_last_sync_time') || null);
+  const lastSyncTime = ref<string | null>(safeGetItem('boba_last_sync_time') || null);
   const syncError = ref<string | null>(null);
   const hasConflict = ref(false);
 
@@ -20,7 +21,7 @@ export const useSyncStore = defineStore('sync', () => {
 
   function setServerUrl(url: string) {
     serverUrl.value = url;
-    localStorage.setItem('boba_server_url', url);
+    safeSetItem('boba_server_url', url);
   }
 
   async function register(email: string, passwordHash: string) {
@@ -39,9 +40,9 @@ export const useSyncStore = defineStore('sync', () => {
       userId.value = res.userId || '';
       userSalt.value = res.salt || generatedSalt;
 
-      localStorage.setItem('boba_auth_token', token.value);
-      localStorage.setItem('boba_user_email', userEmail.value);
-      localStorage.setItem('boba_user_salt', userSalt.value);
+      safeSetItem('boba_auth_token', token.value);
+      safeSetItem('boba_user_email', userEmail.value);
+      safeSetItem('boba_user_salt', userSalt.value);
 
       const vaultStore = useVaultStore();
       // Master password murni dari input user lokal, BUKAN password akun cloud
@@ -67,9 +68,9 @@ export const useSyncStore = defineStore('sync', () => {
       userId.value = res.userId || '';
       userSalt.value = res.salt || '';
 
-      localStorage.setItem('boba_auth_token', token.value);
-      localStorage.setItem('boba_user_email', userEmail.value);
-      if (res.salt) localStorage.setItem('boba_user_salt', userSalt.value);
+      safeSetItem('boba_auth_token', token.value);
+      safeSetItem('boba_user_email', userEmail.value);
+      if (res.salt) safeSetItem('boba_user_salt', userSalt.value);
 
       const vaultStore = useVaultStore();
       // Re-init master key di Rust hanya jika master password lokal sudah dimasukkan
@@ -123,7 +124,7 @@ export const useSyncStore = defineStore('sync', () => {
       }
       const now = new Date().toLocaleTimeString();
       lastSyncTime.value = now;
-      localStorage.setItem('boba_last_sync_time', now);
+      safeSetItem('boba_last_sync_time', now);
       hasConflict.value = false;
     } catch (err: any) {
       const errStr = String(err);
@@ -187,7 +188,7 @@ export const useSyncStore = defineStore('sync', () => {
 
       const now = new Date().toLocaleTimeString();
       lastSyncTime.value = now;
-      localStorage.setItem('boba_last_sync_time', now);
+      safeSetItem('boba_last_sync_time', now);
     } catch (err: any) {
       const errStr = String(err);
       if (errStr.includes('VERSION_CONFLICT') || errStr.includes('CONFLICT')) {
@@ -256,7 +257,7 @@ export const useSyncStore = defineStore('sync', () => {
 
       const now = new Date().toLocaleTimeString();
       lastSyncTime.value = now;
-      localStorage.setItem('boba_last_sync_time', now);
+      safeSetItem('boba_last_sync_time', now);
     } catch (err: any) {
       syncError.value = String(err);
     } finally {

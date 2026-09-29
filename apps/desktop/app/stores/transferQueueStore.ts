@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive, triggerRef } from 'vue';
 import { tauriBridge } from '../services/tauriBridge.js';
+import { safeSetItem, safeGetItem } from '../utils/safeStorage';
 
 export interface TransferItem {
   id: string;
@@ -27,7 +28,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   const transferMap = new Map<string, TransferItem>();
   const isTrayExpanded = ref(true);
   const maxConcurrent = ref<number>(
-    typeof window !== 'undefined' ? Math.max(1, Math.min(20, Number(localStorage.getItem('boba_sftp_concurrency') || 5))) : 5
+    typeof window !== 'undefined' ? Math.max(1, Math.min(20, Number(safeGetItem('boba_sftp_concurrency') || 5))) : 5
   );
   if (typeof window !== 'undefined') {
     tauriBridge.sftpSetConcurrency(maxConcurrent.value).catch(() => {});
@@ -50,7 +51,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   function setMaxConcurrent(val: number) {
     maxConcurrent.value = Math.max(1, Math.min(20, val));
     if (typeof window !== 'undefined') {
-      localStorage.setItem('boba_sftp_concurrency', String(maxConcurrent.value));
+      safeSetItem('boba_sftp_concurrency', String(maxConcurrent.value));
     }
     tauriBridge.sftpSetConcurrency(maxConcurrent.value).catch(() => {});
 

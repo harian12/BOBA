@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import type { VaultData, Folder, SshSessionConfig, SshKeyItem, SnippetItem } from '../types/index.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useSyncStore } from './syncStore.js';
+import { safeSetItem } from '../utils/safeStorage';
 
 export const useVaultStore = defineStore('vault', () => {
   const isUnlocked = ref<boolean>(false);
@@ -59,11 +60,19 @@ export const useVaultStore = defineStore('vault', () => {
       isUnlocked.value = true;
       isDirty.value = false;
 
-      // Save encrypted local snapshot
+      // Save encrypted local snapshot. The Rust side already persisted it; this
+      // is the browser-side cache. A full origin quota must not abort unlock,
+      // but the user has to be told their snapshot is not being kept.
       const cleanVault = JSON.parse(JSON.stringify(vault.value));
       const encrypted = await tauriBridge.saveLocalVault(cleanVault);
-      localStorage.setItem('boba_local_vault_blob', encrypted);
-      localStorage.setItem('boba_user_salt', userSalt);
+      const blobSaved = safeSetItem('boba_local_vault_blob', encrypted);
+      safeSetItem('boba_user_salt', userSalt);
+      if (!blobSaved) {
+        console.warn(
+          'BOBA: localStorage is full, the encrypted vault cache was not saved locally. ' +
+            'The Rust-side vault file is unaffected. Clear old AI chat history to recover space.'
+        );
+      }
 
       // Start periodic sync if logged in
       const syncStore = useSyncStore();
@@ -113,7 +122,11 @@ export const useVaultStore = defineStore('vault', () => {
     }
     const cleanVault = JSON.parse(JSON.stringify(vault.value));
     const encrypted = await tauriBridge.saveLocalVault(cleanVault);
-    localStorage.setItem('boba_local_vault_blob', encrypted);
+    if (!safeSetItem('boba_local_vault_blob', encrypted)) {
+      // The authoritative copy is already in the Rust-side vault file, so this
+      // is a lost cache rather than lost data.
+      console.warn('BOBA: localStorage is full, the encrypted vault cache was not refreshed.');
+    }
 
     // Auto-sync in background if logged in and data is modified
     if (markDirty) {

@@ -376,33 +376,15 @@
       </div>
 
       <!-- Inline AI diagnosis panel: the AI drawer is not rendered in this window -->
-      <div
+      <AiDiagnosisPanel
         v-if="aiPanelOpen"
-        class="border-t border-purple-900/50 bg-[#0c0a16] shrink-0 flex flex-col"
-        :class="aiThinking ? 'max-h-64' : 'max-h-80'"
-      >
-        <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-purple-900/40 shrink-0">
-          <span class="flex items-center gap-1.5 text-[10px] font-bold text-purple-300 uppercase tracking-wider">
-            <Icon :icon="aiThinking ? 'lucide:loader-2' : 'lucide:sparkles'" :class="['w-3 h-3', aiThinking ? 'animate-spin' : '']" />
-            {{ aiThinking ? 'AI sedang menganalisa...' : 'Hasil Diagnosa AI' }}
-          </span>
-          <button
-            @click="aiPanelOpen = false"
-            class="text-slate-500 hover:text-slate-200 transition"
-            title="Tutup panel"
-          >
-            <Icon icon="lucide:x" class="w-3 h-3" />
-          </button>
-        </div>
-        <div class="overflow-y-auto p-2.5 text-[10px] leading-relaxed">
-          <div v-if="aiThinking" class="flex items-center gap-2 text-slate-500 font-mono">
-            <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
-            Mengirim {{ interestingLines.length }} baris terpilih ke AI Copilot...
-          </div>
-          <div v-else-if="aiError" class="text-red-400 font-mono">{{ aiError }}</div>
-          <div v-else class="text-slate-300 font-sans whitespace-pre-wrap">{{ aiAnswer }}</div>
-        </div>
-      </div>
+        :answer="aiAnswer"
+        :error="aiError"
+        :thinking="aiThinking"
+        :thinking-note="`Mengirim ${interestingLines.length} baris terpilih ke AI Copilot...`"
+        :max-height-class="aiThinking ? 'max-h-64' : 'max-h-80'"
+        @close="aiPanelOpen = false"
+      />
 
       <!-- Footer -->
       <div class="px-2.5 py-1 border-t border-[#1a2130] flex items-center justify-between text-[9px] text-slate-600 font-mono shrink-0">
@@ -462,6 +444,7 @@ import {
 } from '../utils/appsParser';
 import { useAiAgentStore } from '../stores/aiAgentStore';
 import { describeAiFailure } from '../utils/aiFailure';
+import AiDiagnosisPanel from './AiDiagnosisPanel.vue';
 
 const aiAgentStore = useAiAgentStore();
 

@@ -1,7 +1,7 @@
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::crypto::CryptoEngine;
 use crate::dbms::DbmsManager;
@@ -502,9 +502,117 @@ pub fn fs_delete_path(path: String, is_dir: bool) -> Result<(), String> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Local state files (deliberately NOT part of the vault)
+//
+// UI preferences and AI chat history used to live in `localStorage`, where they
+// shared a 5 MB origin quota with the encrypted vault. Long tool output filled
+// that quota and made every unrelated write throw. They now live in their own
+// files under the app data directory, outside the vault and outside cloud sync.
+// ---------------------------------------------------------------------------
+
+// No size cap here by design. Chat history is bounded by the user deleting
+// threads, not by the app silently trimming them, and it lives in its own file
+// so it can no longer crowd out anything else.
+
+/// Resolve a caller-supplied relative path inside the app data directory.
+///
+/// The path comes from the frontend, so it is untrusted: `..` segments, absolute
+/// paths and Windows drive prefixes are rejected rather than normalised, since
+/// normalising still leaves room for tricks.
+fn local_state_path(app: &AppHandle, relative: &str) -> Result<std::path::PathBuf, String> {
+    if relative.is_empty() {
+        return Err("Empty local state path".to_string());
+    }
+
+    let path = std::path::Path::new(relative);
+    let rejects = path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)));
+    if rejects {
+        return Err(format!("Rejected local state path: {}", relative));
+    }
+    // A bare file name with no directory would land directly in app_data_dir.
+    if path.components().count() < 2 {
+        return Err(format!("Local state path needs a directory: {}", relative));
+    }
+
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {}", e))?
+        .join(path);
+    let parent = dir
+        .parent()
+        .ok_or_else(|| "Local state path has no parent".to_string())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
+    Ok(dir)
+}
+
+/// Read a local state file, or an empty string when there is nothing to read.
+///
+/// A corrupt file is moved aside rather than deleted so the user can still
+/// recover it by hand, and the app starts clean instead of refusing to launch.
 #[tauri::command]
-pub fn fs_rename_path(old_path: String, new_path: String) -> Result<(), String> {
-    std::fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename local path: {}", e))
+pub fn local_state_load(app: AppHandle, relative: String) -> Result<String, String> {
+    let path = local_state_path(&app, &relative)?;
+    if !path.exists() {
+        return Ok(String::new());
+    }
+
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("BOBA: failed to read local state {}: {}", relative, e);
+            return Ok(String::new());
+        }
+    };
+
+    match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(_) => Ok(raw),
+        Err(e) => {
+            let backup = path.with_extension(format!("corrupt-{}.json", chrono::Utc::now().timestamp()));
+            if std::fs::rename(&path, &backup).is_ok() {
+                eprintln!(
+                    "BOBA: local state {} was not valid JSON ({}); moved to {}",
+                    relative,
+                    e,
+                    backup.display()
+                );
+            }
+            Ok(String::new())
+        }
+    }
+}
+
+/// Write a local state file atomically: temp file, flush, then rename over it.
+///
+/// A plain `fs::write` would leave a half-written file if the app was killed
+/// mid-write, destroying the user's data.
+#[tauri::command]
+pub fn local_state_save(app: AppHandle, relative: String, content: String) -> Result<(), String> {
+    let path = local_state_path(&app, &relative)?;
+
+    let tmp = path.with_extension("tmp");
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&tmp)
+            .map_err(|e| format!("Failed to create {}: {}", tmp.display(), e))?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| format!("Failed to write local state: {}", e))?;
+        file.sync_all()
+            .map_err(|e| format!("Failed to flush local state: {}", e))?;
+    }
+
+    std::fs::rename(&tmp, &path)
+        .map_err(|e| format!("Failed to replace local state: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fs_rename_path(old_path: String, new_path: String) -> Result<(), String> {    std::fs::rename(&old_path, &new_path).map_err(|e| format!("Failed to rename local path: {}", e))
 }
 
 #[tauri::command]

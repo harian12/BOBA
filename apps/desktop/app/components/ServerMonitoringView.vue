@@ -96,27 +96,16 @@
     </div>
 
     <!-- Inline AI health review: the AI drawer is not rendered in this window -->
-    <div
-      v-if="aiPanelOpen"
-      class="bg-[#0c0a16] border border-purple-900/50 rounded-lg shrink-0 flex flex-col"
-    >
-      <div class="flex items-center justify-between px-3 py-1.5 border-b border-purple-900/40 shrink-0">
-        <span class="flex items-center gap-1.5 text-[10px] font-bold text-purple-300 uppercase tracking-wider">
-          <Icon :icon="aiThinking ? 'lucide:loader-2' : 'lucide:sparkles'" :class="['w-3 h-3', aiThinking ? 'animate-spin' : '']" />
-          {{ aiThinking ? 'AI sedang menganalisa kesehatan server...' : 'Hasil Diagnosa AI' }}
-        </span>
-        <button
-          @click="aiPanelOpen = false"
-          class="text-slate-500 hover:text-slate-200 transition"
-          title="Tutup panel"
-        >
-          <Icon icon="lucide:x" class="w-3 h-3" />
-        </button>
-      </div>
-      <div class="overflow-y-auto p-3 text-[10px] leading-relaxed max-h-52">
-        <div v-if="aiError" class="text-red-400 font-mono">{{ aiError }}</div>
-        <div v-else class="text-slate-300 font-sans whitespace-pre-wrap">{{ aiAnswer }}</div>
-      </div>
+    <div v-if="aiPanelOpen" class="bg-[#0c0a16] border border-purple-900/50 rounded-lg shrink-0 flex flex-col">
+      <AiDiagnosisPanel
+        :answer="aiAnswer"
+        :error="aiError"
+        :thinking="aiThinking"
+        thinking-note="Mengirim metrik dan daftar proses ke AI Copilot..."
+        max-height-class="max-h-52"
+        class="border-t-0"
+        @close="aiPanelOpen = false"
+      />
     </div>
 
     <!-- Error Alert Banner -->
@@ -331,6 +320,7 @@ import { tauriBridge } from '../services/tauriBridge';
 import { useAiAgentStore } from '../stores/aiAgentStore';
 import AppLogViewer from './AppLogViewer.vue';
 import MetricKpiCard from './MetricKpiCard.vue';
+import AiDiagnosisPanel from './AiDiagnosisPanel.vue';
 import MetricChartCard, { type ChartSeries, type ChartHoverPoint } from './MetricChartCard.vue';
 import type { ServerMetricsFull } from '../utils/monitoringParser';
 import {

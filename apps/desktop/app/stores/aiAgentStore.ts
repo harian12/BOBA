@@ -7,6 +7,8 @@ import { inspectCommandRisk } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
 import { useVaultStore } from './vaultStore.js';
 import { useDialogStore } from './dialogStore.js';
+import { safeSetItem } from '../utils/safeStorage';
+import { loadChatArchive, scheduleChatArchiveSave, flushChatArchive } from '../utils/chatArchive';
 
 export const useAiAgentStore = defineStore('aiAgent', () => {
   const sessionStore = useSessionStore();
@@ -103,40 +105,41 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         copilotMode.value = savedCopilotMode;
       }
 
-      // Load thread histories per session
-      const savedThreads = localStorage.getItem('boba_ai_chat_threads');
-      if (savedThreads) {
-        threads.value = JSON.parse(savedThreads);
-      } else {
-        // Migrasi riwayat lama ke model threads
-        const savedMessages = localStorage.getItem('boba_ai_chat_history');
-        if (savedMessages) {
-          try {
-            const legacy: Record<string, AiChatMessage[]> = JSON.parse(savedMessages);
-            for (const [sid, msgs] of Object.entries(legacy)) {
-              if (msgs && msgs.length > 0) {
-                const userMsg = msgs.find(m => m.role === 'user');
-                const title = userMsg ? (userMsg.content.slice(0, 36) + (userMsg.content.length > 36 ? '...' : '')) : 'Percakapan Sebelumnya';
-                threads.value.push({
-                  id: `th_${sid}_${Date.now()}`,
-                  sessionId: sid,
-                  title,
-                  messages: msgs,
-                  createdAt: msgs[0]?.createdAt || Date.now(),
-                  updatedAt: msgs[msgs.length - 1]?.createdAt || Date.now(),
-                });
-              }
-            }
-          } catch (_) {}
-        }
-      }
+      // Thread history lives in its own file under the app data dir, not in
+      // localStorage: it used to share the 5 MB origin quota with the encrypted
+      // vault, and long tool output filled it. The read is async, so anything
+      // the user does before it resolves must survive the merge below.
+      void loadChatArchive().then((archive) => {
+        if (!archive) return;
 
-      const savedActivePerSession = localStorage.getItem('boba_ai_active_threads');
-      if (savedActivePerSession) {
+        // Merge, never replace. Assigning `threads.value = archive.threads`
+        // discarded any conversation the user had already started during the
+        // read, and the next saveState() then persisted that loss to disk.
+        const known = new Set(threads.value.map((t) => t.id));
+        const incoming = archive.threads.filter((t) => t?.id && !known.has(t.id));
+        if (incoming.length) {
+          threads.value = [...incoming, ...threads.value];
+        }
+
         try {
-          activeThreadPerSession.value = JSON.parse(savedActivePerSession);
-        } catch (_) {}
-      }
+          const active = JSON.parse(archive.active);
+          if (active && typeof active === 'object' && !Array.isArray(active)) {
+            // A pointer chosen while loading wins over the stored one.
+            activeThreadPerSession.value = { ...active, ...activeThreadPerSession.value };
+          }
+        } catch {
+          /* active-thread pointers are disposable */
+        }
+
+        // Rebuild the reactive legacy map now that threads have been merged in.
+        const map: Record<string, AiChatMessage[]> = {};
+        for (const t of threads.value) {
+          if (!map[t.sessionId] || activeThreadPerSession.value[t.sessionId] === t.id) {
+            map[t.sessionId] = t.messages;
+          }
+        }
+        messages.value = map;
+      });
 
       // Sync legacy messages map for backwards compatibility
       const legacyMap: Record<string, AiChatMessage[]> = {};
@@ -153,33 +156,45 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
   init();
 
+  /**
+   * Write any debounced archive immediately.
+   *
+   * The debounce exists because `saveState` runs on every streamed token, but it
+   * means the last few seconds of a conversation can still be pending when the
+   * window goes away.
+   */
+  function flushState(): Promise<void> {
+    return flushChatArchive();
+  }
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => {
+      void flushChatArchive();
+    });
+  }
+
   function saveState() {
     if (typeof window === 'undefined') return;
-    try {
-      const providersForStorage = providers.value.map(p => ({ ...p, apiKey: '' }));
-      localStorage.setItem('boba_ai_providers', JSON.stringify(providersForStorage));
-      localStorage.setItem('boba_ai_active_provider', activeProviderId.value);
-      localStorage.setItem('boba_ai_exec_mode', executionMode.value);
-      localStorage.setItem('boba_ai_copilot_mode', copilotMode.value);
+    const providersForStorage = providers.value.map(p => ({ ...p, apiKey: '' }));
+    safeSetItem('boba_ai_providers', JSON.stringify(providersForStorage));
+    safeSetItem('boba_ai_active_provider', activeProviderId.value);
+    safeSetItem('boba_ai_exec_mode', executionMode.value);
+    safeSetItem('boba_ai_copilot_mode', copilotMode.value);
 
-      // Simpan maksimal 60 thread riwayat
-      const trimmedThreads = threads.value.slice(0, 60).map(t => ({
-        ...t,
-        messages: t.messages,
-      }));
-      localStorage.setItem('boba_ai_chat_threads', JSON.stringify(trimmedThreads));
-      localStorage.setItem('boba_ai_active_threads', JSON.stringify(activeThreadPerSession.value));
+    // History is stored as-is with no size or count limit: the user deletes what
+    // they no longer want, rather than having whole conversations silently
+    // trimmed behind their back. The archive lives in its own file, so an
+    // unbounded history no longer competes for the browser storage quota.
+    scheduleChatArchiveSave(JSON.stringify(threads.value), JSON.stringify(activeThreadPerSession.value));
 
-      // Sync legacy messages map for backwards compatibility
-      const legacyMap: Record<string, AiChatMessage[]> = {};
-      for (const t of threads.value) {
-        if (!legacyMap[t.sessionId] || activeThreadPerSession.value[t.sessionId] === t.id) {
-          legacyMap[t.sessionId] = t.messages;
-        }
+    // Sync the in-memory legacy map for the reactive `messages` consumers.
+    const legacyMap: Record<string, AiChatMessage[]> = {};
+    for (const t of threads.value) {
+      if (!legacyMap[t.sessionId] || activeThreadPerSession.value[t.sessionId] === t.id) {
+        legacyMap[t.sessionId] = t.messages;
       }
-      messages.value = legacyMap;
-      localStorage.setItem('boba_ai_chat_history', JSON.stringify(legacyMap));
-    } catch (_) {}
+    }
+    messages.value = legacyMap;
   }
 
   const activeProvider = computed<AiProviderConfig | null>(() => {
@@ -1123,6 +1138,12 @@ You have access to tools to inspect and configure the server and database:
             isThinking.value = false;
             activeAbortController = null;
 
+            // A finished turn is the natural commit point. The debounce alone
+            // would leave the last of the answer unwritten if the window closed
+            // mid-stream, and the `beforeunload` flush is a dynamic import plus
+            // an IPC round trip that will not reliably complete during unload.
+            void flushChatArchive();
+
             // Cek apakah ada tool calls lanjutan yang dihasilkan
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
               if (executionMode.value === 'auto') {
@@ -1251,5 +1272,6 @@ You have access to tools to inspect and configure the server and database:
     rejectToolCall,
     retryToolCall,
     stopThinking,
+    flushState,
   };
 });

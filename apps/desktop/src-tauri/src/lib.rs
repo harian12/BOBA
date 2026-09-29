@@ -85,6 +85,8 @@ pub fn run() {
             commands::fs_create_file,
             commands::fs_delete_path,
             commands::fs_rename_path,
+            commands::local_state_load,
+            commands::local_state_save,
             commands::fs_duplicate_path,
             commands::fs_get_folder_size,
             commands::read_local_private_key_file,

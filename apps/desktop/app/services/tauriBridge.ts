@@ -282,6 +282,16 @@ export const tauriBridge = {
     return await invoke('fs_write_text_file', { filePath, content });
   },
 
+  /** Read a local state file from the app data dir. Empty string if absent. */
+  async localStateLoad(relative: string): Promise<string> {
+    return await invoke('local_state_load', { relative });
+  },
+
+  /** Write a local state file atomically inside the app data dir. */
+  async localStateSave(relative: string, content: string): Promise<void> {
+    return await invoke('local_state_save', { relative, content });
+  },
+
   async readLocalPrivateKeyFile(filePath: string): Promise<string> {
     return await invoke('read_local_private_key_file', { filePath });
   },
