@@ -631,6 +631,51 @@ pub async fn ssh_get_server_metrics(
 }
 
 #[tauri::command]
+pub async fn ssh_get_server_metrics_full(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<crate::ssh_session::ServerMetricsFull, String> {
+    state.ssh_manager.get_metrics_full(&session_id).await
+}
+
+#[tauri::command]
+pub async fn ssh_list_running_apps(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    state.ssh_manager.list_running_apps(&session_id).await
+}
+
+#[tauri::command]
+pub async fn ssh_start_log_stream(
+    state: State<'_, AppState>,
+    session_id: String,
+    command: String,
+    label: String,
+) -> Result<String, String> {
+    state
+        .ssh_manager
+        .start_log_stream(&session_id, &command, &label)
+        .await
+}
+
+#[tauri::command]
+pub async fn ssh_stop_log_stream(
+    state: State<'_, AppState>,
+    stream_id: String,
+) -> Result<(), String> {
+    state.ssh_manager.stop_log_stream(&stream_id).await
+}
+
+#[tauri::command]
+pub async fn ssh_list_active_log_streams(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<Vec<String>, String> {
+    Ok(state.ssh_manager.list_active_streams(&session_id))
+}
+
+#[tauri::command]
 pub async fn sftp_fix_permissions(
     state: State<'_, AppState>,
     session_id: String,
@@ -646,6 +691,40 @@ pub async fn ssh_exec_command(
     command: String,
 ) -> Result<String, String> {
     state.ssh_manager.exec_command(&session_id, &command).await
+}
+
+#[tauri::command]
+pub async fn open_monitoring_window(
+    app_handle: tauri::AppHandle,
+    session_id: String,
+    title: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let win_label = format!("monitoring-{}", session_id.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_"));
+    
+    if let Some(existing_win) = app_handle.get_webview_window(&win_label) {
+        let _ = existing_win.set_focus();
+        return Ok(());
+    }
+
+    let encoded_sid: String = session_id.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c.to_string() } else { format!("%{:02X}", c as u32) }).collect();
+    let encoded_title: String = title.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c.to_string() } else { format!("%{:02X}", c as u32) }).collect();
+    let url_str = format!("index.html?window=monitoring&sessionId={}&title={}", encoded_sid, encoded_title);
+    let win_title = format!("Monitoring - {}", title);
+
+    tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        &win_label,
+        tauri::WebviewUrl::App(url_str.into()),
+    )
+    .title(win_title)
+    .inner_size(1000.0, 720.0)
+    .min_inner_size(800.0, 550.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| format!("Failed to create monitoring window: {}", e))?;
+
+    Ok(())
 }
 
 pub fn log_msg(msg: &str) {

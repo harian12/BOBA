@@ -290,6 +290,43 @@ export const tauriBridge = {
     return await invoke('ssh_get_server_metrics', { sessionId });
   },
 
+  async sshGetServerMetricsFull(sessionId: string): Promise<any> {
+    return await invoke('ssh_get_server_metrics_full', { sessionId });
+  },
+
+  async openMonitoringWindow(sessionId: string, title?: string): Promise<void> {
+    return await invoke('open_monitoring_window', { sessionId, title: title || 'Server' });
+  },
+
+  // App discovery & log streaming
+  async sshListRunningApps(sessionId: string): Promise<string> {
+    return await invoke('ssh_list_running_apps', { sessionId });
+  },
+
+  async sshStartLogStream(sessionId: string, command: string, label: string): Promise<string> {
+    return await invoke('ssh_start_log_stream', { sessionId, command, label });
+  },
+
+  async sshStopLogStream(streamId: string): Promise<void> {
+    return await invoke('ssh_stop_log_stream', { streamId });
+  },
+
+  async sshListActiveLogStreams(sessionId: string): Promise<string[]> {
+    return await invoke('ssh_list_active_log_streams', { sessionId });
+  },
+
+  onLogStreamChunk(streamId: string, callback: (chunk: string) => void): Promise<UnlistenFn> {
+    return listen(`log-stream-chunk:${streamId}`, (event) => {
+      callback(event.payload as string);
+    });
+  },
+
+  onLogStreamEnded(streamId: string, callback: () => void): Promise<UnlistenFn> {
+    return listen(`log-stream-ended:${streamId}`, () => {
+      callback();
+    });
+  },
+
   async sshExecCommand(sessionId: string, command: string): Promise<string> {
     return await invoke('ssh_exec_command', { sessionId, command });
   },

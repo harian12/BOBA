@@ -203,6 +203,33 @@ pub struct TransferProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProcessItem {
+    pub pid: String,
+    pub user: String,
+    pub cpu: f32,
+    pub mem: f32,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ServerMetricsFull {
+    pub cpu_usage: f32,
+    pub ram_used_mb: u64,
+    pub ram_total_mb: u64,
+    pub ram_percent: f32,
+    pub swap_used_mb: u64,
+    pub swap_total_mb: u64,
+    pub swap_percent: f32,
+    pub disk_used: String,
+    pub disk_total: String,
+    pub disk_percent: f32,
+    pub uptime: String,
+    pub load_avg: String,
+    pub cpu_cores: u32,
+    pub top_processes: Vec<ProcessItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ServerMetrics {
     pub cpu_usage: f32,
     pub ram_used_mb: u64,
@@ -242,6 +269,14 @@ pub struct ActiveSession {
     pub password: Option<String>,
 }
 
+/// A live `tail -f` bookkeeping entry. The channel itself is owned by the reader
+/// task; this only records who owns it and how to ask the task to stop.
+pub struct LogStream {
+    pub session_id: String,
+    pub label: String,
+    pub cancel: Arc<AtomicBool>,
+}
+
 #[derive(Clone)]
 pub struct SshManager {
     sessions: Arc<Mutex<HashMap<String, ActiveSession>>>,
@@ -252,6 +287,11 @@ pub struct SshManager {
     pub cancel_epoch: Arc<AtomicU64>,
     pub cancel_notify: Arc<tokio::sync::Notify>,
     pub folder_notifiers: Arc<Mutex<HashMap<String, Arc<tokio::sync::Notify>>>>,
+    /// Live `tail -f` channels owned by this manager.
+    /// The remote process is NOT detached: it runs directly on the channel, so the
+    /// server tears it down via SIGHUP/EOF as soon as we drop the channel.
+    log_streams: Arc<Mutex<HashMap<String, LogStream>>>,
+    app_handle: Arc<Mutex<Option<tauri::AppHandle>>>,
 }
 
 impl SshManager {
@@ -265,7 +305,15 @@ impl SshManager {
             cancel_epoch: Arc::new(AtomicU64::new(0)),
             cancel_notify: Arc::new(tokio::sync::Notify::new()),
             folder_notifiers: Arc::new(Mutex::new(HashMap::new())),
+            log_streams: Arc::new(Mutex::new(HashMap::new())),
+            app_handle: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// The monitoring window lives in a separate webview, so streaming log chunks
+    /// are broadcast app-wide and filtered by stream_id on the frontend.
+    pub fn set_app_handle(&self, handle: tauri::AppHandle) {
+        *self.app_handle.lock() = Some(handle);
     }
 
     pub fn get_concurrency(&self) -> usize {
@@ -653,6 +701,334 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
         }
 
         Ok(metrics)
+    }
+
+    /// Fetch full server metrics including Swap & Top 5 processes
+    pub async fn get_metrics_full(&self, session_id: &str) -> Result<ServerMetricsFull, String> {
+        let script = r#"
+echo "---CPU---"
+top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}'
+echo "---RAM---"
+free -m 2>/dev/null | awk 'NR==2{printf "%s %s\n", $3,$2} NR==3{printf "%s %s\n", $3,$2}'
+echo "---DISK---"
+df -h / 2>/dev/null | awk 'NR==2{printf "%s %s %s\n", $3,$2,$5}'
+echo "---UPTIME---"
+uptime -p 2>/dev/null || uptime 2>/dev/null
+echo "---LOAD---"
+uptime 2>/dev/null | awk -F'load average:' '{print $2}'
+echo "---CORES---"
+nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+echo "---TOPPROC---"
+ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu 2>/dev/null | head -n 11 | tail -n 10
+"#;
+
+        let output = self.exec_command(session_id, script).await?;
+        let mut metrics = ServerMetricsFull::default();
+
+        let mut current_section = "";
+        for line in output.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("---") && trimmed.ends_with("---") {
+                current_section = trimmed;
+                continue;
+            }
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            match current_section {
+                "---CPU---" => {
+                    if let Ok(v) = trimmed.parse::<f32>() {
+                        metrics.cpu_usage = (v * 10.0).round() / 10.0;
+                    }
+                }
+                "---RAM---" => {
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        let used = parts[0].parse::<u64>().unwrap_or(0);
+                        let total = parts[1].parse::<u64>().unwrap_or(1);
+                        if metrics.ram_total_mb == 0 {
+                            metrics.ram_used_mb = used;
+                            metrics.ram_total_mb = total;
+                            if total > 0 {
+                                metrics.ram_percent = ((used as f32 / total as f32) * 1000.0).round() / 10.0;
+                            }
+                        } else {
+                            metrics.swap_used_mb = used;
+                            metrics.swap_total_mb = total;
+                            if total > 0 {
+                                metrics.swap_percent = ((used as f32 / total as f32) * 1000.0).round() / 10.0;
+                            }
+                        }
+                    }
+                }
+                "---DISK---" => {
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    if parts.len() >= 3 {
+                        metrics.disk_used = parts[0].to_string();
+                        metrics.disk_total = parts[1].to_string();
+                        let pct_str = parts[2].trim_end_matches('%');
+                        if let Ok(pct) = pct_str.parse::<f32>() {
+                            metrics.disk_percent = pct;
+                        }
+                    }
+                }
+                "---UPTIME---" => {
+                    metrics.uptime = trimmed.to_string();
+                }
+                "---LOAD---" => {
+                    metrics.load_avg = trimmed.to_string();
+                }
+                "---CORES---" => {
+                    metrics.cpu_cores = trimmed.parse::<u32>().unwrap_or(1).max(1);
+                }
+                "---TOPPROC---" => {
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                    if parts.len() >= 5 {
+                        let pid = parts[0].to_string();
+                        let user = parts[1].to_string();
+                        let cpu = parts[2].parse::<f32>().unwrap_or(0.0);
+                        let mem = parts[3].parse::<f32>().unwrap_or(0.0);
+                        let command = parts[4..].join(" ");
+                        metrics.top_processes.push(ProcessItem {
+                            pid,
+                            user,
+                            cpu,
+                            mem,
+                            command,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(metrics)
+    }
+
+    /// Enumerate running applications from the three log-capable runtimes.
+    /// Each source is probed independently so a missing tool never aborts the scan.
+    pub async fn list_running_apps(&self, session_id: &str) -> Result<String, String> {
+        // An SSH exec channel does not source .bashrc/.profile, so PATH is minimal
+        // (`/usr/bin:/bin`). PM2 is usually installed outside that (npm global, nvm),
+        // so `command -v pm2` alone would miss it entirely.
+        let script = r#"
+PM2=""
+for c in "$(command -v pm2 2>/dev/null)" \
+         "$HOME/.npm-global/bin/pm2" \
+         "$(npm prefix -g 2>/dev/null)/bin/pm2" \
+         "/usr/local/bin/pm2" \
+         "/usr/bin/pm2" \
+         "$HOME/.nvm/versions/node/$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | tail -1)/bin/pm2"; do
+  if [ -n "$c" ] && [ -x "$c" ]; then PM2="$c"; break; fi
+done
+echo "---PM2FOUND---"
+if [ -n "$PM2" ]; then echo "yes"; else echo "no"; fi
+echo "---END---"
+echo "---PM2---"
+if [ -n "$PM2" ]; then "$PM2" jlist 2>/dev/null || echo "[]"; else echo "[]"; fi
+echo "---END---"
+echo "---DOCKER---"
+DOCKER=""
+for c in "$(command -v docker 2>/dev/null)" "/usr/bin/docker" "/usr/local/bin/docker" "/snap/bin/docker"; do
+  if [ -n "$c" ] && [ -x "$c" ]; then DOCKER="$c"; break; fi
+done
+DOCKER_SUDO="no"
+if [ -n "$DOCKER" ]; then
+  if "$DOCKER" ps --format '{{.Names}}' >/dev/null 2>&1; then
+    "$DOCKER" ps --format '{{.Names}}|{{.Image}}|{{.Status}}' 2>/dev/null
+  elif sudo -n "$DOCKER" ps --format '{{.Names}}' >/dev/null 2>&1; then
+    # Passwordless sudo works, but the user is not in the docker group.
+    DOCKER_SUDO="yes"
+    sudo -n "$DOCKER" ps --format '{{.Names}}|{{.Image}}|{{.Status}}' 2>/dev/null
+  fi
+fi
+echo "---END---"
+echo "---DOCKERSUDO---"
+echo "$DOCKER_SUDO"
+echo "---END---"
+echo "---SYSTEMD---"
+if command -v systemctl >/dev/null 2>&1; then systemctl list-units --type=service --state=running --no-legend --no-pager --plain 2>/dev/null | awk '{print $1"~"$4"~"$5}'; fi
+echo "---END---"
+echo "---WEBROOT---"
+# Applications that were deployed by copying files rather than by a process
+# manager: Laravel, WordPress, Django and friends own no PM2 process and no
+# systemd unit, so PM2/Docker/systemd alone would never list them.
+# Format: name|path|stack|logfile   (logfile is empty when no known log exists)
+for ROOT in /var/www /srv/http /usr/share/nginx/html; do
+  [ -d "$ROOT" ] || continue
+  for D in "$ROOT"/*; do
+    [ -d "$D" ] || continue
+    case "$(basename "$D")" in
+      html|default|nginx|apache2|_default) continue ;;
+    esac
+    STACK=""
+    LOG=""
+    if [ -f "$D/artisan" ]; then
+      STACK="Laravel"; LOG="$D/storage/logs/laravel.log"
+    elif [ -f "$D/wp-config.php" ] || [ -f "$D/public/wp-config.php" ]; then
+      STACK="WordPress"; LOG="$D/wp-content/debug.log"
+    elif [ -f "$D/manage.py" ]; then
+      STACK="Django"; LOG="$D/logs/app.log"
+    elif [ -f "$D/next.config.js" ] || [ -f "$D/next.config.mjs" ] || [ -f "$D/next.config.ts" ]; then
+      STACK="Next.js"; LOG="$D/.next/logs/app.log"
+    elif [ -f "$D/nuxt.config.ts" ] || [ -f "$D/nuxt.config.js" ]; then
+      STACK="Nuxt"; LOG="$D/.output/logs/app.log"
+    elif [ -f "$D/bin/console" ] || [ -f "$D/symfony.lock" ]; then
+      STACK="Symfony"; LOG="$D/var/log/dev.log"
+    elif [ -f "$D/public/index.php" ] || [ -f "$D/index.php" ]; then
+      STACK="PHP"; LOG=""
+    elif [ -f "$D/composer.json" ]; then
+      STACK="PHP (Composer)"; LOG=""
+    elif [ -f "$D/package.json" ]; then
+      STACK="Node.js"; LOG=""
+    fi
+    [ -n "$STACK" ] || continue
+    # Only advertise a log that actually exists, so the viewer does not have to
+    # explain a missing file for every framework.
+    if [ -n "$LOG" ] && [ ! -f "$LOG" ]; then LOG=""; fi
+    printf '%s|%s|%s|%s\n' "$(basename "$D")" "$D" "$STACK" "$LOG"
+  done
+done
+echo "---END---"
+"#;
+
+        self.exec_command(session_id, script).await
+    }
+
+    /// Start a live `tail -f` on its own SSH channel and stream chunks to the frontend.
+    ///
+    /// The command is executed directly on the channel (never backgrounded with `&`,
+    /// `nohup`, or setsid) so the remote process is tied to the channel's lifetime.
+    /// Dropping the channel makes the server send EOF/SIGHUP and `tail` exits, which
+    /// is what keeps us from leaking processes on the user's server.
+    pub async fn start_log_stream(
+        &self,
+        session_id: &str,
+        command: &str,
+        label: &str,
+    ) -> Result<String, String> {
+        const MAX_STREAMS: usize = 3;
+
+        {
+            let streams = self.log_streams.lock();
+            if streams.len() >= MAX_STREAMS {
+                return Err(format!(
+                    "Batas {} log stream aktif tercapai. Hentikan stream yang sedang berjalan sebelum membuka yang baru.",
+                    MAX_STREAMS
+                ));
+            }
+        }
+
+        let handle_arc = {
+            let sessions = self.sessions.lock();
+            match sessions.get(session_id) {
+                Some(s) => s.session_handle.clone(),
+                None => return Err("Session not found".into()),
+            }
+        };
+
+        let command_str = command.to_string();
+        let channel = {
+            let handle = handle_arc.lock().await;
+            let ch = handle
+                .channel_open_session()
+                .await
+                .map_err(|e| format!("Gagal membuka channel log: {}", e))?;
+            ch.exec(true, command_str)
+                .await
+                .map_err(|e| format!("Gagal menjalankan perintah log: {}", e))?;
+            ch
+        };
+
+        let stream_id = format!("log_{}_{}", session_id, chrono::Local::now().timestamp_millis());
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        {
+            let mut streams = self.log_streams.lock();
+            streams.insert(
+                stream_id.clone(),
+                LogStream {
+                    session_id: session_id.to_string(),
+                    label: label.to_string(),
+                    cancel: cancel.clone(),
+                },
+            );
+        }
+
+        let app_handle = self.app_handle.lock().clone();
+        if let Some(app) = app_handle {
+            let chunk_event = format!("log-stream-chunk:{}", stream_id);
+            let ended_event = format!("log-stream-ended:{}", stream_id);
+            let task_cancel = cancel.clone();
+            let task_stream_id = stream_id.clone();
+
+            // The task owns the channel: ending the task drops the channel, which
+            // makes the remote `tail` process exit on the server side.
+            tauri::async_runtime::spawn(async move {
+                let mut channel = channel;
+                loop {
+                    if task_cancel.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    match channel.wait().await {
+                        Some(ChannelMsg::Data { data }) => {
+                            let chunk = String::from_utf8_lossy(&data).to_string();
+                            if !chunk.is_empty() {
+                                let _ = app.emit(&chunk_event, chunk);
+                            }
+                        }
+                        Some(ChannelMsg::ExtendedData { data, .. }) => {
+                            let chunk = String::from_utf8_lossy(&data).to_string();
+                            if !chunk.is_empty() {
+                                let _ = app.emit(&chunk_event, chunk);
+                            }
+                        }
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => break,
+                        Some(_) => continue,
+                        None => break,
+                    }
+                }
+                let _ = app.emit(&ended_event, task_stream_id);
+            });
+        } else {
+            // No app handle yet: nothing will read the channel, so do not leave a
+            // remote process running.
+            self.log_streams.lock().remove(&stream_id);
+            return Err("Streaming log belum siap: app handle belum diinisialisasi".into());
+        }
+
+        Ok(stream_id)
+    }
+
+    /// Signal a live stream to stop. The reader task then drops its channel,
+    /// which terminates the remote `tail` process.
+    pub async fn stop_log_stream(&self, stream_id: &str) -> Result<(), String> {
+        let removed = self.log_streams.lock().remove(stream_id);
+        match removed {
+            Some(s) => {
+                s.cancel.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+            None => Err("Stream tidak ditemukan atau sudah berhenti".into()),
+        }
+    }
+
+    /// Stream ids still running for a session, so the frontend can resync/recover.
+    pub fn list_active_streams(&self, session_id: &str) -> Vec<String> {
+        self.log_streams
+            .lock()
+            .iter()
+            .filter(|(_, s)| s.session_id == session_id)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Drop every stream for a session (called on disconnect/close so remote
+    /// `tail` processes are reaped immediately instead of lingering).
+    pub async fn cleanup_log_streams(&self, session_id: &str) {
+        let mut streams = self.log_streams.lock();
+        streams.retain(|_, s| s.session_id != session_id);
     }
 
     /// Get active SFTP session or lazily initialize one
@@ -3880,5 +4256,18 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
 
     pub fn close(&self, session_id: &str) {
         self.sessions.lock().remove(session_id);
+        // Reap any live log streams for this session so no `tail -f` is left
+        // running on the remote host after the user closes the tab.
+        let mut streams = self.log_streams.lock();
+        let ids: Vec<String> = streams
+            .iter()
+            .filter(|(_, s)| s.session_id == session_id)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            if let Some(s) = streams.remove(&id) {
+                s.cancel.store(true, Ordering::SeqCst);
+            }
+        }
     }
 }

@@ -25,9 +25,18 @@ pub fn run() {
         dbms_manager: Arc::new(DbmsManager::new()),
     };
 
+    // Log streaming emits Tauri events app-wide; the monitoring window filters
+    // by stream_id, so the handle must exist before any stream is started.
+    let ssh_manager_for_setup = app_state.ssh_manager.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
+        .setup(move |app| {
+            ssh_manager_for_setup.set_app_handle(app.handle().clone());
+            Ok(())
+        })
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::init_or_unlock_vault,
@@ -80,6 +89,12 @@ pub fn run() {
             commands::fs_get_folder_size,
             commands::read_local_private_key_file,
             commands::ssh_get_server_metrics,
+            commands::ssh_get_server_metrics_full,
+            commands::ssh_list_running_apps,
+            commands::ssh_start_log_stream,
+            commands::ssh_stop_log_stream,
+            commands::ssh_list_active_log_streams,
+            commands::open_monitoring_window,
             commands::ssh_exec_command,
             commands::get_app_log_path,
             commands::open_log_file,

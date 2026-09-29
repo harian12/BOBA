@@ -1,5 +1,12 @@
 <template>
-  <div class="h-screen w-screen flex flex-col bg-boba-950 text-slate-100 overflow-hidden select-none">
+  <!-- Dedicated Monitoring Window View (Rendered when url query has window=monitoring) -->
+  <ServerMonitoringView
+    v-if="isMonitoringWindow"
+    :session-id="monitoringSessionId"
+    :host-title="monitoringHostTitle"
+  />
+
+  <div v-else class="h-screen w-screen flex flex-col bg-boba-950 text-slate-100 overflow-hidden select-none">
     <!-- Top Global App Bar -->
     <header class="h-9 bg-boba-950 border-b border-boba-800 flex items-center justify-between px-3 text-xs shrink-0">
       <div class="flex items-center space-x-2">
@@ -443,7 +450,22 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, onErrorCaptured } from 'vue';
 import { Icon } from '@iconify/vue';
+import ServerMonitoringView from './components/ServerMonitoringView.vue';
 import Sidebar from './components/Sidebar.vue';
+
+// Check if this window was opened as dedicated monitoring window
+const isMonitoringWindow = ref(false);
+const monitoringSessionId = ref('');
+const monitoringHostTitle = ref('');
+
+if (typeof window !== 'undefined') {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('window') === 'monitoring' || window.location.hash.includes('monitoring')) {
+    isMonitoringWindow.value = true;
+    monitoringSessionId.value = urlParams.get('sessionId') || '';
+    monitoringHostTitle.value = urlParams.get('title') || 'Server Monitoring';
+  }
+}
 import TerminalTab from './components/TerminalTab.vue';
 import EditorTab from './components/EditorTab.vue';
 import SftpManagerTab from './components/SftpManagerTab.vue';

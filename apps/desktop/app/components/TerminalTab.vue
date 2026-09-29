@@ -77,6 +77,16 @@
           <span>SFTP</span>
         </button>
 
+        <!-- Monitoring Dashboard Window Button -->
+        <button
+          @click.stop="openMonitoringWindow"
+          class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Buka Dedicated Monitoring Window"
+        >
+          <Icon icon="lucide:activity" class="w-3 h-3 text-emerald-400" />
+          <span>Monitoring</span>
+        </button>
+
         <!-- Docker Manager Modal Button (Hanya muncul jika server memiliki Docker) -->
         <button
           v-if="hasDocker"
@@ -588,6 +598,11 @@ function handleCopy() {
       navigator.clipboard.writeText(sel);
     }
   }
+}
+
+function openMonitoringWindow() {
+  const sessionId = props.tab.id;
+  tauriBridge.openMonitoringWindow(sessionId, props.tab.title);
 }
 
 function handleAskCopilot() {

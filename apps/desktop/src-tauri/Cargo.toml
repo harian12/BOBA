@@ -1,6 +1,6 @@
 [package]
 name = "boba-desktop"
-version = "0.2.7"
+version = "0.2.8"
 description = "BOBA - Remote Terminal & SFTP Suite with Multi-Device Sync"
 authors = ["BOBA Team"]
 edition = "2021"
@@ -16,6 +16,7 @@ tauri-build = { version = "2.0.0", features = [] }
 tauri = { version = "2.0.0", features = [] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-notification = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.38", features = ["full"] }

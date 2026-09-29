@@ -276,6 +276,72 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     await sendMessage(promptText);
   }
 
+  /**
+   * One-shot, tool-free AI query for the Server Monitoring window.
+   *
+   * The monitoring window renders no AI drawer, so routing through
+   * `sendPromptWithContext` means the answer lands somewhere invisible and every
+   * bail-out guard shows UI that only exists in the main window. It would also
+   * write the prompt into the user's real chat history.
+   *
+   * This keeps the real session id (so the system prompt still carries host
+   * context) but sends a throwaway single-message conversation, never touches
+   * `threads`, and ignores tool calls entirely — the monitoring window has no way
+   * to approve one, so allowing them would strand the model mid-answer.
+   */
+  async function runEphemeralAnalysis(promptText: string, sessionId: string): Promise<string> {
+    const provider = await getProviderWithSecret(activeProvider.value);
+    if (!provider) throw new Error('NO_PROVIDER');
+    if (!provider.apiKey && provider.type !== 'ollama') throw new Error('NO_API_KEY');
+    if (isThinking.value) throw new Error('BUSY');
+
+    const abort = new AbortController();
+    activeAbortController = abort;
+    isThinking.value = true;
+
+    const userMessage: AiChatMessage = {
+      id: `msg_ephemeral_${Date.now()}`,
+      role: 'user',
+      content: maskSensitiveData(promptText.trim()),
+      createdAt: Date.now(),
+    };
+
+    const systemPrompt = `${buildSystemPrompt(sessionId)}
+
+### KONTEKS KANAL INI: MONITORING DASHBOARD
+Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan yang diberikan sudah berisi seluruh data yang dibutuhkan.
+- Jawab LANGSUNG dalam Bahasa Indonesia, ringkas dan terstruktur.
+- DILARANG memanggil tool apa pun. Semua data sudah tersedia di pesan pengguna.`;
+
+    let answer = '';
+    try {
+      await streamChat(
+        provider,
+        [userMessage],
+        systemPrompt,
+        {
+          onToken: (token: string) => { answer += token; },
+          onToolCalls: () => { /* no tools are executable from the monitoring window */ },
+          onError: (err: any) => { answer += `\n\n⚠️ Error: ${err?.message || String(err)}`; },
+          onFinish: () => {},
+        },
+        abort.signal,
+        'plan'
+      );
+    } catch (err: any) {
+      const text = err?.message || String(err);
+      if (answer) answer += `\n\n⚠️ Terputus: ${text}`;
+      else throw err;
+    } finally {
+      isThinking.value = false;
+      if (activeAbortController === abort) activeAbortController = null;
+    }
+
+    const trimmed = answer.trim();
+    if (!trimmed) throw new Error('EMPTY_RESPONSE');
+    return trimmed;
+  }
+
   function closeDrawer() {
     isDrawerOpen.value = false;
   }
@@ -1179,6 +1245,7 @@ You have access to tools to inspect and configure the server and database:
     sendMessage,
     continueAgentLoop,
     sendPromptWithContext,
+    runEphemeralAnalysis,
     ensureSessionConnected,
     approveToolCall,
     rejectToolCall,
