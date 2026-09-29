@@ -937,46 +937,93 @@
         </div>
 
         <!-- VIEW 2: Table Structure / Column Meta -->
-        <div v-else-if="activeViewTab === 'structure'" class="flex-1 overflow-auto bg-[#07090e] p-3 font-mono text-xs select-text">
-          <table v-if="activeTable?.columns && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
-            <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
-              <tr>
-                <th class="px-3 py-2 border-r border-boba-800 w-12 text-center">Aksi</th>
-                <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
-                <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
-                <th class="px-3 py-2 border-r border-boba-800">Primary Key</th>
-                <th class="px-3 py-2 border-r border-boba-800">Nullable</th>
-                <th class="px-3 py-2">Default Value</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-boba-850">
-              <tr v-for="col in activeTable.columns" :key="col.name" class="hover:bg-boba-800/40">
-                <td class="px-2 py-1.5 border-r border-boba-850 text-center">
-                  <button
-                    @click="openAddFkModal(col.name)"
-                    :disabled="engine === 'sqlite'"
-                    :title="engine === 'sqlite' ? 'SQLite tidak dukung ALTER TABLE ADD CONSTRAINT FOREIGN KEY' : 'Buat Relasi Foreign Key (FK)'"
-                    class="w-6 h-6 inline-flex items-center justify-center rounded transition"
-                    :class="engine === 'sqlite' ? 'text-slate-600 cursor-not-allowed opacity-50' : 'text-sky-400 hover:bg-sky-950 hover:text-sky-300'"
-                  >
-                    <Icon icon="lucide:link" class="w-3.5 h-3.5" />
-                  </button>
-                </td>
-                <td class="px-3 py-1.5 font-bold text-sky-300 border-r border-boba-850">{{ col.name }}</td>
-                <td class="px-3 py-1.5 text-amber-300 border-r border-boba-850">{{ col.data_type }}</td>
-                <td class="px-3 py-1.5 border-r border-boba-850">
-                  <span v-if="col.is_primary_key" class="px-1.5 py-0.5 bg-amber-950 border border-amber-800 text-amber-300 rounded text-[10px] font-bold">PRIMARY KEY</span>
-                  <span v-else class="text-slate-600">-</span>
-                </td>
-                <td class="px-3 py-1.5 border-r border-boba-850">
-                  <span :class="col.is_nullable ? 'text-emerald-400' : 'text-rose-400'">
-                    {{ col.is_nullable ? 'YES' : 'NO' }}
-                  </span>
-                </td>
-                <td class="px-3 py-1.5 text-slate-400">{{ col.default_value ?? 'NULL' }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else-if="activeViewTab === 'structure'" class="flex-1 flex flex-col overflow-hidden bg-[#07090e] font-mono text-xs select-text">
+          <!-- Structure Toolbar -->
+          <div class="px-3 py-2 bg-[#0f1420] border-b border-boba-800 flex items-center justify-between shrink-0 select-none">
+            <div class="flex items-center space-x-2 text-slate-300">
+              <Icon icon="lucide:columns" class="w-4 h-4 text-sky-400" />
+              <span class="font-bold text-slate-100">{{ activeTable?.name }}</span>
+              <span class="text-slate-500 text-[11px]">({{ activeTable?.columns.length }} Kolom)</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button
+                @click="openAddColumnModal"
+                class="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-medium transition flex items-center space-x-1.5 shadow"
+                title="Tambah Kolom Baru ke Tabel Ini"
+              >
+                <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+                <span>Tambah Kolom</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-auto p-3">
+            <table v-if="activeTable?.columns && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
+              <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
+                <tr>
+                  <th class="px-3 py-2 border-r border-boba-800 w-12 text-center">Aksi</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Primary Key</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Nullable</th>
+                  <th class="px-3 py-2">Default Value</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-boba-850">
+                <tr v-for="col in activeTable.columns" :key="col.name" class="hover:bg-boba-800/40">
+                  <td class="px-2 py-1.5 border-r border-boba-850 text-center">
+                    <button
+                      @click="openAddFkModal(col.name)"
+                      :disabled="engine === 'sqlite' || engine === 'redis' || engine === 'mongodb'"
+                      :title="engine === 'sqlite' ? 'SQLite tidak dukung ALTER TABLE ADD CONSTRAINT FOREIGN KEY' : (engine === 'redis' || engine === 'mongodb' ? 'NoSQL tidak mendukung Foreign Key relasional' : 'Buat Relasi Foreign Key (FK)')"
+                      class="w-6 h-6 inline-flex items-center justify-center rounded transition"
+                      :class="(engine === 'sqlite' || engine === 'redis' || engine === 'mongodb') ? 'text-slate-600 cursor-not-allowed opacity-50' : 'text-sky-400 hover:bg-sky-950 hover:text-sky-300'"
+                    >
+                      <Icon icon="lucide:link" class="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                  <td class="px-3 py-1.5 font-bold text-sky-300 border-r border-boba-850">
+                    <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                      <span>{{ col.name }}</span>
+
+                      <!-- Outgoing Foreign Key Badge (Kolom ini merujuk ke tabel lain) -->
+                      <span
+                        v-for="fk in getColumnOutgoingFks(activeTable.name, col.name)"
+                        :key="'out_' + fk.to_table + '_' + fk.to_column"
+                        :title="`📤 Relasi Foreign Key: Merujuk ke ${fk.to_table}.${fk.to_column}`"
+                        class="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded bg-sky-950 border border-sky-600/70 text-[10px] text-sky-300 font-sans font-normal"
+                      >
+                        <Icon icon="lucide:arrow-right-to-line" class="w-3 h-3 text-sky-400 shrink-0" />
+                        <span class="truncate max-w-[130px] font-mono">{{ fk.to_table }}.{{ fk.to_column }}</span>
+                      </span>
+
+                      <!-- Incoming Foreign Key Badge (Kolom ini dirujuk oleh tabel lain) -->
+                      <span
+                        v-for="fk in getColumnIncomingFks(activeTable.name, col.name)"
+                        :key="'in_' + fk.from_table + '_' + fk.from_column"
+                        :title="`📥 Direferensikan oleh: ${fk.from_table}.${fk.from_column}`"
+                        class="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-600/70 text-[10px] text-emerald-300 font-sans font-normal"
+                      >
+                        <Icon icon="lucide:arrow-left-to-line" class="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span class="truncate max-w-[130px] font-mono">{{ fk.from_table }}.{{ fk.from_column }}</span>
+                      </span>
+                    </div>
+                  </td>
+                  <td class="px-3 py-1.5 text-amber-300 border-r border-boba-850">{{ col.data_type }}</td>
+                  <td class="px-3 py-1.5 border-r border-boba-850">
+                    <span v-if="col.is_primary_key" class="px-1.5 py-0.5 bg-amber-950 border border-amber-800 text-amber-300 rounded text-[10px] font-bold">PRIMARY KEY</span>
+                    <span v-else class="text-slate-600">-</span>
+                  </td>
+                  <td class="px-3 py-1.5 border-r border-boba-850">
+                    <span :class="col.is_nullable ? 'text-emerald-400' : 'text-rose-400'">
+                      {{ col.is_nullable ? 'YES' : 'NO' }}
+                    </span>
+                  </td>
+                  <td class="px-3 py-1.5 text-slate-400">{{ col.default_value ?? 'NULL' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- VIEW 3: Table DDL Script -->
@@ -1046,6 +1093,118 @@
             Tutup
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Add Column Modal -->
+    <div
+      v-if="isAddColumnModalOpen && activeTable"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+              <Icon icon="lucide:plus" class="w-4 h-4 text-emerald-400" />
+              <span>Tambah Kolom Baru</span>
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Menambahkan kolom baru ke tabel <code class="text-sky-300 font-mono">{{ activeTable.name }}</code>
+            </p>
+          </div>
+          <button @click="closeAddColumnModal" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-boba-800 transition">
+            <Icon icon="lucide:x" class="w-4 h-4" />
+          </button>
+        </div>
+
+        <form @submit.prevent="executeAddColumn" class="space-y-4">
+          <!-- Column Name -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Nama Kolom</label>
+            <input
+              v-model="addColumnForm.name"
+              type="text"
+              required
+              placeholder="misal: status, created_by, phone_number"
+              class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+            />
+          </div>
+
+          <!-- Data Type -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Tipe Data</label>
+            <div class="relative">
+              <input
+                v-model="addColumnForm.dataType"
+                type="text"
+                required
+                list="add-column-data-types"
+                placeholder="Pilih atau ketik tipe data..."
+                class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+              />
+              <datalist id="add-column-data-types">
+                <option value="VARCHAR(255)" />
+                <option value="INT" />
+                <option value="BIGINT" />
+                <option value="TEXT" />
+                <option value="BOOLEAN" />
+                <option value="DECIMAL(10,2)" />
+                <option value="TIMESTAMP" />
+                <option value="DATETIME" />
+                <option value="DATE" />
+                <option value="JSON" />
+                <option value="BLOB" />
+              </datalist>
+            </div>
+          </div>
+
+          <!-- Nullable Checkbox & Default Value -->
+          <div class="grid grid-cols-2 gap-4 pt-1">
+            <div class="space-y-1.5 flex flex-col justify-center">
+              <label class="flex items-center space-x-2 cursor-pointer mt-3">
+                <input
+                  v-model="addColumnForm.isNullable"
+                  type="checkbox"
+                  class="rounded bg-boba-950 border-boba-700 text-emerald-500 focus:ring-0 w-4 h-4"
+                />
+                <span class="text-xs text-slate-200">Izinkan NULL (Nullable)</span>
+              </label>
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-300">Nilai Default (Opsional)</label>
+              <input
+                v-model="addColumnForm.defaultValue"
+                type="text"
+                placeholder="misal: 0, 'active', NULL"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-emerald-500 rounded px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none transition"
+              />
+            </div>
+          </div>
+
+          <!-- Generated SQL Preview -->
+          <div v-if="addColumnSqlPreview" class="pt-2">
+            <div class="text-[10px] text-slate-500 mb-1">Preview SQL Query:</div>
+            <pre class="bg-black/60 border border-boba-800 p-2 rounded text-[9px] text-emerald-300 font-mono whitespace-pre-wrap">{{ addColumnSqlPreview }}</pre>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-4 border-t border-boba-800 mt-4">
+            <button
+              type="button"
+              @click="closeAddColumnModal"
+              class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="!addColumnForm.name.trim() || !addColumnForm.dataType.trim()"
+              class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition"
+            >
+              <Icon icon="lucide:play" class="w-3.5 h-3.5" />
+              <span>Simpan Kolom</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1623,7 +1782,7 @@ import ProcesslistModal from './ProcesslistModal.vue';
 import TableDesignerModal from './TableDesignerModal.vue';
 import UserManagerModal from './UserManagerModal.vue';
 import ErdDiagramView from './ErdDiagramView.vue';
-import type { ActiveTab, DbTableMeta, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult } from '../types/index.js';
+import type { ActiveTab, DbTableMeta, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbForeignKeyRelation } from '../types/index.js';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -1631,6 +1790,94 @@ const props = defineProps<{
 
 const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
+
+// Foreign Keys cache for Structure View and Badges
+const foreignKeysList = ref<DbForeignKeyRelation[]>([]);
+
+function getColumnOutgoingFks(tableName: string, colName: string) {
+  return foreignKeysList.value.filter(fk => fk.from_table.toLowerCase() === tableName.toLowerCase() && fk.from_column.toLowerCase() === colName.toLowerCase());
+}
+
+function getColumnIncomingFks(tableName: string, colName: string) {
+  return foreignKeysList.value.filter(fk => fk.to_table.toLowerCase() === tableName.toLowerCase() && fk.to_column.toLowerCase() === colName.toLowerCase());
+}
+
+// --- Add Column State ---
+const isAddColumnModalOpen = ref(false);
+const addColumnForm = ref<{
+  name: string;
+  dataType: string;
+  isNullable: boolean;
+  defaultValue: string;
+}>({
+  name: '',
+  dataType: 'VARCHAR(255)',
+  isNullable: true,
+  defaultValue: '',
+});
+
+const addColumnSqlPreview = computed(() => {
+  if (!activeTable.value || !addColumnForm.value.name.trim() || !addColumnForm.value.dataType.trim()) return '';
+  const tbl = qi(activeTable.value.name);
+  const col = qi(addColumnForm.value.name.trim());
+  const type = addColumnForm.value.dataType.trim();
+  const nullConstraint = addColumnForm.value.isNullable ? '' : ' NOT NULL';
+  let defaultConstraint = '';
+  if (addColumnForm.value.defaultValue.trim()) {
+    const defVal = addColumnForm.value.defaultValue.trim();
+    if (defVal.toUpperCase() === 'NULL') {
+      defaultConstraint = ' DEFAULT NULL';
+    } else if (!isNaN(Number(defVal))) {
+      defaultConstraint = ` DEFAULT ${defVal}`;
+    } else {
+      defaultConstraint = ` DEFAULT ${sqlLiteral(engine.value, defVal)}`;
+    }
+  }
+  return `ALTER TABLE ${tbl} ADD COLUMN ${col} ${type}${nullConstraint}${defaultConstraint};`;
+});
+
+function openAddColumnModal() {
+  if (!activeTable.value) return;
+  addColumnForm.value = {
+    name: '',
+    dataType: 'VARCHAR(255)',
+    isNullable: true,
+    defaultValue: '',
+  };
+  isAddColumnModalOpen.value = true;
+}
+
+function closeAddColumnModal() {
+  isAddColumnModalOpen.value = false;
+}
+
+async function executeAddColumn() {
+  if (!addColumnSqlPreview.value || !props.tab.dbConnection) return;
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      addColumnSqlPreview.value
+    );
+    dialogStore.showToast(`Berhasil menambahkan kolom ${addColumnForm.value.name} ke tabel ${activeTable.value?.name}`, 'success', 3000);
+    closeAddColumnModal();
+    await loadSchemaOverview();
+    if (activeTable.value) {
+      // Re-select table to update structure metadata
+      const updatedTbl = schemaOverview.value?.tables.find(t => t.name === activeTable.value?.name);
+      if (updatedTbl) activeTable.value = updatedTbl;
+    }
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menambah Kolom',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
 
 const isSidebarCollapsed = ref(false);
 
@@ -2320,6 +2567,16 @@ async function loadSchemaOverview() {
     schemaOverview.value = overview;
     if (overview.current_database) {
       activeDatabase.value = overview.current_database;
+    }
+
+    // Refresh foreign keys for structure badges if not SQLite/NoSQL
+    if (engine.value !== 'redis' && engine.value !== 'mongodb') {
+      try {
+        const fks = await tauriBridge.dbmsGetForeignKeys(props.tab.dbConnection, activeDatabase.value || undefined);
+        foreignKeysList.value = fks || [];
+      } catch (fkErr) {
+        console.debug('Failed to load foreign keys for schema overview', fkErr);
+      }
     }
   } catch (err: any) {
     errorMessage.value = String(err?.message || err);
