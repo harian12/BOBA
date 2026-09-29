@@ -8,7 +8,7 @@
       <!-- Top Modes: Sessions / Databases / SFTP -->
       <div class="flex flex-col items-center space-y-2.5 w-full">
         <!-- Brand Logo -->
-        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" title="BOBA Desktop Suite v0.2.5 (Klik untuk cek update)">
+        <div class="p-1 mb-1 cursor-pointer" @click="$emit('open-update')" :title="`BOBA Desktop Suite v${currentAppVersion} (Klik untuk cek update)`">
           <img src="/logo-mark.svg" alt="BOBA" class="w-7 h-7 object-contain transition-opacity hover:opacity-70" />
         </div>
 
@@ -805,6 +805,7 @@ import { useVaultStore } from '../stores/vaultStore.js';
 import { useSyncStore } from '../stores/syncStore.js';
 import { useSessionStore } from '../stores/sessionStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
+import { useUpdater } from '../composables/useUpdater.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
 import type { SshSessionConfig, Folder, DbConnectionConfig } from '../types/index.js';
 
@@ -815,6 +816,8 @@ defineProps<{
 const emit = defineEmits(['new-session', 'edit-session', 'open-sync', 'open-keys', 'open-change-password', 'open-update']);
 
 const vaultStore = useVaultStore();
+/** Version shown in the logo tooltip, from the updater module. */
+const { currentAppVersion } = useUpdater();
 const syncStore = useSyncStore();
 const sessionStore = useSessionStore();
 const dialogStore = useDialogStore();

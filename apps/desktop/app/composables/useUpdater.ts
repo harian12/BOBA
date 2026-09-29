@@ -1,6 +1,7 @@
 import { ref, computed, shallowRef } from 'vue';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { getVersion } from '@tauri-apps/api/app';
+import pkg from '../../package.json';
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'up-to-date' | 'error';
 
@@ -15,7 +16,12 @@ const rawUpdate = shallowRef<Update | null>(null);
 const downloadProgress = ref(0);
 const downloadedBytes = ref(0);
 const totalBytes = ref(0);
-const currentAppVersion = ref('0.2.5');
+/**
+ * Fallback comes from package.json rather than a hardcoded string. A literal
+ * version in this file silently rots: it stayed at 0.2.5 through four releases
+ * and would have been the number the user saw whenever the runtime read failed.
+ */
+const currentAppVersion = ref<string>(pkg.version);
 const newVersion = ref('');
 const releaseNotes = ref('');
 let checkInFlight: Promise<CheckResult> | null = null;
@@ -35,7 +41,10 @@ export function useUpdater() {
         if (version) currentAppVersion.value = version;
       }
     } catch {
-      currentAppVersion.value = '0.2.5';
+      // Deliberately keep the packaged version. Overwriting it here used to
+      // downgrade an already-correct 0.2.9 back to a stale literal, so a later
+      // failure would make the app claim a version it had already left behind.
+      console.warn('BOBA: runtime version unavailable, showing the packaged version.');
     }
   };
 

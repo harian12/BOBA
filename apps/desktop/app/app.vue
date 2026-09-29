@@ -16,7 +16,7 @@
           title="Versi Aplikasi BOBA (Klik untuk cek pembaruan)"
           class="px-1.5 py-0.2 bg-boba-900 hover:bg-boba-800 text-slate-400 hover:text-sky-300 border border-boba-750 rounded text-[10px] font-mono transition"
         >
-          v0.2.5
+          v{{ currentAppVersion }}
         </button>
         <span class="text-slate-600">|</span>
         <span class="text-slate-400 text-[11px]">Windows Remote Terminal & SFTP Suite</span>
@@ -494,6 +494,7 @@ import { useAiAgentStore } from './stores/aiAgentStore.js';
 import { useDbmsStore } from './stores/dbmsStore.js';
 import { tauriBridge } from './services/tauriBridge.js';
 import { useTooltipLayer } from './composables/useTooltipLayer.js';
+import { useUpdater } from './composables/useUpdater.js';
 import { useAutoLock } from './composables/useAutoLock.js';
 import type { SshSessionConfig, ActiveTab } from './types/index.js';
 
@@ -507,6 +508,9 @@ const dbmsStore = useDbmsStore();
 
 useTooltipLayer();
 const { timeoutMinutes } = useAutoLock();
+// Header version pill. Read from the updater module so it can never drift from
+// the build: the literal string it replaced stayed at v0.2.5 for four releases.
+const { currentAppVersion } = useUpdater();
 
 function getTabBadge(tab: ActiveTab) {
   if (tab.type === 'terminal') {

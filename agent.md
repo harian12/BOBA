@@ -131,3 +131,49 @@ $manifestHeaders = @{
 Invoke-RestMethod -Uri $uploadManifestUrl -Method Post -Headers $manifestHeaders -Body $jsonBytes
 ```
 
+---
+
+## 7. Bahasa Dokumentasi Releases
+
+Dokumentasi yang dilihat pengguna **wajib ditulis dalam Bahasa Indonesia**. Ini mencakup:
+
+| Dokumen | Bahasa | Lokasi |
+| --- | --- | --- |
+| **Release Notes GitHub** | Bahasa Indonesia | Body dari GitHub Release |
+| **README** | Bahasa Indonesia | `README.md` |
+| **Pesan commit** | English | `git log` (konvensi repo yang sudah berjalan) |
+
+### Release Notes
+- Tulis dalam Bahasa Indonesia, dengan sub-heading per area fitur bila rilisnya besar.
+- Jelaskan **masalah yang diperbaiki dan penyebabnya**, bukan hanya daftar file yang berubah. Nilsainya ada pada alasan di balik perubahan, bukan pada diff-nya.
+- Sebutkan risiko atau hal yang perlu dicek pengguna setelah memasang, terutama bila ada migrasi data.
+- Nada: lugas dan teknis. Hindari pujian diri sendiri dan marketing.
+- Jangan menyebutkan hal yang belum diverifikasi. Bila suatu fitur hanya lolos uji statis (typecheck, unit test, build) dan belum pernah dijalankan di binary sungguhan, nyatakan demikian secara terbuka.
+
+### README
+- Struktur README memakai heading bernomor. Saat menambah fitur baru, tambahkan sebagai section bernomor **di akhir** daftar agar penomoran section yang sudah ada tidak berubah.
+- SEBELUM menulis deskripsi fitur, **verifikasi dulu ke kode sumbernya** (tab, aksi, dan capability yang benar-benar ada). Jangan menulis Marketing dari asumsi.
+- Jika sebuah rilis sebelumnya pernah terbit tanpa masuk README, tambahkan sekaligus.
+- Perbarui juga README bila ada perilaku yang berubah atau tidak lagi berlaku (misal: state yang dulu disimpan antar restart, lalu dihapus).
+- README memakai `npm run` pada contoh perintah, sementara repo ini memakai `bun`. Ini ketidaksesuaian yang sudah lama ada dan belum pernah dibereskan.
+
+### Verifikasi Pra-Release
+Sebelum PUBLISH, jalankan pengecekan berikut agar tidak ada yang tertinggal:
+
+```bash
+# 1. Tidak ada nomor versi hardcoded di UI
+grep -rnE "0\.[0-9]+\.[0-9]+" apps/desktop/app --include=*.vue --include=*.ts
+# Hanya boleh menyisakan IP address (127.0.0.1) dan komentar historis.
+
+# 2. Kualitas kode
+bun run typecheck:desktop
+bun run test:desktop
+```
+
+Versi yang tampil di antarmuka **tidak boleh ditulis manual**. Bacanya dari satu sumber:
+
+- `apps/desktop/package.json` → nilai fallback, diimpor sebagai `pkg.version`
+- `getVersion()` dari Tauri runtime → nilai sebenarnya saat aplikasi berjalan
+
+Pengguna/updater bisa membuat nomor versi yang tertulis manual tertinggal beberapa rilis tanpa terlihat. Header aplikasi pernah tertahan di `v0.2.5` selama empat rilis karena ditulis manual.
+
