@@ -82,15 +82,26 @@
         <div class="space-y-1">
           <div class="flex items-center justify-between">
             <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Database:</label>
-            <button
-              v-if="engine !== 'sqlite' && engine !== 'redis' && engine !== 'mongodb'"
-              @click="openCreateDbModal"
-              class="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 font-sans font-medium hover:underline transition"
-              title="Buat Database Baru"
-            >
-              <Icon icon="lucide:plus-circle" class="w-3 h-3" />
-              <span>Database Baru</span>
-            </button>
+            <div class="flex items-center space-x-2">
+              <button
+                v-if="engine !== 'sqlite' && engine !== 'redis' && engine !== 'mongodb'"
+                @click="openCreateDbModal"
+                class="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 font-sans font-medium hover:underline transition"
+                title="Buat Database Baru"
+              >
+                <Icon icon="lucide:plus-circle" class="w-3 h-3" />
+                <span>Baru</span>
+              </button>
+              <button
+                v-if="engine !== 'sqlite' && engine !== 'redis' && engine !== 'mongodb' && activeDatabase"
+                @click="confirmDropDatabase"
+                class="text-[10px] text-rose-400 hover:text-rose-300 flex items-center space-x-1 font-sans font-medium hover:underline transition"
+                title="Hapus Database Aktif (DROP DATABASE)"
+              >
+                <Icon icon="lucide:trash-2" class="w-3 h-3" />
+                <span>Hapus</span>
+              </button>
+            </div>
           </div>
           <select
             v-if="schemaOverview?.databases && schemaOverview.databases.length > 1"
@@ -591,6 +602,24 @@
             </div>
 
             <div class="flex items-center space-x-1.5">
+              <!-- Quick Search in Table Data -->
+              <div class="relative flex items-center">
+                <Icon icon="lucide:search" class="w-3.5 h-3.5 absolute left-2 text-slate-400 pointer-events-none" />
+                <input
+                  v-model="gridSearchQuery"
+                  type="text"
+                  placeholder="Cari cepat data..."
+                  class="bg-boba-950 border border-boba-700 focus:border-sky-500 rounded pl-7 pr-2 py-0.5 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none w-44 transition font-mono"
+                />
+                <button
+                  v-if="gridSearchQuery"
+                  @click="gridSearchQuery = ''"
+                  class="absolute right-1.5 text-slate-400 hover:text-white text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+
               <button
                 @click="addFilterRule"
                 class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-[11px] transition flex items-center space-x-1 border border-boba-700"
@@ -965,13 +994,36 @@
         <div v-else-if="activeViewTab === 'structure'" class="flex-1 flex flex-col overflow-hidden bg-[#07090e] font-mono text-xs select-text">
           <!-- Structure Toolbar -->
           <div class="px-3 py-2 bg-[#0f1420] border-b border-boba-800 flex items-center justify-between shrink-0 select-none">
-            <div class="flex items-center space-x-2 text-slate-300">
-              <Icon icon="lucide:columns" class="w-4 h-4 text-sky-400" />
-              <span class="font-bold text-slate-100">{{ activeTable?.name }}</span>
-              <span class="text-slate-500 text-[11px]">({{ activeTable?.columns.length }} Kolom)</span>
+            <div class="flex items-center space-x-3 text-slate-300">
+              <div class="flex items-center space-x-2">
+                <Icon icon="lucide:columns" class="w-4 h-4 text-sky-400" />
+                <span class="font-bold text-slate-100">{{ activeTable?.name }}</span>
+                <span class="text-slate-500 text-[11px]">({{ activeTable?.columns.length }} Kolom)</span>
+              </div>
+
+              <!-- Sub-tab Selector: Columns vs Indexes -->
+              <div class="flex items-center space-x-1 bg-boba-950 p-0.5 rounded border border-boba-800">
+                <button
+                  @click="structSubTab = 'columns'"
+                  :class="structSubTab === 'columns' ? 'bg-sky-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-2 py-0.5 rounded text-[11px] transition flex items-center space-x-1"
+                >
+                  <Icon icon="lucide:list" class="w-3 h-3" />
+                  <span>Kolom</span>
+                </button>
+                <button
+                  @click="structSubTab = 'indexes'; loadTableIndexes()"
+                  :class="structSubTab === 'indexes' ? 'bg-sky-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-2 py-0.5 rounded text-[11px] transition flex items-center space-x-1"
+                >
+                  <Icon icon="lucide:key" class="w-3 h-3" />
+                  <span>Indexes & Keys</span>
+                </button>
+              </div>
             </div>
             <div class="flex items-center space-x-2">
               <button
+                v-if="structSubTab === 'columns'"
                 @click="openAddColumnModal"
                 class="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-medium transition flex items-center space-x-1.5 shadow"
                 title="Tambah Kolom Baru ke Tabel Ini"
@@ -979,15 +1031,26 @@
                 <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
                 <span>Tambah Kolom</span>
               </button>
+              <button
+                v-else-if="structSubTab === 'indexes'"
+                @click="openAddIndexModal"
+                :disabled="engine === 'redis' || engine === 'mongodb'"
+                class="px-2.5 py-1 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-[11px] font-medium transition flex items-center space-x-1.5 shadow"
+                title="Buat Index Baru pada Tabel Ini"
+              >
+                <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+                <span>Buat Index</span>
+              </button>
             </div>
           </div>
 
-          <div class="flex-1 overflow-auto p-3">
+          <!-- SUB-VIEW 1: Kolom -->
+          <div v-if="structSubTab === 'columns'" class="flex-1 overflow-auto p-3">
             <table v-if="activeTable?.columns && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
               <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300 select-none">
                 <tr>
                   <th class="px-2 py-2 border-r border-boba-800 w-8 text-center" title="Urutan / Drag Handle">#</th>
-                  <th class="px-3 py-2 border-r border-boba-800 w-12 text-center">Aksi</th>
+                  <th class="px-3 py-2 border-r border-boba-800 w-24 text-center">Aksi</th>
                   <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
                   <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
                   <th class="px-3 py-2 border-r border-boba-800">Primary Key</th>
@@ -1021,15 +1084,38 @@
                     </div>
                   </td>
                   <td class="px-2 py-1.5 border-r border-boba-850 text-center">
-                    <button
-                      @click="openAddFkModal(col.name)"
-                      :disabled="engine === 'sqlite' || engine === 'redis' || engine === 'mongodb'"
-                      :title="engine === 'sqlite' ? 'SQLite tidak dukung ALTER TABLE ADD CONSTRAINT FOREIGN KEY' : (engine === 'redis' || engine === 'mongodb' ? 'NoSQL tidak mendukung Foreign Key relasional' : 'Buat Relasi Foreign Key (FK)')"
-                      class="w-6 h-6 inline-flex items-center justify-center rounded transition"
-                      :class="(engine === 'sqlite' || engine === 'redis' || engine === 'mongodb') ? 'text-slate-600 cursor-not-allowed opacity-50' : 'text-sky-400 hover:bg-sky-950 hover:text-sky-300'"
-                    >
-                      <Icon icon="lucide:link" class="w-3.5 h-3.5" />
-                    </button>
+                    <div class="flex items-center justify-center space-x-1">
+                      <!-- Buat Relasi FK -->
+                      <button
+                        @click="openAddFkModal(col.name)"
+                        :disabled="engine === 'sqlite' || engine === 'redis' || engine === 'mongodb'"
+                        :title="engine === 'sqlite' ? 'SQLite tidak dukung ALTER TABLE ADD CONSTRAINT FOREIGN KEY' : (engine === 'redis' || engine === 'mongodb' ? 'NoSQL tidak mendukung Foreign Key relasional' : 'Buat Relasi Foreign Key (FK)')"
+                        class="w-6 h-6 inline-flex items-center justify-center rounded transition"
+                        :class="(engine === 'sqlite' || engine === 'redis' || engine === 'mongodb') ? 'text-slate-600 cursor-not-allowed opacity-50' : 'text-sky-400 hover:bg-sky-950 hover:text-sky-300'"
+                      >
+                        <Icon icon="lucide:link" class="w-3.5 h-3.5" />
+                      </button>
+
+                      <!-- Edit Kolom -->
+                      <button
+                        @click="openEditColumnModal(col)"
+                        :disabled="engine === 'redis' || engine === 'mongodb'"
+                        class="w-6 h-6 inline-flex items-center justify-center rounded text-amber-400 hover:bg-amber-950 hover:text-amber-300 transition"
+                        title="Modifikasi Kolom Ini (Rename, Tipe Data, Default)"
+                      >
+                        <Icon icon="lucide:pencil" class="w-3.5 h-3.5" />
+                      </button>
+
+                      <!-- Drop Kolom -->
+                      <button
+                        @click="confirmDropColumn(col.name)"
+                        :disabled="engine === 'redis' || engine === 'mongodb'"
+                        class="w-6 h-6 inline-flex items-center justify-center rounded text-rose-400 hover:bg-rose-950 hover:text-rose-300 transition"
+                        title="Hapus Kolom Ini (DROP COLUMN)"
+                      >
+                        <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                   <td class="px-3 py-1.5 font-bold text-sky-300 border-r border-boba-850">
                     <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
@@ -1078,6 +1164,62 @@
                     </span>
                   </td>
                   <td class="px-3 py-1.5 text-slate-400">{{ col.default_value ?? 'NULL' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- SUB-VIEW 2: Indexes & Keys -->
+          <div v-else-if="structSubTab === 'indexes'" class="flex-1 overflow-auto p-3">
+            <div v-if="loadingIndexes" class="py-12 text-center text-slate-500 text-xs font-mono">
+              Memuat data indeks tabel...
+            </div>
+            <div v-else-if="tableIndexes.length === 0" class="py-12 text-center text-slate-500 text-xs font-mono">
+              Tidak ada indeks tambahan yang terdaftar pada tabel ini.
+            </div>
+            <table v-else class="w-full text-left border-collapse border border-boba-800">
+              <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300 select-none">
+                <tr>
+                  <th class="px-3 py-2 border-r border-boba-800 w-12 text-center">Aksi</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Nama Indeks</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Tipe / Sifat</th>
+                  <th class="px-3 py-2 border-r border-boba-800">Kolom Indeks</th>
+                  <th class="px-3 py-2">Struktur Algoritma</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-boba-850">
+                <tr v-for="idx in tableIndexes" :key="idx.name" class="hover:bg-boba-800/40">
+                  <td class="px-2 py-1.5 border-r border-boba-850 text-center">
+                    <button
+                      @click="confirmDropIndex(idx.name)"
+                      :disabled="idx.name.toUpperCase() === 'PRIMARY'"
+                      :title="idx.name.toUpperCase() === 'PRIMARY' ? 'Primary key index tidak dapat dihapus lewat menu ini' : 'Hapus Index (DROP INDEX)'"
+                      class="w-6 h-6 inline-flex items-center justify-center rounded transition"
+                      :class="idx.name.toUpperCase() === 'PRIMARY' ? 'text-slate-600 cursor-not-allowed opacity-40' : 'text-rose-400 hover:bg-rose-950 hover:text-rose-300'"
+                    >
+                      <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                  <td class="px-3 py-1.5 font-bold font-mono text-sky-300 border-r border-boba-850">
+                    {{ idx.name }}
+                  </td>
+                  <td class="px-3 py-1.5 border-r border-boba-850">
+                    <span v-if="idx.name.toUpperCase() === 'PRIMARY'" class="px-1.5 py-0.5 bg-amber-950 border border-amber-800 text-amber-300 rounded text-[10px] font-bold">
+                      PRIMARY KEY
+                    </span>
+                    <span v-else-if="idx.is_unique" class="px-1.5 py-0.5 bg-purple-950 border border-purple-800 text-purple-300 rounded text-[10px] font-bold">
+                      UNIQUE
+                    </span>
+                    <span v-else class="px-1.5 py-0.5 bg-slate-900 border border-slate-700 text-slate-300 rounded text-[10px]">
+                      INDEX
+                    </span>
+                  </td>
+                  <td class="px-3 py-1.5 font-mono text-emerald-300 border-r border-boba-850">
+                    {{ idx.columns.join(', ') }}
+                  </td>
+                  <td class="px-3 py-1.5 text-slate-400 font-mono text-[11px]">
+                    {{ idx.index_type || 'BTREE' }}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1386,6 +1528,266 @@
             >
               <Icon icon="lucide:play" class="w-3.5 h-3.5" />
               <span>Simpan Kolom</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit Column Modal -->
+    <div
+      v-if="isEditColumnModalOpen && activeTable"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+              <Icon icon="lucide:pencil" class="w-4 h-4 text-amber-400" />
+              <span>Modifikasi Kolom: <code class="text-amber-300 font-mono">{{ editColumnForm.originalName }}</code></span>
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Ubah definisi kolom pada tabel <code class="text-sky-300 font-mono">{{ activeTable.name }}</code>
+            </p>
+          </div>
+          <button @click="isEditColumnModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-boba-800 transition">
+            <Icon icon="lucide:x" class="w-4 h-4" />
+          </button>
+        </div>
+
+        <form @submit.prevent="executeEditColumn" class="space-y-4">
+          <!-- Column Name -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Nama Kolom</label>
+            <input
+              v-model="editColumnForm.name"
+              type="text"
+              required
+              placeholder="misal: status, created_by, phone_number"
+              class="w-full bg-boba-950 border border-boba-700 focus:border-amber-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+            />
+          </div>
+
+          <!-- Data Type -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs font-semibold text-slate-300">Tipe Data</label>
+              <span class="text-[10px] text-slate-500">Pilih dari dropdown atau ketik custom</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <select
+                :value="editColumnForm.dataType"
+                @change="handleEditDataTypeSelect(($event.target as HTMLSelectElement).value)"
+                class="bg-boba-950 border border-boba-700 focus:border-amber-500 rounded px-2.5 py-2 text-xs text-slate-200 font-mono focus:outline-none transition"
+              >
+                <optgroup v-for="grp in engineDataTypes" :key="grp.category" :label="grp.category">
+                  <option v-for="t in grp.options" :key="t" :value="t">{{ t }}</option>
+                </optgroup>
+              </select>
+
+              <input
+                v-model="editColumnForm.dataType"
+                type="text"
+                required
+                placeholder="Ketik tipe data custom..."
+                class="bg-boba-950 border border-boba-700 focus:border-amber-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+              />
+            </div>
+          </div>
+
+          <!-- ENUM / SET Value Builder for Edit -->
+          <div v-if="isEditEnumType" class="p-3 bg-boba-950/80 border border-amber-900/40 rounded-lg space-y-2.5 animate-in fade-in duration-200">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-amber-400 flex items-center space-x-1.5">
+                <Icon icon="lucide:list-plus" class="w-3.5 h-3.5" />
+                <span>Opsi Nilai ENUM / SET</span>
+              </span>
+              <button
+                type="button"
+                @click="addEditEnumValue"
+                class="px-2 py-0.5 bg-amber-700 hover:bg-amber-600 text-white rounded text-[10px] font-medium transition flex items-center space-x-1"
+              >
+                <Icon icon="lucide:plus" class="w-3 h-3" />
+                <span>Tambah Opsi</span>
+              </button>
+            </div>
+            
+            <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+              <div v-for="(_, idx) in editEnumValues" :key="idx" class="flex items-center space-x-1.5">
+                <span class="text-[10px] text-slate-500 font-mono w-4 text-right">{{ idx + 1 }}.</span>
+                <input
+                  v-model="editEnumValues[idx]"
+                  @input="syncEditEnumToDataType"
+                  type="text"
+                  placeholder="Nilai opsi (misal: active)"
+                  class="flex-1 bg-boba-900 border border-boba-700 focus:border-amber-500 rounded px-2.5 py-1 text-xs text-slate-100 font-mono focus:outline-none transition"
+                />
+                <button
+                  type="button"
+                  @click="setEditDefaultEnumValue(editEnumValues[idx] || '')"
+                  :disabled="!(editEnumValues[idx] && editEnumValues[idx]?.trim())"
+                  :class="editColumnForm.defaultValue === editEnumValues[idx] && editEnumValues[idx]?.trim() ? 'bg-amber-600 text-white border-amber-500' : 'bg-boba-900 text-slate-400 hover:text-amber-300 border-boba-700 hover:border-amber-600/60'"
+                  class="px-2 py-0.5 border rounded text-[10px] font-sans transition shrink-0 flex items-center space-x-1 disabled:opacity-30 disabled:pointer-events-none"
+                  title="Jadikan nilai ini sebagai Default Value"
+                >
+                  <Icon icon="lucide:check-circle-2" class="w-3 h-3" />
+                  <span>{{ editColumnForm.defaultValue === editEnumValues[idx] && editEnumValues[idx]?.trim() ? 'Default' : 'Set Default' }}</span>
+                </button>
+                <button
+                  type="button"
+                  @click="removeEditEnumValue(idx)"
+                  :disabled="editEnumValues.length <= 1"
+                  class="p-1 text-slate-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-500 transition rounded"
+                  title="Hapus opsi"
+                >
+                  <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nullable Checkbox & Default Value -->
+          <div class="grid grid-cols-2 gap-4 pt-1">
+            <div class="space-y-1.5 flex flex-col justify-center">
+              <label class="flex items-center space-x-2 cursor-pointer mt-3">
+                <input
+                  v-model="editColumnForm.isNullable"
+                  type="checkbox"
+                  class="rounded bg-boba-950 border-boba-700 text-amber-500 focus:ring-0 w-4 h-4"
+                />
+                <span class="text-xs text-slate-200">Izinkan NULL (Nullable)</span>
+              </label>
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-300">Nilai Default (Opsional)</label>
+              <input
+                v-model="editColumnForm.defaultValue"
+                type="text"
+                placeholder="misal: 0, 'active', NULL"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-amber-500 rounded px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:outline-none transition"
+              />
+            </div>
+          </div>
+
+          <!-- Generated SQL Preview -->
+          <div v-if="editColumnSqlPreview" class="pt-2">
+            <div class="text-[10px] text-slate-500 mb-1">Preview SQL Query:</div>
+            <pre class="bg-black/60 border border-boba-800 p-2 rounded text-[9px] text-amber-300 font-mono whitespace-pre-wrap">{{ editColumnSqlPreview }}</pre>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-4 border-t border-boba-800 mt-4">
+            <button
+              type="button"
+              @click="isEditColumnModalOpen = false"
+              class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="!editColumnForm.name.trim() || !editColumnForm.dataType.trim()"
+              class="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition"
+            >
+              <Icon icon="lucide:play" class="w-3.5 h-3.5" />
+              <span>Simpan Perubahan</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add Index Modal -->
+    <div
+      v-if="isAddIndexModalOpen && activeTable"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+              <Icon icon="lucide:key" class="w-4 h-4 text-indigo-400" />
+              <span>Buat Indeks Baru</span>
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Tambahkan indeks pencarian untuk tabel <code class="text-sky-300 font-mono">{{ activeTable.name }}</code>
+            </p>
+          </div>
+          <button @click="isAddIndexModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-boba-800 transition">
+            <Icon icon="lucide:x" class="w-4 h-4" />
+          </button>
+        </div>
+
+        <form @submit.prevent="executeAddIndex" class="space-y-4">
+          <!-- Index Name -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Nama Indeks</label>
+            <input
+              v-model="addIndexForm.name"
+              type="text"
+              required
+              placeholder="misal: idx_users_email, idx_orders_status"
+              class="w-full bg-boba-950 border border-boba-700 focus:border-indigo-500 rounded px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none transition"
+            />
+          </div>
+
+          <!-- Index Type -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Tipe / Sifat Indeks</label>
+            <select
+              v-model="addIndexForm.type"
+              class="w-full bg-boba-950 border border-boba-700 focus:border-indigo-500 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none transition"
+            >
+              <option value="INDEX">INDEX (Biasa / Non-Unique)</option>
+              <option value="UNIQUE">UNIQUE INDEX (Nilai Harus Unik)</option>
+              <option v-if="engine === 'mysql' || engine === 'mariadb'" value="FULLTEXT">FULLTEXT INDEX (Pencarian Teks Penuh)</option>
+            </select>
+          </div>
+
+          <!-- Select Columns for Index -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs font-semibold text-slate-300">Pilih Kolom Indeks</label>
+              <span class="text-[10px] text-slate-500">Pilih 1 atau lebih kolom (Composite Index)</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-boba-950 border border-boba-800 rounded-lg">
+              <label
+                v-for="c in activeTable.columns"
+                :key="c.name"
+                class="flex items-center space-x-2 p-1.5 hover:bg-boba-900 rounded cursor-pointer transition text-xs"
+              >
+                <input
+                  type="checkbox"
+                  :value="c.name"
+                  v-model="addIndexForm.columns"
+                  class="rounded bg-boba-900 border-boba-700 text-indigo-500 focus:ring-0 w-3.5 h-3.5"
+                />
+                <span class="font-mono text-slate-200 truncate">{{ c.name }}</span>
+                <span class="text-[10px] text-slate-500 font-mono">({{ c.data_type }})</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Generated SQL Preview -->
+          <div v-if="addIndexSqlPreview" class="pt-2">
+            <div class="text-[10px] text-slate-500 mb-1">Preview SQL Query:</div>
+            <pre class="bg-black/60 border border-boba-800 p-2 rounded text-[9px] text-indigo-300 font-mono whitespace-pre-wrap">{{ addIndexSqlPreview }}</pre>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-4 border-t border-boba-800 mt-4">
+            <button
+              type="button"
+              @click="isAddIndexModalOpen = false"
+              class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="!addIndexForm.name.trim() || addIndexForm.columns.length === 0"
+              class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-semibold shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition"
+            >
+              <Icon icon="lucide:play" class="w-3.5 h-3.5" />
+              <span>Simpan Indeks</span>
             </button>
           </div>
         </form>
@@ -2046,7 +2448,7 @@ import ProcesslistModal from './ProcesslistModal.vue';
 import TableDesignerModal from './TableDesignerModal.vue';
 import UserManagerModal from './UserManagerModal.vue';
 import ErdDiagramView from './ErdDiagramView.vue';
-import type { ActiveTab, DbTableMeta, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbForeignKeyRelation } from '../types/index.js';
+import type { ActiveTab, DbTableMeta, DbColumnMeta, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbForeignKeyRelation } from '../types/index.js';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -2978,6 +3380,458 @@ async function onStructDrop(targetIdx: number) {
   }
 }
 
+// --- Edit Column State ---
+const isEditColumnModalOpen = ref(false);
+const editColumnForm = ref<{
+  originalName: string;
+  name: string;
+  dataType: string;
+  isNullable: boolean;
+  defaultValue: string;
+}>({
+  originalName: '',
+  name: '',
+  dataType: 'VARCHAR(255)',
+  isNullable: true,
+  defaultValue: '',
+});
+
+const editEnumValues = ref<string[]>(['active', 'inactive']);
+
+const isEditEnumType = computed(() => {
+  const dt = editColumnForm.value.dataType.trim().toUpperCase();
+  return dt.startsWith('ENUM') || dt.startsWith('SET');
+});
+
+function addEditEnumValue() {
+  editEnumValues.value.push('');
+}
+
+function setEditDefaultEnumValue(val: string) {
+  if (!val || !val.trim()) return;
+  editColumnForm.value.defaultValue = val.trim();
+}
+
+function removeEditEnumValue(index: number) {
+  const removedVal = editEnumValues.value[index];
+  if (editEnumValues.value.length > 1) {
+    editEnumValues.value.splice(index, 1);
+    if (editColumnForm.value.defaultValue === removedVal) {
+      editColumnForm.value.defaultValue = '';
+    }
+    syncEditEnumToDataType();
+  }
+}
+
+function syncEditEnumToDataType() {
+  const isSet = editColumnForm.value.dataType.trim().toUpperCase().startsWith('SET');
+  const tag = isSet ? 'SET' : 'ENUM';
+  const formatted = editEnumValues.value
+    .map(v => v.trim())
+    .filter(v => v.length > 0)
+    .map(v => `'${v.replace(/'/g, "\\'")}'`)
+    .join(', ');
+  editColumnForm.value.dataType = `${tag}(${formatted || "''"})`;
+}
+
+function handleEditDataTypeSelect(val: string) {
+  editColumnForm.value.dataType = val;
+  const upper = val.trim().toUpperCase();
+  if (upper.startsWith('ENUM') || upper.startsWith('SET')) {
+    const match = val.match(/\((.*)\)/);
+    if (match && match[1]) {
+      const items = match[1]
+        .split(',')
+        .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+        .filter(s => s.length > 0);
+      editEnumValues.value = items.length > 0 ? items : [''];
+    } else {
+      editEnumValues.value = ['active', 'inactive'];
+    }
+  }
+}
+
+function openEditColumnModal(col: DbColumnMeta) {
+  if (!activeTable.value) return;
+  editColumnForm.value = {
+    originalName: col.name,
+    name: col.name,
+    dataType: col.data_type,
+    isNullable: col.is_nullable,
+    defaultValue: col.default_value ?? '',
+  };
+
+  const upper = col.data_type.trim().toUpperCase();
+  if (upper.startsWith('ENUM') || upper.startsWith('SET')) {
+    const match = col.data_type.match(/\((.*)\)/);
+    if (match && match[1]) {
+      const items = match[1]
+        .split(',')
+        .map((s: string) => s.trim().replace(/^['"]|['"]$/g, ''))
+        .filter((s: string) => s.length > 0);
+      editEnumValues.value = items.length > 0 ? items : [''];
+    } else {
+      editEnumValues.value = ['active', 'inactive'];
+    }
+  } else {
+    editEnumValues.value = ['active', 'inactive'];
+  }
+
+  isEditColumnModalOpen.value = true;
+}
+
+const editColumnSqlPreview = computed(() => {
+  if (!activeTable.value || !editColumnForm.value.name.trim() || !editColumnForm.value.dataType.trim()) return '';
+  const tbl = qi(activeTable.value.name);
+  const origCol = qi(editColumnForm.value.originalName);
+  const newCol = qi(editColumnForm.value.name.trim());
+  const type = editColumnForm.value.dataType.trim();
+  const nullConstraint = editColumnForm.value.isNullable ? '' : ' NOT NULL';
+  let defaultConstraint = '';
+  if (editColumnForm.value.defaultValue.trim()) {
+    const defVal = editColumnForm.value.defaultValue.trim();
+    if (defVal.toUpperCase() === 'NULL') {
+      defaultConstraint = ' DEFAULT NULL';
+    } else if (defVal.toUpperCase() === 'CURRENT_TIMESTAMP' || defVal.toUpperCase() === 'NOW()') {
+      defaultConstraint = ` DEFAULT ${defVal}`;
+    } else if (!isNaN(Number(defVal))) {
+      defaultConstraint = ` DEFAULT ${defVal}`;
+    } else {
+      defaultConstraint = ` DEFAULT ${sqlLiteral(engine.value, defVal)}`;
+    }
+  }
+
+  const eng = engine.value;
+  if (eng === 'postgres' || eng === 'postgresql') {
+    const stmts: string[] = [];
+    if (editColumnForm.value.originalName !== editColumnForm.value.name.trim()) {
+      stmts.push(`ALTER TABLE ${tbl} RENAME COLUMN ${origCol} TO ${newCol};`);
+    }
+    stmts.push(`ALTER TABLE ${tbl} ALTER COLUMN ${newCol} TYPE ${type};`);
+    stmts.push(`ALTER TABLE ${tbl} ALTER COLUMN ${newCol} ${editColumnForm.value.isNullable ? 'DROP NOT NULL' : 'SET NOT NULL'};`);
+    if (defaultConstraint) {
+      stmts.push(`ALTER TABLE ${tbl} ALTER COLUMN ${newCol} SET${defaultConstraint};`);
+    } else {
+      stmts.push(`ALTER TABLE ${tbl} ALTER COLUMN ${newCol} DROP DEFAULT;`);
+    }
+    return stmts.join('\n');
+  }
+
+  if (eng === 'mysql' || eng === 'mariadb') {
+    if (editColumnForm.value.originalName !== editColumnForm.value.name.trim()) {
+      return `ALTER TABLE ${tbl} CHANGE COLUMN ${origCol} ${newCol} ${type}${nullConstraint}${defaultConstraint};`;
+    }
+    return `ALTER TABLE ${tbl} MODIFY COLUMN ${newCol} ${type}${nullConstraint}${defaultConstraint};`;
+  }
+
+  return `ALTER TABLE ${tbl} RENAME COLUMN ${origCol} TO ${newCol};`;
+});
+
+async function executeEditColumn() {
+  if (!editColumnSqlPreview.value || !props.tab.dbConnection) return;
+  executing.value = true;
+  try {
+    const stmts = editColumnSqlPreview.value
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    for (const stmt of stmts) {
+      await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        stmt + ';'
+      );
+    }
+
+    dialogStore.showToast(`Kolom "${editColumnForm.value.name}" berhasil diperbarui`, 'success', 3000);
+    isEditColumnModalOpen.value = false;
+    await loadSchemaOverview();
+    if (activeTable.value) {
+      const updatedTbl = schemaOverview.value?.tables.find(t => t.name === activeTable.value?.name);
+      if (updatedTbl) activeTable.value = updatedTbl;
+    }
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Memodifikasi Kolom',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
+async function confirmDropColumn(colName: string) {
+  if (!activeTable.value || !props.tab.dbConnection) return;
+  const tbl = activeTable.value.name;
+
+  if (activeTable.value.columns.length <= 1) {
+    dialogStore.alert({
+      title: 'Tidak Dapat Menghapus Kolom',
+      description: 'Tabel harus memiliki minimal 1 kolom tersisa.',
+      variant: 'error',
+    });
+    return;
+  }
+
+  const confirmed = await dialogStore.confirm({
+    title: 'Hapus Kolom?',
+    description: `Apakah Anda yakin ingin menghapus kolom "${colName}" dari tabel "${tbl}"? Tindakan ini akan menghapus seluruh data pada kolom tersebut secara permanen.`,
+    confirmText: 'Hapus Kolom (DROP)',
+    isDestructive: true,
+  });
+
+  if (!confirmed) return;
+
+  const dropSql = `ALTER TABLE ${qi(tbl)} DROP COLUMN ${qi(colName)};`;
+
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      dropSql
+    );
+    dialogStore.showToast(`Kolom "${colName}" berhasil dihapus`, 'success', 3000);
+    await loadSchemaOverview();
+    if (activeTable.value) {
+      const updatedTbl = schemaOverview.value?.tables.find(t => t.name === activeTable.value?.name);
+      if (updatedTbl) activeTable.value = updatedTbl;
+    }
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menghapus Kolom',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
+// --- Structure Sub-Tab & Indexes State ---
+const structSubTab = ref<'columns' | 'indexes'>('columns');
+const loadingIndexes = ref(false);
+
+interface TableIndexItem {
+  name: string;
+  is_unique: boolean;
+  columns: string[];
+  index_type?: string;
+}
+
+const tableIndexes = ref<TableIndexItem[]>([]);
+const isAddIndexModalOpen = ref(false);
+const addIndexForm = ref<{
+  name: string;
+  type: 'INDEX' | 'UNIQUE' | 'FULLTEXT';
+  columns: string[];
+}>({
+  name: '',
+  type: 'INDEX',
+  columns: [],
+});
+
+async function loadTableIndexes() {
+  if (!activeTable.value || !props.tab.dbConnection || !isSqlEngine(engine.value)) {
+    tableIndexes.value = [];
+    return;
+  }
+
+  loadingIndexes.value = true;
+  try {
+    const eng = engine.value;
+    const tblName = activeTable.value.name;
+
+    if (eng === 'mysql' || eng === 'mariadb') {
+      const res = await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        `SHOW INDEX FROM ${qi(tblName)};`
+      );
+
+      if (res && res[0]?.rows) {
+        const keyMap = new Map<string, { is_unique: boolean; columns: string[]; index_type: string }>();
+        const rows = res[0].rows;
+        // SHOW INDEX columns: Key_name (col index 2), Non_unique (col index 1), Column_name (col index 4), Index_type (col index 10)
+        // Find column indices
+        const cols = res[0].columns.map(c => c.toLowerCase());
+        const keyNameIdx = cols.indexOf('key_name');
+        const nonUniqueIdx = cols.indexOf('non_unique');
+        const colNameIdx = cols.indexOf('column_name');
+        const indexTypeIdx = cols.indexOf('index_type');
+
+        for (const r of rows) {
+          const kName = String(r[keyNameIdx >= 0 ? keyNameIdx : 2] || '');
+          const nonUnique = Number(r[nonUniqueIdx >= 0 ? nonUniqueIdx : 1]) === 1;
+          const cName = String(r[colNameIdx >= 0 ? colNameIdx : 4] || '');
+          const iType = String(r[indexTypeIdx >= 0 ? indexTypeIdx : 10] || 'BTREE');
+
+          if (!keyMap.has(kName)) {
+            keyMap.set(kName, { is_unique: !nonUnique, columns: [cName], index_type: iType });
+          } else {
+            keyMap.get(kName)!.columns.push(cName);
+          }
+        }
+
+        tableIndexes.value = Array.from(keyMap.entries()).map(([name, val]) => ({
+          name,
+          is_unique: val.is_unique,
+          columns: val.columns,
+          index_type: val.index_type,
+        }));
+      }
+    } else if (eng === 'postgres' || eng === 'postgresql') {
+      const res = await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = '${tblName.replace(/'/g, "''")}';`
+      );
+
+      if (res && res[0]?.rows) {
+        tableIndexes.value = res[0].rows.map(r => {
+          const idxName = String(r[0]);
+          const idxDef = String(r[1] || '');
+          const isUnique = idxDef.toUpperCase().includes('UNIQUE');
+          const colsMatch = idxDef.match(/\((.*)\)/);
+          const cols = colsMatch && colsMatch[1] ? colsMatch[1].split(',').map(s => s.trim()) : [idxName];
+          return {
+            name: idxName,
+            is_unique: isUnique,
+            columns: cols,
+            index_type: 'BTREE',
+          };
+        });
+      }
+    } else if (eng === 'sqlite') {
+      const res = await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        `PRAGMA index_list(${qi(tblName)});`
+      );
+
+      if (res && res[0]?.rows) {
+        const list: TableIndexItem[] = [];
+        for (const r of res[0].rows) {
+          const idxName = String(r[1]);
+          const isUnique = Number(r[2]) === 1;
+          list.push({
+            name: idxName,
+            is_unique: isUnique,
+            columns: [idxName],
+            index_type: 'BTREE',
+          });
+        }
+        tableIndexes.value = list;
+      }
+    }
+  } catch (err) {
+    console.debug('Failed to load table indexes', err);
+    tableIndexes.value = [];
+  } finally {
+    loadingIndexes.value = false;
+  }
+}
+
+function openAddIndexModal() {
+  if (!activeTable.value) return;
+  addIndexForm.value = {
+    name: `idx_${activeTable.value.name}_`,
+    type: 'INDEX',
+    columns: [],
+  };
+  isAddIndexModalOpen.value = true;
+}
+
+const addIndexSqlPreview = computed(() => {
+  if (!activeTable.value || !addIndexForm.value.name.trim() || addIndexForm.value.columns.length === 0) return '';
+  const tbl = qi(activeTable.value.name);
+  const idx = qi(addIndexForm.value.name.trim());
+  const cols = addIndexForm.value.columns.map(c => qi(c)).join(', ');
+  const type = addIndexForm.value.type;
+
+  const eng = engine.value;
+  if (eng === 'mysql' || eng === 'mariadb') {
+    if (type === 'UNIQUE') {
+      return `ALTER TABLE ${tbl} ADD UNIQUE KEY ${idx} (${cols});`;
+    }
+    if (type === 'FULLTEXT') {
+      return `ALTER TABLE ${tbl} ADD FULLTEXT KEY ${idx} (${cols});`;
+    }
+    return `ALTER TABLE ${tbl} ADD INDEX ${idx} (${cols});`;
+  }
+
+  if (type === 'UNIQUE') {
+    return `CREATE UNIQUE INDEX ${idx} ON ${tbl} (${cols});`;
+  }
+  return `CREATE INDEX ${idx} ON ${tbl} (${cols});`;
+});
+
+async function executeAddIndex() {
+  if (!addIndexSqlPreview.value || !props.tab.dbConnection) return;
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      addIndexSqlPreview.value
+    );
+    dialogStore.showToast(`Indeks "${addIndexForm.value.name}" berhasil dibuat`, 'success', 3000);
+    isAddIndexModalOpen.value = false;
+    await loadTableIndexes();
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Membuat Indeks',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
+async function confirmDropIndex(idxName: string) {
+  if (!activeTable.value || !props.tab.dbConnection) return;
+  const tbl = activeTable.value.name;
+
+  const confirmed = await dialogStore.confirm({
+    title: 'Hapus Indeks?',
+    description: `Apakah Anda yakin ingin menghapus indeks "${idxName}" dari tabel "${tbl}"?`,
+    confirmText: 'Hapus Indeks (DROP)',
+    isDestructive: true,
+  });
+
+  if (!confirmed) return;
+
+  const eng = engine.value;
+  let dropSql = '';
+  if (eng === 'mysql' || eng === 'mariadb') {
+    dropSql = `ALTER TABLE ${qi(tbl)} DROP INDEX ${qi(idxName)};`;
+  } else {
+    dropSql = `DROP INDEX ${qi(idxName)};`;
+  }
+
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      dropSql
+    );
+    dialogStore.showToast(`Indeks "${idxName}" berhasil dihapus`, 'success', 3000);
+    await loadTableIndexes();
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menghapus Indeks',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
 // --- Create Database State ---
 const isCreateDbModalOpen = ref(false);
 const newDbForm = ref<{
@@ -3030,6 +3884,42 @@ async function executeCreateDatabase() {
   } catch (err: any) {
     dialogStore.alert({
       title: 'Gagal Membuat Database',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
+async function confirmDropDatabase() {
+  if (!activeDatabase.value || !props.tab.dbConnection) return;
+  const dbToDrop = activeDatabase.value;
+
+  const confirmed = await dialogStore.confirm({
+    title: `Hapus Database "${dbToDrop}"?`,
+    description: `PERINGATAN: Database "${dbToDrop}" beserta seluruh tabel, skema, dan data di dalamnya akan DIHAPUS PERMANEN (DROP DATABASE). Tindakan ini tidak dapat dibatalkan.`,
+    confirmText: `Hapus Database ${dbToDrop}`,
+    isDestructive: true,
+  });
+
+  if (!confirmed) return;
+
+  const dropSql = `DROP DATABASE ${qi(dbToDrop)};`;
+
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      undefined,
+      dropSql
+    );
+    dialogStore.showToast(`Database "${dbToDrop}" berhasil dihapus`, 'success', 3000);
+    activeDatabase.value = '';
+    await loadSchemaOverview();
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menghapus Database',
       description: String(err?.message || err),
       variant: 'error',
     });
