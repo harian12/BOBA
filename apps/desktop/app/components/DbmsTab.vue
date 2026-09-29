@@ -2187,6 +2187,7 @@ const addFkForm = ref<{
   sourceColumn: string;
   targetTable: string;
   targetColumn: string;
+  constraintName: string;
   onDelete: 'CASCADE' | 'RESTRICT' | 'SET NULL' | 'NO ACTION';
   onUpdate: 'CASCADE' | 'RESTRICT' | 'SET NULL' | 'NO ACTION';
 }>({
@@ -2194,6 +2195,7 @@ const addFkForm = ref<{
   sourceColumn: '',
   targetTable: '',
   targetColumn: '',
+  constraintName: '',
   onDelete: 'RESTRICT',
   onUpdate: 'RESTRICT',
 });
@@ -2207,17 +2209,18 @@ const targetTableColumns = computed(() => {
 const addFkSqlPreview = computed(() => {
   const f = addFkForm.value;
   if (!f.sourceTable || !f.sourceColumn || !f.targetTable || !f.targetColumn) return '';
-  const cName = `fk_${f.sourceTable}_${f.sourceColumn}`;
-  return `ALTER TABLE ${qi(f.sourceTable)}\n  ADD CONSTRAINT ${qi(cName)}\n  FOREIGN KEY (${qi(f.sourceColumn)})\n  REFERENCES ${qi(f.targetTable)} (${qi(f.targetColumn)})\n  ON DELETE ${f.onDelete} ON UPDATE ${f.onUpdate};`;
+  return `ALTER TABLE ${qi(f.sourceTable)}\n  ADD CONSTRAINT ${qi(f.constraintName)}\n  FOREIGN KEY (${qi(f.sourceColumn)})\n  REFERENCES ${qi(f.targetTable)} (${qi(f.targetColumn)})\n  ON DELETE ${f.onDelete} ON UPDATE ${f.onUpdate};`;
 });
 
 function openAddFkModal(columnName: string) {
   if (!activeTable.value || engine.value === 'sqlite') return;
+  const shortHash = Math.random().toString(36).substring(2, 6);
   addFkForm.value = {
     sourceTable: activeTable.value.name,
     sourceColumn: columnName,
     targetTable: '',
     targetColumn: '',
+    constraintName: `fk_${activeTable.value.name}_${columnName}_${shortHash}`,
     onDelete: 'RESTRICT',
     onUpdate: 'RESTRICT',
   };
