@@ -941,6 +941,7 @@
           <table v-if="activeTable?.columns && activeTable.columns.length > 0" class="w-full text-left border-collapse border border-boba-800">
             <thead class="bg-[#141a29] border-b border-boba-800 text-slate-300">
               <tr>
+                <th class="px-3 py-2 border-r border-boba-800 w-12 text-center">Aksi</th>
                 <th class="px-3 py-2 border-r border-boba-800">Nama Kolom</th>
                 <th class="px-3 py-2 border-r border-boba-800">Tipe Data</th>
                 <th class="px-3 py-2 border-r border-boba-800">Primary Key</th>
@@ -950,6 +951,17 @@
             </thead>
             <tbody class="divide-y divide-boba-850">
               <tr v-for="col in activeTable.columns" :key="col.name" class="hover:bg-boba-800/40">
+                <td class="px-2 py-1.5 border-r border-boba-850 text-center">
+                  <button
+                    @click="openAddFkModal(col.name)"
+                    :disabled="engine === 'sqlite'"
+                    :title="engine === 'sqlite' ? 'SQLite tidak dukung ALTER TABLE ADD CONSTRAINT FOREIGN KEY' : 'Buat Relasi Foreign Key (FK)'"
+                    class="w-6 h-6 inline-flex items-center justify-center rounded transition"
+                    :class="engine === 'sqlite' ? 'text-slate-600 cursor-not-allowed opacity-50' : 'text-sky-400 hover:bg-sky-950 hover:text-sky-300'"
+                  >
+                    <Icon icon="lucide:link" class="w-3.5 h-3.5" />
+                  </button>
+                </td>
                 <td class="px-3 py-1.5 font-bold text-sky-300 border-r border-boba-850">{{ col.name }}</td>
                 <td class="px-3 py-1.5 text-amber-300 border-r border-boba-850">{{ col.data_type }}</td>
                 <td class="px-3 py-1.5 border-r border-boba-850">
@@ -1034,6 +1046,120 @@
             Tutup
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Add Foreign Key Modal -->
+    <div
+      v-if="isAddFkModalOpen && addFkForm.sourceTable"
+      class="fixed inset-0 bg-boba-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in"
+    >
+      <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto font-sans">
+        <div class="flex items-center justify-between border-b border-boba-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+              <Icon icon="lucide:link" class="w-4 h-4 text-sky-400" />
+              <span>Buat Relasi Foreign Key (FK)</span>
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Tambahkan konstrain FK untuk <code class="text-sky-300 font-mono">{{ addFkForm.sourceTable }}</code>.<code class="text-sky-300 font-mono">{{ addFkForm.sourceColumn }}</code>
+            </p>
+          </div>
+          <button @click="closeAddFkModal" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-boba-800 transition">
+            <Icon icon="lucide:x" class="w-4 h-4" />
+          </button>
+        </div>
+
+        <form @submit.prevent="executeAddFk" class="space-y-4">
+          <!-- Target Table -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Tabel Tujuan (Referensi)</label>
+            <select
+              v-model="addFkForm.targetTable"
+              @change="onTargetTableChange"
+              required
+              class="w-full bg-boba-950 border border-boba-700 focus:border-sky-500 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+            >
+              <option value="" disabled>-- Pilih Tabel --</option>
+              <option v-for="t in schemaOverview?.tables" :key="t.name" :value="t.name">{{ t.name }}</option>
+            </select>
+          </div>
+
+          <!-- Target Column -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Kolom Tujuan (Referensi)</label>
+            <select
+              v-model="addFkForm.targetColumn"
+              :disabled="!addFkForm.targetTable"
+              required
+              class="w-full bg-boba-950 border border-boba-700 focus:border-sky-500 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none transition disabled:opacity-50"
+            >
+              <option value="" disabled>-- Pilih Kolom --</option>
+              <option v-for="c in targetTableColumns" :key="c.name" :value="c.name">{{ c.name }}</option>
+            </select>
+            <p v-if="addFkForm.targetTable && targetTableColumns.length === 0" class="text-[10px] text-rose-400">Tabel ini tidak memiliki kolom.</p>
+          </div>
+
+          <!-- Actions: ON DELETE & ON UPDATE -->
+          <div class="grid grid-cols-2 gap-4 pt-2">
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-300">ON DELETE</label>
+              <select
+                v-model="addFkForm.onDelete"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-sky-500 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+              >
+                <option value="CASCADE">CASCADE</option>
+                <option value="RESTRICT">RESTRICT</option>
+                <option value="SET NULL">SET NULL</option>
+                <option value="NO ACTION">NO ACTION</option>
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-300">ON UPDATE</label>
+              <select
+                v-model="addFkForm.onUpdate"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-sky-500 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+              >
+                <option value="CASCADE">CASCADE</option>
+                <option value="RESTRICT">RESTRICT</option>
+                <option value="SET NULL">SET NULL</option>
+                <option value="NO ACTION">NO ACTION</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Helper Text -->
+          <div class="bg-boba-950/50 border border-boba-800 rounded-lg p-3 space-y-1.5 mt-2">
+            <div class="text-[10px] text-slate-400 font-semibold mb-1">Panduan Aksi Relasi:</div>
+            <div class="text-[10px] text-slate-400"><strong class="text-sky-300 font-mono">CASCADE:</strong> Jika data induk dihapus/diubah, data anak ini akan otomatis ikut terhapus/berubah.</div>
+            <div class="text-[10px] text-slate-400"><strong class="text-sky-300 font-mono">SET NULL:</strong> Jika data induk dihapus/diubah, kolom pada data anak ini diset menjadi NULL.</div>
+            <div class="text-[10px] text-slate-400"><strong class="text-sky-300 font-mono">RESTRICT / NO ACTION:</strong> Database akan menolak (error) penghapusan/perubahan data induk jika masih ada data anak yang terkait.</div>
+          </div>
+
+          <!-- Generated SQL Preview -->
+          <div v-if="addFkSqlPreview" class="pt-2">
+            <div class="text-[10px] text-slate-500 mb-1">Preview SQL Query:</div>
+            <pre class="bg-black/60 border border-boba-800 p-2 rounded text-[9px] text-emerald-300 font-mono whitespace-pre-wrap">{{ addFkSqlPreview }}</pre>
+          </div>
+
+          <div class="flex justify-end space-x-2 pt-4 border-t border-boba-800 mt-4">
+            <button
+              type="button"
+              @click="closeAddFkModal"
+              class="px-4 py-1.5 bg-boba-800 hover:bg-boba-700 text-slate-300 rounded text-xs transition"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              :disabled="!addFkForm.targetTable || !addFkForm.targetColumn"
+              class="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition"
+            >
+              <Icon icon="lucide:play" class="w-3.5 h-3.5" />
+              <span>Eksekusi</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -2053,6 +2179,92 @@ const tableContextMenu = ref<{
   y: 0,
   table: null,
 });
+
+// --- Add Foreign Key State ---
+const isAddFkModalOpen = ref(false);
+const addFkForm = ref<{
+  sourceTable: string;
+  sourceColumn: string;
+  targetTable: string;
+  targetColumn: string;
+  onDelete: 'CASCADE' | 'RESTRICT' | 'SET NULL' | 'NO ACTION';
+  onUpdate: 'CASCADE' | 'RESTRICT' | 'SET NULL' | 'NO ACTION';
+}>({
+  sourceTable: '',
+  sourceColumn: '',
+  targetTable: '',
+  targetColumn: '',
+  onDelete: 'RESTRICT',
+  onUpdate: 'RESTRICT',
+});
+
+const targetTableColumns = computed(() => {
+  if (!addFkForm.value.targetTable || !schemaOverview.value?.tables) return [];
+  const target = schemaOverview.value.tables.find(t => t.name === addFkForm.value.targetTable);
+  return target ? target.columns : [];
+});
+
+const addFkSqlPreview = computed(() => {
+  const f = addFkForm.value;
+  if (!f.sourceTable || !f.sourceColumn || !f.targetTable || !f.targetColumn) return '';
+  const cName = `fk_${f.sourceTable}_${f.sourceColumn}`;
+  return `ALTER TABLE ${qi(f.sourceTable)}\n  ADD CONSTRAINT ${qi(cName)}\n  FOREIGN KEY (${qi(f.sourceColumn)})\n  REFERENCES ${qi(f.targetTable)} (${qi(f.targetColumn)})\n  ON DELETE ${f.onDelete} ON UPDATE ${f.onUpdate};`;
+});
+
+function openAddFkModal(columnName: string) {
+  if (!activeTable.value || engine.value === 'sqlite') return;
+  addFkForm.value = {
+    sourceTable: activeTable.value.name,
+    sourceColumn: columnName,
+    targetTable: '',
+    targetColumn: '',
+    onDelete: 'RESTRICT',
+    onUpdate: 'RESTRICT',
+  };
+  isAddFkModalOpen.value = true;
+}
+
+function closeAddFkModal() {
+  isAddFkModalOpen.value = false;
+}
+
+function onTargetTableChange() {
+  addFkForm.value.targetColumn = '';
+  // Try to auto-select primary key of target table
+  const tcols = targetTableColumns.value;
+  if (tcols && tcols.length > 0) {
+    const pk = tcols.find(c => c.is_primary_key);
+    if (pk) {
+      addFkForm.value.targetColumn = pk.name;
+    } else if (tcols.length > 0 && tcols[0]) {
+      addFkForm.value.targetColumn = tcols[0].name;
+    }
+  }
+}
+
+async function executeAddFk() {
+  if (!addFkSqlPreview.value || !props.tab.dbConnection) return;
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      addFkSqlPreview.value
+    );
+    dialogStore.showToast(`Berhasil menambahkan konstrain Foreign Key pada kolom ${addFkForm.value.sourceColumn}`, 'success', 3000);
+    closeAddFkModal();
+    // Reload schema to update structure & ERD views
+    await loadSchemaOverview();
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Menambah Foreign Key',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
 
 function getEngineBadge(engine?: string): string {
   switch (engine?.toLowerCase()) {
