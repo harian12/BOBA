@@ -770,11 +770,23 @@
                 <tr>
                   <th class="px-2 py-1.5 text-[10px] text-slate-500 font-mono border-r border-boba-800 w-10 text-center">#</th>
                   <th
-                    v-for="col in queryResult.columns"
+                    v-for="(col, cIdx) in queryResult.columns"
                     :key="col"
-                    class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap"
+                    @click="toggleSortColumn(cIdx)"
+                    class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap cursor-pointer hover:bg-sky-950/60 transition group"
+                    :title="`Klik untuk mengurutkan (Sort ${sortState.colIdx === cIdx ? (sortState.direction === 'asc' ? 'Descending' : 'Default') : 'Ascending'})`"
                   >
-                    {{ col }}
+                    <div class="flex items-center space-x-1.5 justify-between">
+                      <span>{{ col }}</span>
+                      <div class="flex items-center text-[10px]">
+                        <span v-if="sortState.colIdx === cIdx" class="text-amber-400 font-bold">
+                          {{ sortState.direction === 'asc' ? '▲' : '▼' }}
+                        </span>
+                        <span v-else class="text-slate-600 opacity-0 group-hover:opacity-100 transition">
+                          ⇅
+                        </span>
+                      </div>
+                    </div>
                   </th>
                   <th class="px-3 py-1.5 text-slate-400 select-none w-24 text-center">
                     Aksi
@@ -3043,12 +3055,57 @@ const hasTabularResults = computed(() => {
 
 const gridSearchQuery = ref('');
 
+const sortState = ref<{
+  colIdx: number | null;
+  direction: 'asc' | 'desc';
+}>({
+  colIdx: null,
+  direction: 'asc',
+});
+
+function toggleSortColumn(cIdx: number) {
+  if (sortState.value.colIdx === cIdx) {
+    if (sortState.value.direction === 'asc') {
+      sortState.value.direction = 'desc';
+    } else {
+      // Reset sort
+      sortState.value.colIdx = null;
+      sortState.value.direction = 'asc';
+    }
+  } else {
+    sortState.value.colIdx = cIdx;
+    sortState.value.direction = 'asc';
+  }
+}
+
 const displayRows = computed(() => {
   if (!queryResult.value || !queryResult.value.rows) return [];
-  const rows = queryResult.value.rows;
+  let rows = [...queryResult.value.rows];
   const q = gridSearchQuery.value.trim().toLowerCase();
-  if (!q) return rows;
-  return rows.filter(r => r.some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
+  if (q) {
+    rows = rows.filter(r => r.some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
+  }
+
+  const { colIdx, direction } = sortState.value;
+  if (colIdx !== null) {
+    rows.sort((a, b) => {
+      const valA = a[colIdx];
+      const valB = b[colIdx];
+
+      if (valA === null || valA === undefined) return direction === 'asc' ? 1 : -1;
+      if (valB === null || valB === undefined) return direction === 'asc' ? -1 : 1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return direction === 'asc' ? valA - valB : valB - valA;
+      }
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      return direction === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+  }
+
+  return rows;
 });
 
 const lastExecutionTime = computed({
