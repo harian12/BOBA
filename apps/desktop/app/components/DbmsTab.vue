@@ -1229,6 +1229,82 @@
             </div>
           </div>
 
+          <!-- Opsional: Langsung Buat Foreign Key Relasi -->
+          <div v-if="engine !== 'sqlite' && engine !== 'redis' && engine !== 'mongodb'" class="p-3 bg-boba-950/70 border border-sky-900/40 rounded-lg space-y-3">
+            <label class="flex items-center space-x-2 cursor-pointer">
+              <input
+                v-model="addColumnForm.addForeignKey"
+                type="checkbox"
+                class="rounded bg-boba-900 border-boba-700 text-sky-500 focus:ring-0 w-4 h-4"
+              />
+              <span class="text-xs font-semibold text-sky-300 flex items-center space-x-1.5">
+                <Icon icon="lucide:link" class="w-3.5 h-3.5" />
+                <span>Hubungkan Relasi Foreign Key (FK) Sekaligus</span>
+              </span>
+            </label>
+
+            <div v-if="addColumnForm.addForeignKey" class="space-y-3 pt-1 border-t border-boba-800/80 animate-in fade-in duration-200">
+              <div class="grid grid-cols-2 gap-3">
+                <!-- Target Table -->
+                <div class="space-y-1">
+                  <label class="block text-[11px] font-medium text-slate-300">Merujuk ke Tabel</label>
+                  <select
+                    v-model="addColumnForm.fkTargetTable"
+                    @change="onAddColumnFkTargetTableChange"
+                    required
+                    class="w-full bg-boba-900 border border-boba-700 focus:border-sky-500 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+                  >
+                    <option value="" disabled>-- Pilih Tabel Target --</option>
+                    <option v-for="tbl in (schemaOverview?.tables || [])" :key="tbl.name" :value="tbl.name">
+                      {{ tbl.name }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Target Column -->
+                <div class="space-y-1">
+                  <label class="block text-[11px] font-medium text-slate-300">Kolom Target</label>
+                  <select
+                    v-model="addColumnForm.fkTargetColumn"
+                    :disabled="!addColumnForm.fkTargetTable"
+                    required
+                    class="w-full bg-boba-900 border border-boba-700 focus:border-sky-500 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition disabled:opacity-50"
+                  >
+                    <option value="" disabled>-- Pilih Kolom --</option>
+                    <option v-for="c in addColumnFkTargetColumns" :key="c.name" :value="c.name">{{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1">
+                  <label class="block text-[10px] text-slate-400">ON DELETE</label>
+                  <select
+                    v-model="addColumnForm.fkOnDelete"
+                    class="w-full bg-boba-900 border border-boba-700 focus:border-sky-500 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none transition"
+                  >
+                    <option value="CASCADE">CASCADE</option>
+                    <option value="RESTRICT">RESTRICT</option>
+                    <option value="SET NULL">SET NULL</option>
+                    <option value="NO ACTION">NO ACTION</option>
+                  </select>
+                </div>
+                <div class="space-y-1">
+                  <label class="block text-[10px] text-slate-400">ON UPDATE</label>
+                  <select
+                    v-model="addColumnForm.fkOnUpdate"
+                    class="w-full bg-boba-900 border border-boba-700 focus:border-sky-500 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none transition"
+                  >
+                    <option value="CASCADE">CASCADE</option>
+                    <option value="RESTRICT">RESTRICT</option>
+                    <option value="SET NULL">SET NULL</option>
+                    <option value="NO ACTION">NO ACTION</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Generated SQL Preview -->
           <div v-if="addColumnSqlPreview" class="pt-2">
             <div class="text-[10px] text-slate-500 mb-1">Preview SQL Query:</div>
@@ -1857,11 +1933,21 @@ const addColumnForm = ref<{
   dataType: string;
   isNullable: boolean;
   defaultValue: string;
+  addForeignKey: boolean;
+  fkTargetTable: string;
+  fkTargetColumn: string;
+  fkOnDelete: 'CASCADE' | 'RESTRICT' | 'SET NULL' | 'NO ACTION';
+  fkOnUpdate: 'CASCADE' | 'RESTRICT' | 'SET NULL' | 'NO ACTION';
 }>({
   name: '',
   dataType: 'VARCHAR(255)',
   isNullable: true,
   defaultValue: '',
+  addForeignKey: false,
+  fkTargetTable: '',
+  fkTargetColumn: '',
+  fkOnDelete: 'RESTRICT',
+  fkOnUpdate: 'RESTRICT',
 });
 
 const enumValues = ref<string[]>(['active', 'inactive']);
@@ -1870,6 +1956,25 @@ const isEnumType = computed(() => {
   const dt = addColumnForm.value.dataType.trim().toUpperCase();
   return dt.startsWith('ENUM') || dt.startsWith('SET');
 });
+
+const addColumnFkTargetColumns = computed(() => {
+  if (!addColumnForm.value.fkTargetTable || !schemaOverview.value?.tables) return [];
+  const target = schemaOverview.value.tables.find(t => t.name === addColumnForm.value.fkTargetTable);
+  return target ? target.columns : [];
+});
+
+function onAddColumnFkTargetTableChange() {
+  addColumnForm.value.fkTargetColumn = '';
+  const cols = addColumnFkTargetColumns.value;
+  if (cols && cols.length > 0) {
+    const pk = cols.find(c => c.is_primary_key);
+    if (pk) {
+      addColumnForm.value.fkTargetColumn = pk.name;
+    } else if (cols[0]) {
+      addColumnForm.value.fkTargetColumn = cols[0].name;
+    }
+  }
+}
 
 function addEnumValue() {
   enumValues.value.push('');
@@ -1995,7 +2100,8 @@ const engineDataTypes = computed(() => {
 const addColumnSqlPreview = computed(() => {
   if (!activeTable.value || !addColumnForm.value.name.trim() || !addColumnForm.value.dataType.trim()) return '';
   const tbl = qi(activeTable.value.name);
-  const col = qi(addColumnForm.value.name.trim());
+  const colName = addColumnForm.value.name.trim();
+  const col = qi(colName);
   const type = addColumnForm.value.dataType.trim();
   const nullConstraint = addColumnForm.value.isNullable ? '' : ' NOT NULL';
   let defaultConstraint = '';
@@ -2011,7 +2117,17 @@ const addColumnSqlPreview = computed(() => {
       defaultConstraint = ` DEFAULT ${sqlLiteral(engine.value, defVal)}`;
     }
   }
-  return `ALTER TABLE ${tbl} ADD COLUMN ${col} ${type}${nullConstraint}${defaultConstraint};`;
+
+  const baseSql = `ALTER TABLE ${tbl} ADD COLUMN ${col} ${type}${nullConstraint}${defaultConstraint};`;
+
+  if (addColumnForm.value.addForeignKey && addColumnForm.value.fkTargetTable && addColumnForm.value.fkTargetColumn && engine.value !== 'sqlite') {
+    const shortHash = Math.random().toString(36).substring(2, 6);
+    const fkConstraint = `fk_${activeTable.value.name}_${colName}_${shortHash}`;
+    const fkSql = `\nALTER TABLE ${tbl} ADD CONSTRAINT ${qi(fkConstraint)} FOREIGN KEY (${col}) REFERENCES ${qi(addColumnForm.value.fkTargetTable)} (${qi(addColumnForm.value.fkTargetColumn)}) ON DELETE ${addColumnForm.value.fkOnDelete} ON UPDATE ${addColumnForm.value.fkOnUpdate};`;
+    return baseSql + fkSql;
+  }
+
+  return baseSql;
 });
 
 function openAddColumnModal() {
@@ -2022,6 +2138,11 @@ function openAddColumnModal() {
     dataType: defaultType,
     isNullable: true,
     defaultValue: '',
+    addForeignKey: false,
+    fkTargetTable: '',
+    fkTargetColumn: '',
+    fkOnDelete: 'RESTRICT',
+    fkOnUpdate: 'RESTRICT',
   };
   isAddColumnModalOpen.value = true;
 }
@@ -2034,11 +2155,19 @@ async function executeAddColumn() {
   if (!addColumnSqlPreview.value || !props.tab.dbConnection) return;
   executing.value = true;
   try {
-    await tauriBridge.dbmsExecuteQuery(
-      props.tab.dbConnection,
-      activeDatabase.value || undefined,
-      addColumnSqlPreview.value
-    );
+    const queries = addColumnSqlPreview.value
+      .split(';')
+      .map(q => q.trim())
+      .filter(q => q.length > 0);
+
+    for (const q of queries) {
+      await tauriBridge.dbmsExecuteQuery(
+        props.tab.dbConnection,
+        activeDatabase.value || undefined,
+        q + ';'
+      );
+    }
+
     dialogStore.showToast(`Berhasil menambahkan kolom ${addColumnForm.value.name} ke tabel ${activeTable.value?.name}`, 'success', 3000);
     closeAddColumnModal();
     await loadSchemaOverview();
