@@ -602,6 +602,17 @@
             </div>
 
             <div class="flex items-center space-x-1.5">
+              <!-- Bulk Delete Button if Rows Selected -->
+              <button
+                v-if="selectedRowIndices.length > 0"
+                @click="confirmBulkDeleteRows"
+                class="px-2.5 py-1 bg-rose-700 hover:bg-rose-600 text-white rounded text-[11px] font-medium transition flex items-center space-x-1 shadow animate-pulse"
+                :title="`Hapus ${selectedRowIndices.length} baris yang dipilih`"
+              >
+                <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                <span>Hapus Terpilih ({{ selectedRowIndices.length }})</span>
+              </button>
+
               <!-- Quick Search in Table Data -->
               <div class="relative flex items-center">
                 <Icon icon="lucide:search" class="w-3.5 h-3.5 absolute left-2 text-slate-400 pointer-events-none" />
@@ -768,6 +779,16 @@
             <table v-if="queryResult?.columns && queryResult.columns.length > 0" class="w-full text-left border-collapse">
               <thead class="bg-[#141a29] sticky top-0 z-10 border-b border-boba-800 shadow-sm text-slate-300">
                 <tr>
+                  <th class="px-2 py-1.5 border-r border-boba-800 w-8 text-center select-none">
+                    <input
+                      type="checkbox"
+                      :checked="isAllSelected"
+                      :indeterminate.prop="isIndeterminateSelected"
+                      @change="toggleSelectAllRows"
+                      class="rounded border-slate-700 bg-boba-950 text-sky-500 focus:ring-0 cursor-pointer"
+                      title="Pilih semua baris"
+                    />
+                  </th>
                   <th class="px-2 py-1.5 text-[10px] text-slate-500 font-mono border-r border-boba-800 w-10 text-center">#</th>
                   <th
                     v-for="(col, cIdx) in queryResult.columns"
@@ -798,8 +819,19 @@
                 <tr
                   v-for="(row, rIdx) in displayRows"
                   :key="rIdx"
-                  class="hover:bg-boba-800/40 transition group"
+                  :class="[
+                    'hover:bg-boba-800/40 transition group',
+                    selectedRowIndices.includes(rIdx) ? 'bg-sky-950/50' : ''
+                  ]"
                 >
+                  <td class="px-2 py-1 border-r border-boba-850 text-center select-none">
+                    <input
+                      type="checkbox"
+                      :checked="selectedRowIndices.includes(rIdx)"
+                      @change="toggleSelectRow(rIdx)"
+                      class="rounded border-slate-700 bg-boba-950 text-sky-500 focus:ring-0 cursor-pointer"
+                    />
+                  </td>
                   <td class="px-2 py-1 text-[10px] text-slate-600 border-r border-boba-850 text-center select-none">
                     {{ (currentPage - 1) * pageSize + rIdx + 1 }}
                   </td>
@@ -1034,6 +1066,24 @@
               </div>
             </div>
             <div class="flex items-center space-x-2">
+              <button
+                v-if="isSqlEngine(engine) && activeTable"
+                @click="openRenameTableModal(activeTable)"
+                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 rounded text-[11px] font-medium transition flex items-center space-x-1 border border-boba-700"
+                title="Ubah Nama Tabel (RENAME TABLE)"
+              >
+                <Icon icon="lucide:pencil" class="w-3 h-3 text-sky-400" />
+                <span>Ubah Nama Tabel</span>
+              </button>
+              <button
+                v-if="isSqlEngine(engine) && activeTable"
+                @click="confirmTruncateTable(activeTable)"
+                class="px-2 py-1 bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 rounded text-[11px] font-medium transition flex items-center space-x-1 border border-amber-800/50"
+                :title="supportsTruncate(engine) ? 'Kosongkan Semua Data Tabel (TRUNCATE)' : 'Kosongkan Semua Data Tabel (DELETE)'"
+              >
+                <Icon icon="lucide:eraser" class="w-3 h-3 text-amber-400" />
+                <span>Kosongkan Tabel</span>
+              </button>
               <button
                 v-if="structSubTab === 'columns'"
                 @click="openAddColumnModal"
@@ -2454,7 +2504,7 @@ import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
-import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql } from '../utils/dbmsSql.js';
+import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql, formatSql } from '../utils/dbmsSql.js';
 import DataImporterModal from './DataImporterModal.vue';
 import ProcesslistModal from './ProcesslistModal.vue';
 import TableDesignerModal from './TableDesignerModal.vue';
@@ -3054,6 +3104,77 @@ const hasTabularResults = computed(() => {
 });
 
 const gridSearchQuery = ref('');
+
+const selectedRowIndices = ref<number[]>([]);
+
+const isAllSelected = computed(() => {
+  if (!displayRows.value || displayRows.value.length === 0) return false;
+  return selectedRowIndices.value.length === displayRows.value.length;
+});
+
+const isIndeterminateSelected = computed(() => {
+  return selectedRowIndices.value.length > 0 && !isAllSelected.value;
+});
+
+function toggleSelectRow(rIdx: number) {
+  const pos = selectedRowIndices.value.indexOf(rIdx);
+  if (pos >= 0) {
+    selectedRowIndices.value.splice(pos, 1);
+  } else {
+    selectedRowIndices.value.push(rIdx);
+  }
+}
+
+function toggleSelectAllRows() {
+  if (isAllSelected.value) {
+    selectedRowIndices.value = [];
+  } else {
+    selectedRowIndices.value = displayRows.value.map((_, idx) => idx);
+  }
+}
+
+async function confirmBulkDeleteRows() {
+  if (selectedRowIndices.value.length === 0 || !activeTable.value || !queryResult.value) return;
+  const pk = getTablePrimaryKey(activeTable.value);
+  if (!pk || queryResult.value.columns.indexOf(pk.name) === -1) {
+    await dialogStore.alert({
+      title: 'Hapus Massal Tidak Didukung',
+      description: `Tabel "${activeTable.value.name}" tidak memiliki primary key yang terlihat pada hasil query.`,
+      variant: 'error',
+    });
+    return;
+  }
+
+  const pkIdx = queryResult.value.columns.indexOf(pk.name);
+  const selectedRows = selectedRowIndices.value.map(idx => displayRows.value[idx]).filter((r): r is any[] => Boolean(r));
+  const pkValues = selectedRows.map(r => r[pkIdx]).filter(v => v !== null && v !== undefined);
+
+  if (pkValues.length === 0) {
+    await dialogStore.alert({
+      title: 'Hapus Gagal',
+      description: 'Tidak ada nilai primary key yang valid pada baris yang dipilih.',
+      variant: 'error',
+    });
+    return;
+  }
+
+  const confirmed = await dialogStore.confirm({
+    title: `Hapus ${pkValues.length} Baris Terpilih?`,
+    description: `Apakah Anda yakin ingin menghapus ${pkValues.length} baris data dari tabel "${activeTable.value.name}"? Tindakan ini tidak dapat dibatalkan.`,
+    confirmText: `Hapus ${pkValues.length} Baris`,
+    isDestructive: true,
+  });
+
+  if (!confirmed) return;
+
+  const inList = pkValues.map(v => sqlLiteral(engine.value, v)).join(', ');
+  const sql = `DELETE FROM ${qi(activeTable.value.name)} WHERE ${qi(pk.name)} IN (${inList});`;
+
+  currentQueryText.value = sql;
+  await executeQuery(sql);
+  selectedRowIndices.value = [];
+  handlePageChange(currentPage.value);
+}
 
 const sortState = ref<{
   colIdx: number | null;
@@ -4490,6 +4611,11 @@ async function confirmDeleteSnippet(snippet: { id: string; title: string }) {
   }
 }
 
+function formatQuickSql() {
+  if (!currentQueryText.value.trim()) return;
+  currentQueryText.value = formatSql(currentQueryText.value);
+}
+
 function loadHistoryQuery(q: string) {
   currentQueryText.value = q;
   showHistory.value = false;
@@ -4723,16 +4849,6 @@ function handleEditorKeyDown(e: KeyboardEvent) {
   }
 }
 
-function formatQuickSql() {
-  let s = currentQueryText.value.trim();
-  const keywords = ['SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'INSERT INTO', 'UPDATE', 'SET', 'DELETE FROM'];
-  for (const kw of keywords) {
-    const re = new RegExp(`\\b${kw}\\b`, 'gi');
-    s = s.replace(re, kw);
-  }
-  currentQueryText.value = s;
-}
-
 function openCellDetail(column: string, value: any) {
   selectedCell.value = { column, value };
 }
@@ -4907,6 +5023,74 @@ function closeTableContextMenu() {
   tableContextMenu.value.table = null;
 }
 
+async function confirmTruncateTable(tbl: DbTableMeta) {
+  if (engine.value === 'redis' || engine.value === 'mongodb') {
+    await dialogStore.alert({
+      title: 'Operasi Tidak Didukung',
+      description: `Engine ${engine.value} tidak mendukung TRUNCATE. Gunakan perintah khusus engine tersebut.`,
+      variant: 'error',
+    });
+    return;
+  }
+
+  const useTruncate = supportsTruncate(engine.value);
+  const confirm = await dialogStore.confirm({
+    title: `Kosongkan Tabel "${tbl.name}"?`,
+    description: useTruncate
+      ? `Semua baris data di dalam tabel "${tbl.name}" akan dihapus secara permanen (TRUNCATE).`
+      : `SQLite tidak mendukung TRUNCATE. Semua baris data di dalam tabel "${tbl.name}" akan dihapus permanen memakai DELETE FROM.`,
+    confirmText: 'Kosongkan Sekarang',
+    isDestructive: true,
+  });
+  if (confirm) {
+    const sql = useTruncate
+      ? `TRUNCATE TABLE ${qi(tbl.name)};`
+      : `DELETE FROM ${qi(tbl.name)};`;
+    currentQueryText.value = sql;
+    await executeQuery(sql);
+    handleSelectTable(tbl);
+  }
+}
+
+async function openRenameTableModal(tbl: DbTableMeta) {
+  const currentName = tbl.name;
+  const newName = window.prompt(`Masukkan nama baru untuk tabel "${currentName}":`, currentName);
+  if (!newName || !newName.trim() || newName.trim() === currentName || !props.tab.dbConnection) return;
+
+  const trimmedNewName = newName.trim();
+  const eng = engine.value;
+  let renameSql = '';
+  if (eng === 'postgres' || eng === 'postgresql') {
+    renameSql = `ALTER TABLE ${qi(currentName)} RENAME TO ${qi(trimmedNewName)};`;
+  } else if (eng === 'sqlite') {
+    renameSql = `ALTER TABLE ${qi(currentName)} RENAME TO ${qi(trimmedNewName)};`;
+  } else {
+    // MySQL / MariaDB
+    renameSql = `RENAME TABLE ${qi(currentName)} TO ${qi(trimmedNewName)};`;
+  }
+
+  executing.value = true;
+  try {
+    await tauriBridge.dbmsExecuteQuery(
+      props.tab.dbConnection,
+      activeDatabase.value || undefined,
+      renameSql
+    );
+    dialogStore.showToast(`Tabel berhasil diubah menjadi "${trimmedNewName}"`, 'success', 3000);
+    await loadSchemaOverview();
+    const updatedTbl = schemaOverview.value?.tables.find(t => t.name === trimmedNewName);
+    if (updatedTbl) activeTable.value = updatedTbl;
+  } catch (err: any) {
+    dialogStore.alert({
+      title: 'Gagal Mengubah Nama Tabel',
+      description: String(err?.message || err),
+      variant: 'error',
+    });
+  } finally {
+    executing.value = false;
+  }
+}
+
 async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
   const tbl = tableContextMenu.value.table;
   closeTableContextMenu();
@@ -4925,32 +5109,7 @@ async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'c
     activeTable.value = tbl;
     activeViewTab.value = 'ddl';
   } else if (action === 'truncate') {
-    if (engine.value === 'redis' || engine.value === 'mongodb') {
-      await dialogStore.alert({
-        title: 'Operasi Tidak Didukung',
-        description: `Engine ${engine.value} tidak mendukung TRUNCATE. Gunakan perintah khusus engine tersebut.`,
-        variant: 'error',
-      });
-      return;
-    }
-
-    const useTruncate = supportsTruncate(engine.value);
-    const confirm = await dialogStore.confirm({
-      title: `Kosongkan Tabel "${tbl.name}"?`,
-      description: useTruncate
-        ? 'Semua data di dalam tabel ini akan dihapus secara permanen (TRUNCATE).'
-        : 'SQLite tidak mendukung TRUNCATE. Semua data akan dihapus permanen memakai DELETE FROM tanpa WHERE.',
-      confirmText: 'Kosongkan',
-      isDestructive: true,
-    });
-    if (confirm) {
-      const sql = useTruncate
-        ? `TRUNCATE TABLE ${qi(tbl.name)};`
-        : `DELETE FROM ${qi(tbl.name)};`;
-      currentQueryText.value = sql;
-      await executeQuery(sql);
-      handleSelectTable(tbl);
-    }
+    await confirmTruncateTable(tbl);
   } else if (action === 'drop') {
     if (!isSqlEngine(engine.value)) {
       await dialogStore.alert({

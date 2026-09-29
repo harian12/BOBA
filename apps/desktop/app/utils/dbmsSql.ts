@@ -95,3 +95,27 @@ export function highlightSql(sql: string): string {
 
   return result;
 }
+
+export function formatSql(sql: string): string {
+  if (!sql || !sql.trim()) return '';
+
+  const keywordsToNewline = [
+    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'LEFT JOIN', 'RIGHT JOIN',
+    'INNER JOIN', 'OUTER JOIN', 'CROSS JOIN', 'JOIN', 'ON', 'ORDER BY',
+    'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'VALUES', 'SET'
+  ];
+
+  let cleaned = sql.replace(/\s+/g, ' ').trim();
+
+  for (const kw of keywordsToNewline) {
+    const reg = new RegExp(`\\b${kw.replace(/ /g, '\\s+')}\\b`, 'gi');
+    cleaned = cleaned.replace(reg, `\n${kw}`);
+  }
+
+  return cleaned
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
