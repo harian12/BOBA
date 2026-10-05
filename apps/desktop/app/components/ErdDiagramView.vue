@@ -317,6 +317,7 @@ import {
 import type { DbConnectionConfig, DbTableMeta, DbForeignKeyRelation } from '../types/index.js';
 
 import { useDbmsStore } from '../stores/dbmsStore.js';
+import { useDialogStore } from '../stores/dialogStore.js';
 
 const uid = `erd${Math.random().toString(36).slice(2, 8)}`;
 
@@ -327,6 +328,7 @@ const props = defineProps<{
 }>();
 
 const dbmsStore = useDbmsStore();
+const dialogStore = useDialogStore();
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
@@ -388,22 +390,28 @@ function exportDiagramAsSvg() {
     console.warn('[ERD] Export tanpa relasi: belum ada foreign key yang dimuat untuk database ini.');
   }
 
-  const svgContent = buildErSvg({
-    tables: props.tables,
-    relations: foreignKeys.value,
-    positions: positions.value,
-    idPrefix: uid,
-  });
+  try {
+    const svgContent = buildErSvg({
+      tables: props.tables,
+      relations: foreignKeys.value,
+      positions: positions.value,
+      idPrefix: uid,
+    });
 
-  const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `erd_${(props.activeDb || 'diagram').replace(/[^\w.-]+/g, '_')}_${Date.now()}.svg`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const filename = `erd_${(props.activeDb || 'diagram').replace(/[^\w.-]+/g, '_')}_${Date.now()}.svg`;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    dialogStore.showToast(`Berhasil mengekspor diagram ke ${filename}`, 'success', 3000);
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal mengekspor diagram: ${err?.message || err}`, 'error', 3000);
+  }
 }
 
 function setZoom(val: number) {

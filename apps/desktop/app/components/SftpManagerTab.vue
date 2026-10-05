@@ -2961,6 +2961,7 @@ async function calculateFolderSize(side: 'left' | 'right', folder: LocalFileItem
 async function copyPath(path: string) {
   try {
     await navigator.clipboard.writeText(path);
+    dialogStore.showToast('Path berhasil disalin ke clipboard', 'success', 1500);
   } catch (_) {}
 }
 

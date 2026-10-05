@@ -35,7 +35,7 @@
         </div>
 
         <!-- Quick Action Buttons Grid (Arranged under Database Name) -->
-        <div class="grid grid-cols-5 gap-1 pt-1.5 border-t border-boba-800/80">
+        <div class="grid grid-cols-6 gap-1 pt-1.5 border-t border-boba-800/80">
           <button
             @click="isTableDesignerOpen = true"
             title="Visual Table Designer (Buat Tabel Baru)"
@@ -51,6 +51,14 @@
           >
             <Icon icon="lucide:file-up" class="w-3.5 h-3.5 text-emerald-400" />
             <span class="text-[9px] text-slate-400 font-sans mt-0.5">Import</span>
+          </button>
+          <button
+            @click="openDatabaseDumpModal()"
+            title="Dump Database ke File .sql (Pilih Tabel)"
+            class="py-1 flex flex-col items-center justify-center bg-boba-950 hover:bg-boba-800 border border-boba-800 hover:border-sky-500/60 rounded text-slate-300 hover:text-sky-300 transition"
+          >
+            <Icon icon="lucide:database-backup" class="w-3.5 h-3.5 text-sky-400" />
+            <span class="text-[9px] text-slate-400 font-sans mt-0.5">Dump</span>
           </button>
           <button
             @click="isProcesslistOpen = true"
@@ -83,6 +91,15 @@
           <div class="flex items-center justify-between">
             <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Database:</label>
             <div class="flex items-center space-x-2">
+              <button
+                v-if="engine !== 'redis' && engine !== 'mongodb'"
+                @click="openDatabaseDumpModal()"
+                class="text-[10px] text-sky-400 hover:text-sky-300 flex items-center space-x-1 font-sans font-medium hover:underline transition"
+                title="Dump Database ke File .sql (Pilih Tabel)"
+              >
+                <Icon icon="lucide:database-backup" class="w-3 h-3" />
+                <span>Dump</span>
+              </button>
               <button
                 v-if="engine !== 'sqlite' && engine !== 'redis' && engine !== 'mongodb'"
                 @click="openCreateDbModal"
@@ -522,40 +539,94 @@
               <span>Tambah Baris</span>
             </button>
 
-            <template v-if="queryResult?.columns && queryResult.columns.length > 0 && activeViewTab === 'data'">
+            <!-- Export & Copy Dropdown -->
+            <div
+              v-if="queryResult?.columns && queryResult.columns.length > 0 && activeViewTab === 'data'"
+              ref="exportDropdownRef"
+              class="relative"
+            >
               <button
-                @click="exportData('csv')"
-                title="Ekspor ke CSV"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
+                @click="isExportDropdownOpen = !isExportDropdownOpen"
+                class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 hover:text-white rounded text-[11px] font-medium transition flex items-center space-x-1.5 border border-boba-700/60 shadow-sm"
+                title="Opsi Ekspor & Salin Data"
               >
-                <Icon icon="lucide:file-text" class="w-3 h-3" />
-                <span>CSV</span>
+                <Icon icon="lucide:download" class="w-3 h-3 text-sky-400" />
+                <span>Ekspor</span>
+                <Icon
+                  icon="lucide:chevron-down"
+                  class="w-3 h-3 text-slate-400 transition-transform duration-200"
+                  :class="{ 'rotate-180': isExportDropdownOpen }"
+                />
               </button>
-              <button
-                @click="exportData('excel')"
-                title="Ekspor ke File Excel (.xls)"
-                class="px-2 py-1 bg-emerald-950/80 hover:bg-emerald-800 text-emerald-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1 border border-emerald-800/50"
+
+              <div
+                v-if="isExportDropdownOpen"
+                class="absolute right-0 top-full mt-1 w-52 bg-[#0d131f] border border-boba-700 rounded-lg shadow-2xl py-1 z-50 text-xs font-sans divide-y divide-boba-800/80 animate-in fade-in zoom-in-95 duration-100"
               >
-                <Icon icon="lucide:file-spreadsheet" class="w-3 h-3 text-emerald-400" />
-                <span>Excel</span>
-              </button>
-              <button
-                @click="exportData('json')"
-                title="Ekspor ke JSON"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
-              >
-                <Icon icon="lucide:file-json" class="w-3 h-3" />
-                <span>JSON</span>
-              </button>
-              <button
-                @click="exportData('sql')"
-                title="Ekspor sebagai SQL INSERT Statements (Dump)"
-                class="px-2 py-1 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition flex items-center space-x-1"
-              >
-                <Icon icon="lucide:database" class="w-3 h-3" />
-                <span>SQL Dump</span>
-              </button>
-            </template>
+                <!-- Kelompok Download -->
+                <div class="py-1">
+                  <div class="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Download File
+                  </div>
+                  <button
+                    @click="exportData('excel')"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-emerald-300 flex items-center space-x-2 transition"
+                  >
+                    <Icon icon="lucide:file-spreadsheet" class="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span class="flex-1">Excel (.xls)</span>
+                  </button>
+                  <button
+                    @click="exportData('csv')"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-sky-300 flex items-center space-x-2 transition"
+                  >
+                    <Icon icon="lucide:file-text" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span class="flex-1">CSV (.csv)</span>
+                  </button>
+                  <button
+                    @click="exportData('json')"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-amber-300 flex items-center space-x-2 transition"
+                  >
+                    <Icon icon="lucide:file-json" class="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span class="flex-1">JSON (.json)</span>
+                  </button>
+                  <button
+                    @click="exportData('sql')"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-purple-300 flex items-center space-x-2 transition"
+                  >
+                    <Icon icon="lucide:database" class="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span class="flex-1">SQL Dump Tabel Aktif (.sql)</span>
+                  </button>
+                  <button
+                    @click="isExportDropdownOpen = false; openDatabaseDumpModal(activeTable?.name)"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-sky-300 flex items-center space-x-2 transition border-t border-boba-800/60 mt-0.5 pt-1.5"
+                  >
+                    <Icon icon="lucide:database-backup" class="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span class="flex-1 font-medium">Dump Database (Pilih Tabel)...</span>
+                  </button>
+                </div>
+
+                <!-- Kelompok Copy to Clipboard -->
+                <div class="py-1">
+                  <div class="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Salin ke Clipboard
+                  </div>
+                  <button
+                    @click="copyDataToClipboard('excel')"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-emerald-300 flex items-center space-x-2 transition"
+                  >
+                    <Icon icon="lucide:clipboard-copy" class="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span class="flex-1">Salin untuk Excel (TSV)</span>
+                  </button>
+                  <button
+                    @click="copyDataToClipboard('json')"
+                    class="w-full text-left px-3 py-1.5 hover:bg-boba-800 text-slate-200 hover:text-amber-300 flex items-center space-x-2 transition"
+                  >
+                    <Icon icon="lucide:clipboard-copy" class="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span class="flex-1">Salin sebagai JSON</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1308,6 +1379,17 @@
 
         <!-- VIEW 3: Table DDL Script -->
         <div v-else-if="activeViewTab === 'ddl'" class="flex-1 overflow-auto bg-[#07090e] p-3 font-mono text-xs select-text">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-slate-400 font-sans text-xs font-semibold">Skrip DDL (Data Definition Language)</span>
+            <button
+              @click="copyTableDdl"
+              class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 hover:text-white rounded text-[11px] font-sans flex items-center space-x-1.5 transition border border-boba-700/60 shadow-sm"
+              title="Salin skrip DDL ke clipboard"
+            >
+              <Icon icon="lucide:clipboard" class="w-3.5 h-3.5 text-sky-400" />
+              <span>Salin DDL</span>
+            </button>
+          </div>
           <div class="p-3 bg-boba-950 rounded-lg border border-boba-800 whitespace-pre text-emerald-300 leading-relaxed">
 {{ generateTableDdl() }}
           </div>
@@ -2305,6 +2387,13 @@
         <span>Salin Nama Tabel</span>
       </button>
       <button
+        @click="handleContextAction('dump_table')"
+        class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition"
+      >
+        <Icon icon="lucide:database-backup" class="w-3.5 h-3.5 text-sky-400" />
+        <span>Dump Tabel Ini (.sql)</span>
+      </button>
+      <button
         @click="handleContextAction('ddl')"
         class="w-full text-left px-2.5 py-1 hover:bg-sky-600 hover:text-white flex items-center space-x-2 transition border-b border-[#232b3d]/60 pb-1.5 mb-1"
       >
@@ -2497,6 +2586,16 @@
       @imported="handleDataImported"
     />
 
+    <!-- Database Dump Modal -->
+    <DatabaseDumpModal
+      :is-open="isDumpModalOpen"
+      :db-config="tab.dbConnection"
+      :active-db="activeDatabase"
+      :tables="schemaOverview?.tables || []"
+      :initial-selected-table="dumpInitialTable"
+      @close="isDumpModalOpen = false"
+    />
+
     <!-- Processlist Modal -->
     <ProcesslistModal
       :is-open="isProcesslistOpen"
@@ -2531,6 +2630,7 @@ import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
 import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql, formatSql } from '../utils/dbmsSql.js';
 import DataImporterModal from './DataImporterModal.vue';
+import DatabaseDumpModal from './DatabaseDumpModal.vue';
 import ProcesslistModal from './ProcesslistModal.vue';
 import TableDesignerModal from './TableDesignerModal.vue';
 import UserManagerModal from './UserManagerModal.vue';
@@ -2543,6 +2643,16 @@ const props = defineProps<{
 
 const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
+
+// Export dropdown state
+const isExportDropdownOpen = ref(false);
+const exportDropdownRef = ref<HTMLElement | null>(null);
+
+function handleExportDropdownOutside(e: MouseEvent) {
+  if (exportDropdownRef.value && !exportDropdownRef.value.contains(e.target as Node)) {
+    isExportDropdownOpen.value = false;
+  }
+}
 
 // Foreign Keys cache for Structure View and Badges
 const foreignKeysList = ref<DbForeignKeyRelation[]>([]);
@@ -2985,6 +3095,14 @@ function saveRenameTab(qTab: SubQueryTab) {
 }
 
 const isImporterOpen = ref(false);
+const isDumpModalOpen = ref(false);
+const dumpInitialTable = ref<string | undefined>(undefined);
+
+function openDatabaseDumpModal(tblName?: string) {
+  dumpInitialTable.value = tblName;
+  isDumpModalOpen.value = true;
+}
+
 const isProcesslistOpen = ref(false);
 const isTableDesignerOpen = ref(false);
 const isUserManagerOpen = ref(false);
@@ -5227,7 +5345,7 @@ async function handleCloneTable(tbl: DbTableMeta) {
   }
 }
 
-async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'clone_table' | 'copy_name' | 'ddl' | 'truncate' | 'drop') {
+async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'clone_table' | 'copy_name' | 'ddl' | 'dump_table' | 'truncate' | 'drop') {
   const tbl = tableContextMenu.value.table;
   closeTableContextMenu();
   if (!tbl) return;
@@ -5243,6 +5361,9 @@ async function handleContextAction(action: 'select' | 'structure' | 'alter' | 'c
     await handleCloneTable(tbl);
   } else if (action === 'copy_name') {
     await navigator.clipboard.writeText(tbl.name);
+    dialogStore.showToast(`Nama tabel "${tbl.name}" disalin ke clipboard`, 'success', 2000);
+  } else if (action === 'dump_table') {
+    openDatabaseDumpModal(tbl.name);
   } else if (action === 'ddl') {
     activeTable.value = tbl;
     activeViewTab.value = 'ddl';
@@ -5562,62 +5683,114 @@ async function handleDeleteRow(row: any[]) {
 }
 
 function exportData(type: 'csv' | 'json' | 'sql' | 'excel') {
+  isExportDropdownOpen.value = false;
   if (!queryResult.value || queryResult.value.columns.length === 0) return;
 
-  const cols = queryResult.value.columns;
-  const rows = queryResult.value.rows;
-  let content = '';
-  let mimeType = 'text/plain;charset=utf-8;';
-  let filename = `${activeTable.value?.name || 'export'}_${Date.now()}`;
+  try {
+    const cols = queryResult.value.columns;
+    const rows = displayRows.value?.length ? displayRows.value : queryResult.value.rows;
+    let content = '';
+    let mimeType = 'text/plain;charset=utf-8;';
+    let filename = `${activeTable.value?.name || 'export'}_${Date.now()}`;
 
-  if (type === 'csv') {
-    content = cols.map(c => `"${c}"`).join(',') + '\n';
-    content += rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    filename += '.csv';
-  } else if (type === 'json') {
-    const objects = rows.map(r => {
-      const obj: Record<string, any> = {};
-      cols.forEach((c, idx) => {
-        obj[c] = r[idx];
+    if (type === 'csv') {
+      content = cols.map(c => `"${c}"`).join(',') + '\n';
+      content += rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      filename += '.csv';
+    } else if (type === 'json') {
+      const objects = rows.map(r => {
+        const obj: Record<string, any> = {};
+        cols.forEach((c, idx) => {
+          obj[c] = r[idx];
+        });
+        return obj;
       });
-      return obj;
-    });
-    content = JSON.stringify(objects, null, 2);
-    filename += '.json';
-  } else if (type === 'sql') {
-    const tableName = activeTable.value?.name || 'exported_table';
-    content = rows.map(r => {
-      const vals = r.map(v => sqlLiteral(engine.value, v)).join(', ');
-      return `INSERT INTO ${qi(tableName)} (${cols.map(c => qi(c)).join(', ')}) VALUES (${vals});`;
-    }).join('\n');
-    filename += '.sql';
-  } else if (type === 'excel') {
-    const tableName = activeTable.value?.name || 'Data';
-    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${tableName}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
-    <body><table border="1"><thead><tr>`;
-    cols.forEach(c => {
-      html += `<th style="background-color:#1e293b;color:#ffffff;font-weight:bold;">${c}</th>`;
-    });
-    html += `</tr></thead><tbody>`;
-    rows.forEach(r => {
-      html += `<tr>`;
-      r.forEach(v => {
-        html += `<td>${v !== null && v !== undefined ? String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''}</td>`;
+      content = JSON.stringify(objects, null, 2);
+      filename += '.json';
+    } else if (type === 'sql') {
+      const tableName = activeTable.value?.name || 'exported_table';
+      content = rows.map(r => {
+        const vals = r.map(v => sqlLiteral(engine.value, v)).join(', ');
+        return `INSERT INTO ${qi(tableName)} (${cols.map(c => qi(c)).join(', ')}) VALUES (${vals});`;
+      }).join('\n');
+      filename += '.sql';
+    } else if (type === 'excel') {
+      const tableName = activeTable.value?.name || 'Data';
+      let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${tableName}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+      <body><table border="1"><thead><tr>`;
+      cols.forEach(c => {
+        html += `<th style="background-color:#1e293b;color:#ffffff;font-weight:bold;">${c}</th>`;
       });
-      html += `</tr>`;
-    });
-    html += `</tbody></table></body></html>`;
-    content = html;
-    mimeType = 'application/vnd.ms-excel;charset=utf-8;';
-    filename += '.xls';
+      html += `</tr></thead><tbody>`;
+      rows.forEach(r => {
+        html += `<tr>`;
+        r.forEach(v => {
+          html += `<td>${v !== null && v !== undefined ? String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''}</td>`;
+        });
+        html += `</tr>`;
+      });
+      html += `</tbody></table></body></html>`;
+      content = html;
+      mimeType = 'application/vnd.ms-excel;charset=utf-8;';
+      filename += '.xls';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    dialogStore.showToast(`Berhasil mengekspor data ke ${filename}`, 'success', 3000);
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal mengekspor data: ${err?.message || err}`, 'error', 3000);
   }
+}
 
-  const blob = new Blob([content], { type: mimeType });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  link.click();
+async function copyDataToClipboard(type: 'excel' | 'json') {
+  isExportDropdownOpen.value = false;
+  if (!queryResult.value || queryResult.value.columns.length === 0) return;
+
+  try {
+    const cols = queryResult.value.columns;
+    const rows = displayRows.value?.length ? displayRows.value : queryResult.value.rows;
+
+    if (type === 'excel') {
+      const header = cols.join('\t');
+      const lines = rows.map(r => r.map(v => {
+        if (v === null || v === undefined) return '';
+        return String(v).replace(/[\t\r\n]+/g, ' ');
+      }).join('\t'));
+      const text = [header, ...lines].join('\n');
+      await navigator.clipboard.writeText(text);
+      dialogStore.showToast(`${rows.length} baris data disalin ke clipboard (format Excel)`, 'success', 3000);
+    } else if (type === 'json') {
+      const objects = rows.map(r => {
+        const obj: Record<string, any> = {};
+        cols.forEach((c, idx) => {
+          obj[c] = r[idx];
+        });
+        return obj;
+      });
+      await navigator.clipboard.writeText(JSON.stringify(objects, null, 2));
+      dialogStore.showToast(`${rows.length} baris data disalin ke clipboard (format JSON)`, 'success', 3000);
+    }
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal menyalin data: ${err?.message || err}`, 'error', 3000);
+  }
+}
+
+async function copyTableDdl() {
+  const ddl = generateTableDdl();
+  if (!ddl) return;
+  try {
+    await navigator.clipboard.writeText(ddl);
+    dialogStore.showToast('Skrip DDL tabel disalin ke clipboard', 'success', 2500);
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal menyalin DDL: ${err?.message || err}`, 'error', 3000);
+  }
 }
 
 function formatUptime(seconds: number): string {
@@ -5668,11 +5841,13 @@ onMounted(() => {
     // Ignore storage errors
   }
   loadSchemaOverview();
+  window.addEventListener('click', handleExportDropdownOutside);
   window.addEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
   window.addEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);
 });
 
 onUnmounted(() => {
+  window.removeEventListener('click', handleExportDropdownOutside);
   window.removeEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
   window.removeEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);
 });
