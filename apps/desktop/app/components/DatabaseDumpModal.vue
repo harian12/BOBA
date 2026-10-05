@@ -521,6 +521,7 @@ async function executeExportDump() {
 
     for (let idx = 0; idx < totalTables; idx++) {
       const tableName = selectedTableNames.value[idx];
+      if (!tableName) continue;
       progressMessage.value = `Mengekspor tabel "${tableName}" (${idx + 1}/${totalTables})...`;
       progressPercent.value = Math.round(((idx) / totalTables) * 100);
 
@@ -582,6 +583,7 @@ async function executeExportDump() {
 
     for (let idx = 0; idx < totalTables; idx++) {
       const tableName = selectedTableNames.value[idx];
+      if (!tableName) continue;
       progressMessage.value = `Memproses tabel "${tableName}" (${idx + 1}/${totalTables})...`;
       progressPercent.value = Math.round((idx / totalTables) * 90);
 
@@ -643,6 +645,7 @@ async function copyDumpToClipboard() {
 
   for (let idx = 0; idx < totalTables; idx++) {
     const tableName = selectedTableNames.value[idx];
+    if (!tableName) continue;
     progressMessage.value = `Memproses tabel "${tableName}" (${idx + 1}/${totalTables})...`;
     progressPercent.value = Math.round((idx / totalTables) * 90);
 

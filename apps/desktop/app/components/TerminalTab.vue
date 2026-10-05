@@ -97,6 +97,17 @@
           <Icon icon="lucide:container" class="w-3 h-3 text-sky-400" />
           <span>Docker</span>
         </button>
+
+        <!-- Systemd Manager Modal Button (Hanya muncul jika server memiliki systemd) -->
+        <button
+          v-if="hasSystemd"
+          @click.stop="isSystemdModalOpen = true"
+          class="px-2 py-0.5 bg-violet-950/40 hover:bg-violet-900/60 text-violet-300 border border-violet-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Buka Systemd Manager"
+        >
+          <Icon icon="lucide:cpu" class="w-3 h-3 text-violet-400" />
+          <span>Systemd</span>
+        </button>
       </div>
     </div>
 
@@ -333,6 +344,18 @@
         </div>
       </button>
 
+      <!-- Open Systemd Manager Context Menu -->
+      <button
+        v-if="hasSystemd"
+        @click="closeContextMenu(); isSystemdModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-violet-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">⚙️</span>
+          <span>Systemd Manager</span>
+        </div>
+      </button>
+
       <div class="h-px bg-[#232936] my-1"></div>
 
       <!-- Reconnect -->
@@ -507,6 +530,16 @@
       :initialUseSudo="dockerNeedsSudo"
       @close="isDockerModalOpen = false"
     />
+
+    <!-- Systemd Manager Modal -->
+    <SystemdManagerModal
+      v-if="isSystemdModalOpen"
+      :isOpen="isSystemdModalOpen"
+      :sessionId="tab.id"
+      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+      :initialUseSudo="systemdNeedsSudo"
+      @close="isSystemdModalOpen = false"
+    />
   </div>
 </template>
 
@@ -525,6 +558,7 @@ import { useAiAgentStore } from '../stores/aiAgentStore.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import type { ActiveTab, SnippetItem, ServerMetrics } from '../types/index.js';
 import DockerManagerModal from './DockerManagerModal.vue';
+import SystemdManagerModal from './SystemdManagerModal.vue';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -546,6 +580,11 @@ let isExplicitlyClosed = false;
 const hasDocker = ref(false);
 const dockerNeedsSudo = ref(false);
 const isDockerModalOpen = ref(false);
+
+// Systemd Manager State
+const hasSystemd = ref(false);
+const systemdNeedsSudo = ref(false);
+const isSystemdModalOpen = ref(false);
 
 // Resource Metrics
 const metrics = ref<ServerMetrics | null>(null);
@@ -1425,6 +1464,7 @@ async function connectSsh() {
     setTimeout(() => {
       fetchMetrics();
       checkDockerAvailability();
+      checkSystemdAvailability();
     }, 1000);
   } catch (err: any) {
     props.tab.connected = false;
@@ -1458,6 +1498,24 @@ async function checkDockerAvailability() {
     }
   } catch {
     hasDocker.value = false;
+  }
+}
+
+async function checkSystemdAvailability() {
+  if (!props.tab.connected) return;
+  try {
+    const checkOut = await tauriBridge.sshExecCommand(props.tab.id, 'which systemctl || command -v systemctl');
+    if (checkOut && checkOut.trim() && !checkOut.toLowerCase().includes('not found') && !checkOut.toLowerCase().includes('no systemctl')) {
+      hasSystemd.value = true;
+
+      if (props.tab.sessionConfig?.username && props.tab.sessionConfig.username !== 'root') {
+        systemdNeedsSudo.value = true;
+      }
+    } else {
+      hasSystemd.value = false;
+    }
+  } catch {
+    hasSystemd.value = false;
   }
 }
 
