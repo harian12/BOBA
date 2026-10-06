@@ -35,29 +35,36 @@ export function buildSecurityAuditScript(useSudo: boolean = false): string {
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 echo "===BOBA_SECTION:SSH==="
-(${sudoPrefix}sshd -T 2>/dev/null | grep -iE "^(permitrootlogin|passwordauthentication|port|maxauthtries)") || (grep -iE "^\\s*(PermitRootLogin|PasswordAuthentication|Port|MaxAuthTries)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null) || true
+SSHD_OUT=$(${sudoPrefix}sshd -T 2>/dev/null || true)
+if echo "$SSHD_OUT" | grep -qi "permitrootlogin"; then
+  echo "$SSHD_OUT" | grep -iE "^(permitrootlogin|passwordauthentication|port|maxauthtries)"
+else
+  grep -hriE "^\\s*#?\\s*(PermitRootLogin|PasswordAuthentication|Port|MaxAuthTries)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null || true
+fi
 
 echo "===BOBA_SECTION:FIREWALL==="
 UFW_RAW=$(${sudoPrefix}ufw status 2>&1 || true)
 if echo "$UFW_RAW" | grep -qi "status: active"; then
-  echo "ufw:active"
-elif echo "$UFW_RAW" | grep -qi "status: inactive"; then
-  echo "ufw:inactive"
-elif echo "$UFW_RAW" | grep -qi "need to be root\\|permission denied\\|password is required"; then
-  echo "ufw:need_sudo"
+  echo "firewall_type:ufw"
+  echo "firewall_status:active"
+elif grep -qi "^ENABLED=yes" /etc/ufw/ufw.conf 2>/dev/null && systemctl is-active --quiet ufw 2>/dev/null; then
+  echo "firewall_type:ufw"
+  echo "firewall_status:active"
+elif systemctl is-active --quiet firewalld 2>/dev/null || (command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -qi "running"); then
+  echo "firewall_type:firewalld"
+  echo "firewall_status:active"
+elif systemctl is-active --quiet nftables 2>/dev/null || (${sudoPrefix}nft list ruleset 2>/dev/null | grep -q "table"); then
+  echo "firewall_type:nftables"
+  echo "firewall_status:active"
+elif ${sudoPrefix}iptables -L -n 2>/dev/null | grep -qv "Chain.*ACCEPT\\|need to be root\\|permission denied"; then
+  echo "firewall_type:iptables"
+  echo "firewall_status:active"
 else
-  if command -v ufw >/dev/null 2>&1 || [ -x /usr/sbin/ufw ]; then
-    echo "ufw:inactive"
+  if echo "$UFW_RAW" | grep -qi "need to be root\\|permission denied\\|password is required"; then
+    echo "firewall_status:need_sudo"
   else
-    echo "ufw:not_installed"
+    echo "firewall_status:inactive"
   fi
-fi
-
-IPT_RAW=$(${sudoPrefix}iptables -L -n 2>&1 || true)
-if echo "$IPT_RAW" | grep -qv "Chain.*ACCEPT\\|need to be root\\|permission denied\\|not found"; then
-  echo "iptables:configured"
-else
-  echo "iptables:default"
 fi
 
 ${sudoPrefix}ss -H -tulpn 2>/dev/null | grep -E "(0\\.0\\.0\\.0|:::|\\*):(3306|5432|6379|27017|9200)\\b" || true
@@ -74,19 +81,19 @@ else
 fi
 
 echo "===BOBA_SECTION:SYSTEM==="
-if [ -f /var/run/reboot-required ]; then
+if [ -f /var/run/reboot-required ] || [ -f /run/reboot-required ]; then
   echo "reboot_required:yes"
 else
   echo "reboot_required:no"
 fi
-if dpkg -l unattended-upgrades 2>/dev/null | grep -q "^ii" || rpm -q dnf-automatic >/dev/null 2>&1; then
+if dpkg -l unattended-upgrades 2>/dev/null | grep -q "^ii" || rpm -q dnf-automatic >/dev/null 2>&1 || systemctl is-active --quiet unattended-upgrades 2>/dev/null; then
   echo "auto_updates:yes"
 else
   echo "auto_updates:no"
 fi
-echo "core_dumps:$(sysctl -n fs.suid_dumpable 2>/dev/null || echo 1)"
-echo "tcp_syncookies:$(sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || echo 0)"
-echo "ip_forward:$(sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
+echo "core_dumps:$(cat /proc/sys/fs/suid_dumpable 2>/dev/null || sysctl -n fs.suid_dumpable 2>/dev/null || echo 1)"
+echo "tcp_syncookies:$(cat /proc/sys/net/ipv4/tcp_syncookies 2>/dev/null || sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || echo 0)"
+echo "ip_forward:$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
 '`;
 }
 
@@ -108,17 +115,21 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
   const sysSection = getSection('SYSTEM');
 
   // 1. SSH Root Login
-  const rootLoginMatch = sshSection.match(/permitrootlogin\s+([^\s]+)/);
-  const rootLoginVal = rootLoginMatch ? rootLoginMatch[1] : '';
+  let rootLoginMatch = sshSection.match(/^[^\n#]*permitrootlogin\s+([^\s#]+)/m);
+  if (!rootLoginMatch) {
+    rootLoginMatch = sshSection.match(/#\s*permitrootlogin\s+([^\s#]+)/m);
+  }
+  const rootLoginVal = rootLoginMatch ? rootLoginMatch[1]?.toLowerCase() : 'prohibit-password';
+
   if (rootLoginVal === 'no' || rootLoginVal === 'prohibit-password') {
     items.push({
       id: 'ssh_root_login',
       category: 'ssh',
       title: 'SSH Root Login Terproteksi',
-      description: 'Login langsung sebagai user root dinonaktifkan atau hanya menggunakan SSH key.',
+      description: 'Login langsung sebagai user root dinonaktifkan atau dibatasi ke SSH key.',
       status: 'pass',
       severity: 'critical',
-      observedValue: rootLoginVal || 'prohibit-password'
+      observedValue: rootLoginVal
     });
   } else if (rootLoginVal === 'yes') {
     items.push({
@@ -128,7 +139,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       description: 'Login SSH sebagai root diizinkan menggunakan password. Risiko brute-force sangat tinggi.',
       status: 'fail',
       severity: 'critical',
-      observedValue: 'yes',
+      observedValue: 'yes (Password diizinkan)',
       remediationCmd: `sudo sed -i 's/^\\s*#\\?\\s*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config && sudo systemctl reload sshd`,
       remediationDesc: 'Ubah konfigurasi sshd ke PermitRootLogin prohibit-password lalu reload service sshd.'
     });
@@ -137,16 +148,20 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       id: 'ssh_root_login',
       category: 'ssh',
       title: 'Pemeriksaan SSH Root Login',
-      description: 'Nilai PermitRootLogin tidak terbaca secara eksplisit. Pastikan dibatasi ke prohibit-password.',
-      status: 'warn',
+      description: 'Konfigurasi PermitRootLogin memakai bawaan distro yang aman (prohibit-password).',
+      status: 'pass',
       severity: 'high',
-      observedValue: 'Tidak terdeteksi'
+      observedValue: 'prohibit-password (Default)'
     });
   }
 
   // 2. SSH Password Authentication
-  const passAuthMatch = sshSection.match(/passwordauthentication\s+([^\s]+)/);
-  const passAuthVal = passAuthMatch ? passAuthMatch[1] : '';
+  let passAuthMatch = sshSection.match(/^[^\n#]*passwordauthentication\s+([^\s#]+)/m);
+  if (!passAuthMatch) {
+    passAuthMatch = sshSection.match(/#\s*passwordauthentication\s+([^\s#]+)/m);
+  }
+  const passAuthVal = passAuthMatch ? passAuthMatch[1]?.toLowerCase() : 'yes';
+
   if (passAuthVal === 'no') {
     items.push({
       id: 'ssh_password_auth',
@@ -157,7 +172,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       severity: 'high',
       observedValue: 'no (SSH Key only)'
     });
-  } else if (passAuthVal === 'yes') {
+  } else {
     items.push({
       id: 'ssh_password_auth',
       category: 'ssh',
@@ -165,53 +180,44 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       description: 'Login SSH dapat menggunakan password akun biasa, rentan diserang credential stuffing.',
       status: 'warn',
       severity: 'high',
-      observedValue: 'yes (Password diizinkan)',
+      observedValue: `${passAuthVal} (Password diizinkan)`,
       remediationCmd: `sudo sed -i 's/^\\s*#\\?\\s*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && sudo systemctl reload sshd`,
       remediationDesc: 'Nonaktifkan PasswordAuthentication setelah memastikan SSH Public Key Anda sudah terpasang di authorized_keys.'
     });
-  } else {
-    items.push({
-      id: 'ssh_password_auth',
-      category: 'ssh',
-      title: 'Status Autentikasi Password SSH',
-      description: 'PasswordAuthentication memakai default distro (biasanya yes). Disarankan beralih ke SSH Key.',
-      status: 'info',
-      severity: 'medium',
-      observedValue: 'Default OS'
-    });
   }
 
-  // 3. Firewall (UFW / iptables)
-  const isUfwActive = firewallSection.includes('ufw:active');
-  const isIptablesConfigured = firewallSection.includes('iptables:configured');
-  const isUfwNeedSudo = firewallSection.includes('ufw:need_sudo');
+  // 3. Firewall (UFW / firewalld / nftables / iptables)
+  const isFwActive = firewallSection.includes('firewall_status:active') || firewallSection.includes('ufw:active');
+  const isFwNeedSudo = firewallSection.includes('firewall_status:need_sudo') || firewallSection.includes('ufw:need_sudo');
+  const fwTypeMatch = firewallSection.match(/firewall_type:([a-z0-9_-]+)/i);
+  const fwType = fwTypeMatch ? fwTypeMatch[1]?.toUpperCase() : 'UFW/IPTABLES';
 
-  if (isUfwActive || isIptablesConfigured) {
+  if (isFwActive) {
     items.push({
       id: 'firewall_active',
       category: 'network',
       title: 'Firewall Host Aktif',
-      description: isUfwActive ? 'UFW aktif melindungi traffic masuk server.' : 'Aturan iptables terdeteksi aktif memfilter paket.',
+      description: `Firewall host (${fwType}) aktif memfilter paket lalu lintas jaringan masuk.`,
       status: 'pass',
       severity: 'critical',
-      observedValue: isUfwActive ? 'UFW Active' : 'iptables Active'
+      observedValue: `${fwType} Active`
     });
-  } else if (isUfwNeedSudo) {
+  } else if (isFwNeedSudo) {
     items.push({
       id: 'firewall_active',
       category: 'network',
       title: 'Izin Sudo Diperlukan untuk Membaca Firewall',
-      description: 'Perintah ufw status memerlukan hak akses root. Pastikan user memiliki izin sudo.',
+      description: 'Perintah firewall memerlukan hak akses root. Pastikan opsi sudo aktif pada header.',
       status: 'warn',
       severity: 'high',
-      observedValue: 'Permission Denied / Need Sudo'
+      observedValue: 'Permission Denied'
     });
   } else {
     items.push({
       id: 'firewall_active',
       category: 'network',
       title: 'Firewall Host Tidak Aktif',
-      description: 'UFW atau iptables belum aktif. Semua port yang dibuka proses dapat langsung diakses publik.',
+      description: 'Firewall (UFW / firewalld / iptables) belum aktif. Semua port terbuka langsung ke publik.',
       status: 'fail',
       severity: 'critical',
       observedValue: 'Inactive / Default Accept',
@@ -361,7 +367,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
   // 9. SYN Flood Protection
   const synCookiesMatch = sysSection.match(/tcp_syncookies:(\d+)/);
   const synCookiesVal = synCookiesMatch ? synCookiesMatch[1] : '0';
-  if (synCookiesVal === '1') {
+  if (synCookiesVal === '1' || synCookiesVal === '2') {
     items.push({
       id: 'tcp_syncookies',
       category: 'network',
@@ -369,7 +375,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       description: 'Kernel mengaktifkan net.ipv4.tcp_syncookies untuk mitigasi serangan DoS SYN flood.',
       status: 'pass',
       severity: 'low',
-      observedValue: '1 (Aktif)'
+      observedValue: `${synCookiesVal} (Aktif)`
     });
   } else {
     items.push({
@@ -380,8 +386,8 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       status: 'warn',
       severity: 'low',
       observedValue: '0 (Nonaktif)',
-      remediationCmd: 'sudo sysctl -w net.ipv4.tcp_syncookies=1',
-      remediationDesc: 'Aktifkan tcp_syncookies di sysctl.'
+      remediationCmd: 'echo "net.ipv4.tcp_syncookies = 1" | sudo tee /etc/sysctl.d/99-syncookies.conf && sudo sysctl -p /etc/sysctl.d/99-syncookies.conf',
+      remediationDesc: 'Aktifkan tcp_syncookies secara permanen di /etc/sysctl.d/'
     });
   }
 
