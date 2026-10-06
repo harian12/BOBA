@@ -784,6 +784,47 @@ pub async fn ssh_list_active_log_streams(
 }
 
 #[tauri::command]
+pub async fn ssh_start_tunnel(
+    state: State<'_, AppState>,
+    session_id: String,
+    tunnel_id: String,
+    name: String,
+    local_host: String,
+    local_port: u16,
+    remote_host: String,
+    remote_port: u16,
+) -> Result<crate::ssh_session::ActiveTunnelInfo, String> {
+    state
+        .ssh_manager
+        .start_tunnel(
+            &session_id,
+            &tunnel_id,
+            &name,
+            &local_host,
+            local_port,
+            &remote_host,
+            remote_port,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn ssh_stop_tunnel(
+    state: State<'_, AppState>,
+    tunnel_id: String,
+) -> Result<(), String> {
+    state.ssh_manager.stop_tunnel(&tunnel_id).await
+}
+
+#[tauri::command]
+pub fn ssh_list_active_tunnels(
+    state: State<'_, AppState>,
+    session_id: Option<String>,
+) -> Result<Vec<crate::ssh_session::ActiveTunnelInfo>, String> {
+    Ok(state.ssh_manager.list_active_tunnels(session_id.as_deref()))
+}
+
+#[tauri::command]
 pub async fn sftp_fix_permissions(
     state: State<'_, AppState>,
     session_id: String,

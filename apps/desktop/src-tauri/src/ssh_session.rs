@@ -25,6 +25,18 @@ pub struct RemoteFileItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveTunnelInfo {
+    pub tunnel_id: String,
+    pub session_id: String,
+    pub name: String,
+    pub local_host: String,
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalFileItem {
     pub name: String,
     pub path: String,
@@ -291,6 +303,7 @@ pub struct SshManager {
     /// The remote process is NOT detached: it runs directly on the channel, so the
     /// server tears it down via SIGHUP/EOF as soon as we drop the channel.
     log_streams: Arc<Mutex<HashMap<String, LogStream>>>,
+    active_tunnels: Arc<Mutex<HashMap<String, (ActiveTunnelInfo, Arc<AtomicBool>)>>>,
     app_handle: Arc<Mutex<Option<tauri::AppHandle>>>,
 }
 
@@ -306,6 +319,7 @@ impl SshManager {
             cancel_notify: Arc::new(tokio::sync::Notify::new()),
             folder_notifiers: Arc::new(Mutex::new(HashMap::new())),
             log_streams: Arc::new(Mutex::new(HashMap::new())),
+            active_tunnels: Arc::new(Mutex::new(HashMap::new())),
             app_handle: Arc::new(Mutex::new(None)),
         }
     }
@@ -1029,6 +1043,128 @@ echo "---END---"
     pub async fn cleanup_log_streams(&self, session_id: &str) {
         let mut streams = self.log_streams.lock();
         streams.retain(|_, s| s.session_id != session_id);
+    }
+
+    pub async fn start_tunnel(
+        &self,
+        session_id: &str,
+        tunnel_id: &str,
+        name: &str,
+        local_host: &str,
+        local_port: u16,
+        remote_host: &str,
+        remote_port: u16,
+    ) -> Result<ActiveTunnelInfo, String> {
+        {
+            let tunnels = self.active_tunnels.lock();
+            if tunnels.contains_key(tunnel_id) {
+                return Err("Tunnel ini sudah aktif".into());
+            }
+        }
+
+        let handle_arc = {
+            let sessions = self.sessions.lock();
+            match sessions.get(session_id) {
+                Some(s) => s.session_handle.clone(),
+                None => return Err("Sesi SSH tidak ditemukan atau telah terputus".into()),
+            }
+        };
+
+        let bind_addr = format!("{}:{}", local_host, local_port);
+        let listener = tokio::net::TcpListener::bind(&bind_addr)
+            .await
+            .map_err(|e| format!("Gagal membuka port lokal {}: {}", bind_addr, e))?;
+
+        let bound_port = listener
+            .local_addr()
+            .map(|a| a.port())
+            .unwrap_or(local_port);
+
+        let info = ActiveTunnelInfo {
+            tunnel_id: tunnel_id.to_string(),
+            session_id: session_id.to_string(),
+            name: name.to_string(),
+            local_host: local_host.to_string(),
+            local_port: bound_port,
+            remote_host: remote_host.to_string(),
+            remote_port,
+            is_active: true,
+        };
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        {
+            let mut tunnels = self.active_tunnels.lock();
+            tunnels.insert(tunnel_id.to_string(), (info.clone(), cancel.clone()));
+        }
+
+        let cancel_task = cancel.clone();
+        let session_handle_clone = handle_arc.clone();
+        let remote_host_owned = remote_host.to_string();
+
+        tokio::spawn(async move {
+            while !cancel_task.load(Ordering::Relaxed) {
+                tokio::select! {
+                    accept_res = listener.accept() => {
+                        match accept_res {
+                            Ok((mut client_socket, peer_addr)) => {
+                                let session_handle = session_handle_clone.clone();
+                                let r_host = remote_host_owned.clone();
+                                tokio::spawn(async move {
+                                    let channel_res = {
+                                        let handle = session_handle.lock().await;
+                                        handle.channel_open_direct_tcpip(
+                                            &r_host,
+                                            remote_port as u32,
+                                            peer_addr.ip().to_string(),
+                                            peer_addr.port() as u32,
+                                        ).await
+                                    };
+                                    if let Ok(ch) = channel_res {
+                                        let mut channel_stream = ch.into_stream();
+                                        let _ = tokio::io::copy_bidirectional(&mut client_socket, &mut channel_stream).await;
+                                    }
+                                });
+                            }
+                            Err(_) => {
+                                break;
+                            }
+                        }
+                    }
+                    _ = async {
+                        while !cancel_task.load(Ordering::Relaxed) {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        }
+                    } => {
+                        break;
+                    }
+                }
+            }
+        });
+
+        Ok(info)
+    }
+
+    pub async fn stop_tunnel(&self, tunnel_id: &str) -> Result<(), String> {
+        let removed = self.active_tunnels.lock().remove(tunnel_id);
+        match removed {
+            Some((_, cancel)) => {
+                cancel.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+            None => Err("Tunnel tidak ditemukan atau sudah tidak aktif".into()),
+        }
+    }
+
+    pub fn list_active_tunnels(&self, session_id: Option<&str>) -> Vec<ActiveTunnelInfo> {
+        let tunnels = self.active_tunnels.lock();
+        tunnels
+            .values()
+            .filter(|(info, _)| match session_id {
+                Some(sid) => info.session_id == sid,
+                None => true,
+            })
+            .map(|(info, _)| info.clone())
+            .collect()
     }
 
     /// Get active SFTP session or lazily initialize one
@@ -4267,6 +4403,19 @@ echo "---END---"
         for id in ids {
             if let Some(s) = streams.remove(&id) {
                 s.cancel.store(true, Ordering::SeqCst);
+            }
+        }
+
+        // Close any active port forwarding tunnels for this session
+        let mut tunnels = self.active_tunnels.lock();
+        let tunnel_ids: Vec<String> = tunnels
+            .iter()
+            .filter(|(_, (info, _))| info.session_id == session_id)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in tunnel_ids {
+            if let Some((_, cancel)) = tunnels.remove(&id) {
+                cancel.store(true, Ordering::SeqCst);
             }
         }
     }

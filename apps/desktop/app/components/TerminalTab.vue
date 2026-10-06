@@ -108,6 +108,36 @@
           <Icon icon="lucide:cpu" class="w-3 h-3 text-violet-400" />
           <span>Systemd</span>
         </button>
+
+        <!-- SSH Tunnel / Port Forwarding Modal Button -->
+        <button
+          @click.stop="isTunnelModalOpen = true"
+          class="px-2 py-0.5 bg-teal-950/40 hover:bg-teal-900/60 text-teal-300 border border-teal-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Buka SSH Port Forwarding / Tunnel Manager"
+        >
+          <Icon icon="lucide:network" class="w-3 h-3 text-teal-400" />
+          <span>Tunnel</span>
+        </button>
+
+        <!-- Cron Job Manager Modal Button -->
+        <button
+          @click.stop="isCronModalOpen = true"
+          class="px-2 py-0.5 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Buka Cron Job Manager (Crontab)"
+        >
+          <Icon icon="lucide:calendar-clock" class="w-3 h-3 text-amber-400" />
+          <span>Cron</span>
+        </button>
+
+        <!-- Firewall & Listening Ports Modal Button -->
+        <button
+          @click.stop="isFirewallModalOpen = true"
+          class="px-2 py-0.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
+          title="Buka Firewall (UFW) & Listening Ports Inspector"
+        >
+          <Icon icon="lucide:shield-check" class="w-3 h-3 text-rose-400" />
+          <span>Firewall</span>
+        </button>
       </div>
     </div>
 
@@ -356,6 +386,39 @@
         </div>
       </button>
 
+      <!-- Open Tunnel Manager Context Menu -->
+      <button
+        @click="closeContextMenu(); isTunnelModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-teal-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">🌐</span>
+          <span>SSH Tunnel (Port Forwarding)</span>
+        </div>
+      </button>
+
+      <!-- Open Cron Manager Context Menu -->
+      <button
+        @click="closeContextMenu(); isCronModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-amber-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">⏰</span>
+          <span>Cron Job Manager</span>
+        </div>
+      </button>
+
+      <!-- Open Firewall Ports Context Menu -->
+      <button
+        @click="closeContextMenu(); isFirewallModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">🛡️</span>
+          <span>Firewall & Listening Ports</span>
+        </div>
+      </button>
+
       <div class="h-px bg-[#232936] my-1"></div>
 
       <!-- Reconnect -->
@@ -531,7 +594,7 @@
       @close="isDockerModalOpen = false"
     />
 
-    <!-- Systemd Manager Modal -->
+      <!-- Systemd Manager Modal -->
     <SystemdManagerModal
       v-if="isSystemdModalOpen"
       :isOpen="isSystemdModalOpen"
@@ -539,6 +602,33 @@
       :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
       :initialUseSudo="systemdNeedsSudo"
       @close="isSystemdModalOpen = false"
+    />
+
+    <!-- Tunnel Manager Modal -->
+    <TunnelManagerModal
+      v-if="isTunnelModalOpen"
+      :isOpen="isTunnelModalOpen"
+      :sessionId="tab.id"
+      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+      @close="isTunnelModalOpen = false"
+    />
+
+    <!-- Cron Manager Modal -->
+    <CronManagerModal
+      v-if="isCronModalOpen"
+      :isOpen="isCronModalOpen"
+      :sessionId="tab.id"
+      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+      @close="isCronModalOpen = false"
+    />
+
+    <!-- Firewall & Ports Modal -->
+    <FirewallPortsModal
+      v-if="isFirewallModalOpen"
+      :isOpen="isFirewallModalOpen"
+      :sessionId="tab.id"
+      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+      @close="isFirewallModalOpen = false"
     />
   </div>
 </template>
@@ -559,6 +649,9 @@ import { tauriBridge } from '../services/tauriBridge.js';
 import type { ActiveTab, SnippetItem, ServerMetrics } from '../types/index.js';
 import DockerManagerModal from './DockerManagerModal.vue';
 import SystemdManagerModal from './SystemdManagerModal.vue';
+import TunnelManagerModal from './TunnelManagerModal.vue';
+import CronManagerModal from './CronManagerModal.vue';
+import FirewallPortsModal from './FirewallPortsModal.vue';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -585,6 +678,15 @@ const isDockerModalOpen = ref(false);
 const hasSystemd = ref(false);
 const systemdNeedsSudo = ref(false);
 const isSystemdModalOpen = ref(false);
+
+// Tunnel Manager State
+const isTunnelModalOpen = ref(false);
+
+// Cron Manager State
+const isCronModalOpen = ref(false);
+
+// Firewall & Ports State
+const isFirewallModalOpen = ref(false);
 
 // Resource Metrics
 const metrics = ref<ServerMetrics | null>(null);

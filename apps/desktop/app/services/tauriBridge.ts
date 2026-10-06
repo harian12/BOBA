@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbProcessItem, DbForeignKeyRelation, DbUserItem } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbProcessItem, DbForeignKeyRelation, DbUserItem, ActiveTunnelInfo } from '../types/index.js';
 
 export const tauriBridge = {
   async getAppDataDir(): Promise<string> {
@@ -366,6 +366,34 @@ export const tauriBridge = {
     return listen('ai-stream-event', (event) => {
       callback(event.payload as any);
     });
+  },
+
+  async sshStartTunnel(
+    sessionId: string,
+    tunnelId: string,
+    name: string,
+    localHost: string,
+    localPort: number,
+    remoteHost: string,
+    remotePort: number
+  ): Promise<ActiveTunnelInfo> {
+    return await invoke('ssh_start_tunnel', {
+      sessionId,
+      tunnelId,
+      name,
+      localHost,
+      localPort,
+      remoteHost,
+      remotePort,
+    });
+  },
+
+  async sshStopTunnel(tunnelId: string): Promise<void> {
+    return await invoke('ssh_stop_tunnel', { tunnelId });
+  },
+
+  async sshListActiveTunnels(sessionId?: string): Promise<ActiveTunnelInfo[]> {
+    return await invoke('ssh_list_active_tunnels', { sessionId: sessionId || null });
   },
 
   // Event listeners

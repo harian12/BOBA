@@ -286,3 +286,25 @@ export interface AppUpdateInfo {
   html_url: string;
   assets: ReleaseAssetInfo[];
 }
+
+export interface ActiveTunnelInfo {
+  tunnel_id: string;
+  session_id: string;
+  name: string;
+  local_host: string;
+  local_port: number;
+  remote_host: string;
+  remote_port: number;
+  is_active: boolean;
+}
+
+export interface TunnelConfig {
+  id: string;
+  sessionId: string;
+  name: string;
+  localHost: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+  autoStart?: boolean;
+}
