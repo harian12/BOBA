@@ -153,6 +153,16 @@
               <Icon icon="lucide:network" class="w-3 h-3 text-cyan-400" />
               <span>Net/SSL</span>
             </button>
+
+            <!-- Security & Hardening Auditor Modal Button -->
+            <button
+              @click.stop="isSecurityModalOpen = true"
+              class="px-2 py-0.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Security & Hardening Auditor"
+            >
+              <Icon icon="lucide:shield-alert" class="w-3 h-3 text-rose-400" />
+              <span>Security</span>
+            </button>
           </div>
         </div>
 
@@ -234,6 +244,13 @@
             >
               <Icon icon="lucide:network" class="w-3.5 h-3.5 text-cyan-400" />
               <span>Network & SSL Inspector</span>
+            </button>
+            <button
+              @click="isSecurityModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-rose-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:shield-alert" class="w-3.5 h-3.5 text-rose-400" />
+              <span>Security & Hardening</span>
             </button>
           </div>
         </div>
@@ -529,6 +546,17 @@
         </div>
       </button>
 
+      <!-- Open Security Auditor Context Menu -->
+      <button
+        @click="closeContextMenu(); isSecurityModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-rose-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">🛡️</span>
+          <span>Security & Hardening Auditor</span>
+        </div>
+      </button>
+
       <div class="h-px bg-[#232936] my-1"></div>
 
       <!-- Reconnect -->
@@ -751,6 +779,15 @@
         :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
         @close="isNetworkModalOpen = false"
       />
+
+      <!-- Security & Hardening Auditor Modal -->
+      <SecurityAuditorModal
+        v-if="isSecurityModalOpen"
+        :isOpen="isSecurityModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isSecurityModalOpen = false"
+      />
     </Teleport>
   </div>
 </template>
@@ -775,6 +812,7 @@ import TunnelManagerModal from './TunnelManagerModal.vue';
 import CronManagerModal from './CronManagerModal.vue';
 import FirewallPortsModal from './FirewallPortsModal.vue';
 import NetworkSslModal from './NetworkSslModal.vue';
+import SecurityAuditorModal from './SecurityAuditorModal.vue';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -814,6 +852,9 @@ const isFirewallModalOpen = ref(false);
 // Network & SSL Inspector State
 const isNetworkModalOpen = ref(false);
 
+// Security & Hardening Auditor State
+const isSecurityModalOpen = ref(false);
+
 // Responsive Tools Dropdown State
 const isToolsMenuOpen = ref(false);
 
@@ -824,7 +865,8 @@ const isAnyModalOpen = computed(() =>
   isTunnelModalOpen.value ||
   isCronModalOpen.value ||
   isFirewallModalOpen.value ||
-  isNetworkModalOpen.value
+  isNetworkModalOpen.value ||
+  isSecurityModalOpen.value
 );
 
 // Resource Metrics
