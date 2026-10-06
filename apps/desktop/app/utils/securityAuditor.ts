@@ -32,20 +32,34 @@ export interface SecurityAuditReport {
 export function buildSecurityAuditScript(useSudo: boolean = false): string {
   const sudoPrefix = useSudo ? 'sudo ' : '';
   return `sh -c '
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 echo "===BOBA_SECTION:SSH==="
 (${sudoPrefix}sshd -T 2>/dev/null | grep -iE "^(permitrootlogin|passwordauthentication|port|maxauthtries)") || (grep -iE "^\\s*(PermitRootLogin|PasswordAuthentication|Port|MaxAuthTries)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null) || true
 
 echo "===BOBA_SECTION:FIREWALL==="
-if which ufw >/dev/null 2>&1 && ${sudoPrefix}ufw status 2>/dev/null | grep -qw "active"; then
+UFW_RAW=$(${sudoPrefix}ufw status 2>&1 || true)
+if echo "$UFW_RAW" | grep -qi "status: active"; then
   echo "ufw:active"
-else
+elif echo "$UFW_RAW" | grep -qi "status: inactive"; then
   echo "ufw:inactive"
+elif echo "$UFW_RAW" | grep -qi "need to be root\\|permission denied\\|password is required"; then
+  echo "ufw:need_sudo"
+else
+  if command -v ufw >/dev/null 2>&1 || [ -x /usr/sbin/ufw ]; then
+    echo "ufw:inactive"
+  else
+    echo "ufw:not_installed"
+  fi
 fi
-if which iptables >/dev/null 2>&1 && ${sudoPrefix}iptables -L -n 2>/dev/null | grep -qv "Chain.*ACCEPT"; then
+
+IPT_RAW=$(${sudoPrefix}iptables -L -n 2>&1 || true)
+if echo "$IPT_RAW" | grep -qv "Chain.*ACCEPT\\|need to be root\\|permission denied\\|not found"; then
   echo "iptables:configured"
 else
   echo "iptables:default"
 fi
+
 ${sudoPrefix}ss -H -tulpn 2>/dev/null | grep -E "(0\\.0\\.0\\.0|:::|\\*):(3306|5432|6379|27017|9200)\\b" || true
 
 echo "===BOBA_SECTION:AUTH==="
@@ -170,6 +184,8 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
   // 3. Firewall (UFW / iptables)
   const isUfwActive = firewallSection.includes('ufw:active');
   const isIptablesConfigured = firewallSection.includes('iptables:configured');
+  const isUfwNeedSudo = firewallSection.includes('ufw:need_sudo');
+
   if (isUfwActive || isIptablesConfigured) {
     items.push({
       id: 'firewall_active',
@@ -179,6 +195,16 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       status: 'pass',
       severity: 'critical',
       observedValue: isUfwActive ? 'UFW Active' : 'iptables Active'
+    });
+  } else if (isUfwNeedSudo) {
+    items.push({
+      id: 'firewall_active',
+      category: 'network',
+      title: 'Izin Sudo Diperlukan untuk Membaca Firewall',
+      description: 'Perintah ufw status memerlukan hak akses root. Pastikan user memiliki izin sudo.',
+      status: 'warn',
+      severity: 'high',
+      observedValue: 'Permission Denied / Need Sudo'
     });
   } else {
     items.push({

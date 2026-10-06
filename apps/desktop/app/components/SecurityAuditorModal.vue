@@ -42,7 +42,12 @@
 
           <!-- Sudo Toggle -->
           <label class="flex items-center space-x-1.5 cursor-pointer text-xs bg-[#1e2333] px-2.5 py-1.5 rounded-lg border border-[#2e374d]">
-            <input type="checkbox" v-model="useSudo" class="rounded bg-[#12151e] border-slate-600 text-rose-500 focus:ring-0 cursor-pointer" />
+            <input
+              type="checkbox"
+              v-model="useSudo"
+              @change="runAudit"
+              class="rounded bg-[#12151e] border-slate-600 text-rose-500 focus:ring-0 cursor-pointer"
+            />
             <span class="font-mono text-rose-400 font-bold text-[11px]">sudo</span>
           </label>
 
