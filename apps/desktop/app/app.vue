@@ -706,6 +706,15 @@ async function handleCloseTab(tab: ActiveTab) {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  // Prevent unintended full webview reload (Ctrl+R, Ctrl+Shift+R, F5)
+  if (
+    ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) ||
+    e.key === 'F5' ||
+    e.code === 'F5'
+  ) {
+    e.preventDefault();
+  }
+
   const target = e.target as HTMLElement | null;
   const isEditable = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
