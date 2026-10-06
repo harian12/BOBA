@@ -8,9 +8,12 @@
 
   <div v-else class="h-screen w-screen flex flex-col bg-boba-950 text-slate-100 overflow-hidden select-none">
     <!-- Top Global App Bar -->
-    <header class="h-9 bg-boba-950 border-b border-boba-800 flex items-center justify-between px-3 text-xs shrink-0">
-      <div class="flex items-center space-x-2">
-        <span class="font-bold text-slate-300">BOBA</span>
+    <header
+      data-tauri-drag-region="deep"
+      class="h-9 bg-boba-950 border-b border-boba-800 flex items-center justify-between pl-3 pr-0 text-xs shrink-0 select-none cursor-default"
+    >
+      <div class="flex items-center space-x-2 flex-1 h-full cursor-default">
+        <span class="font-bold text-slate-300 pointer-events-none">BOBA</span>
         <button
           @click="isUpdateOpen = true"
           title="Versi Aplikasi BOBA (Klik untuk cek pembaruan)"
@@ -18,12 +21,12 @@
         >
           v{{ currentAppVersion }}
         </button>
-        <span class="text-slate-600">|</span>
-        <span class="text-slate-400 text-[11px]">Windows Remote Terminal & SFTP Suite</span>
+        <span class="text-slate-600 pointer-events-none">|</span>
+        <span class="text-slate-400 text-[11px] pointer-events-none">Windows Remote Terminal & SFTP Suite</span>
       </div>
 
-      <!-- Sync Status Pill & Update Pill -->
-      <div class="flex items-center space-x-2">
+      <!-- Sync Status Pill & Update Pill + Window Controls -->
+      <div data-tauri-drag-region="false" class="flex items-center space-x-2 h-full">
         <!-- Command Palette Trigger -->
         <button
           @click="isCommandPaletteOpen = true"
@@ -83,6 +86,9 @@
           <span :class="['w-1.5 h-1.5 rounded-full', syncStore.token ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500']"></span>
           <span>{{ syncStore.token ? `Cloud Sync: v${vaultStore.vault.vault_version}` : 'Local Mode' }}</span>
         </button>
+
+        <!-- Window Controls (Minimize, Maximize/Restore, Close) -->
+        <WindowControls class="ml-2" />
       </div>
     </header>
 
@@ -484,6 +490,7 @@ import ShortcutsModal from './components/ShortcutsModal.vue';
 import CommandPaletteModal from './components/CommandPaletteModal.vue';
 import AutoLockSettingsModal from './components/AutoLockSettingsModal.vue';
 import DbConnectionModal from './components/DbConnectionModal.vue';
+import WindowControls from './components/WindowControls.vue';
 
 import { useVaultStore } from './stores/vaultStore.js';
 import { useSyncStore } from './stores/syncStore.js';

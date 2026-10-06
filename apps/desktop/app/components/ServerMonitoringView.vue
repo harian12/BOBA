@@ -1,31 +1,40 @@
 <template>
   <div class="h-screen w-screen bg-[#07090e] text-slate-100 font-sans flex flex-col select-none overflow-hidden box-border">
     <!-- Tab Bar -->
-    <div class="flex items-center gap-1 px-2.5 pt-2 pb-1.5 shrink-0 border-b border-[#1a2130]">
-      <button
-        @click="activeTab = 'metrics'"
-        :class="[
-          'px-3 py-1 rounded-t-md text-[11px] font-semibold transition flex items-center gap-1.5',
-          activeTab === 'metrics'
-            ? 'bg-[#0e111a] text-sky-300 border border-[#1a2130] border-b-transparent'
-            : 'text-slate-500 hover:text-slate-300'
-        ]"
-      >
-        <Icon icon="lucide:gauge" class="w-3.5 h-3.5" />
-        Server Metrics
-      </button>
-      <button
-        @click="activeTab = 'apps'"
-        :class="[
-          'px-3 py-1 rounded-t-md text-[11px] font-semibold transition flex items-center gap-1.5',
-          activeTab === 'apps'
-            ? 'bg-[#0e111a] text-sky-300 border border-[#1a2130] border-b-transparent'
-            : 'text-slate-500 hover:text-slate-300'
-        ]"
-      >
-        <Icon icon="lucide:boxes" class="w-3.5 h-3.5" />
-        Apps & Logs
-      </button>
+    <div
+      data-tauri-drag-region="deep"
+      class="flex items-center justify-between pl-2.5 pr-0 pt-0 pb-0 shrink-0 border-b border-[#1a2130] h-9 select-none cursor-default"
+    >
+      <div class="flex items-center gap-1 h-full pt-1">
+        <button
+          @click="activeTab = 'metrics'"
+          :class="[
+            'px-3 py-1 rounded-t-md text-[11px] font-semibold transition flex items-center gap-1.5',
+            activeTab === 'metrics'
+              ? 'bg-[#0e111a] text-sky-300 border border-[#1a2130] border-b-transparent'
+              : 'text-slate-500 hover:text-slate-300'
+          ]"
+        >
+          <Icon icon="lucide:gauge" class="w-3.5 h-3.5" />
+          Server Metrics
+        </button>
+        <button
+          @click="activeTab = 'apps'"
+          :class="[
+            'px-3 py-1 rounded-t-md text-[11px] font-semibold transition flex items-center gap-1.5',
+            activeTab === 'apps'
+              ? 'bg-[#0e111a] text-sky-300 border border-[#1a2130] border-b-transparent'
+              : 'text-slate-500 hover:text-slate-300'
+          ]"
+        >
+          <Icon icon="lucide:boxes" class="w-3.5 h-3.5" />
+          Apps & Logs
+        </button>
+      </div>
+
+      <div data-tauri-drag-region="false">
+        <WindowControls />
+      </div>
     </div>
 
     <!-- Apps & Logs Tab: row layout (app list on the left, log viewer on the right) -->
@@ -321,6 +330,7 @@ import { useAiAgentStore } from '../stores/aiAgentStore';
 import AppLogViewer from './AppLogViewer.vue';
 import MetricKpiCard from './MetricKpiCard.vue';
 import AiDiagnosisPanel from './AiDiagnosisPanel.vue';
+import WindowControls from './WindowControls.vue';
 import MetricChartCard, { type ChartSeries, type ChartHoverPoint } from './MetricChartCard.vue';
 import type { ServerMetricsFull } from '../utils/monitoringParser';
 import {
