@@ -872,12 +872,12 @@
                     @click="toggleSortColumn(cIdx)"
                     :style="columnWidths[col] ? { width: `${columnWidths[col]}px`, minWidth: `${columnWidths[col]}px` } : {}"
                     class="px-3 py-1.5 border-r border-boba-800 font-semibold tracking-wide text-sky-300 select-none whitespace-nowrap cursor-pointer hover:bg-sky-950/60 transition group relative"
-                    :title="`Klik untuk mengurutkan (Sort ${sortState.colIdx === cIdx ? (sortState.direction === 'asc' ? 'Descending' : 'Default') : 'Ascending'})`"
+                    :title="`Klik untuk mengurutkan (Sort ${isColSorted(cIdx, col) ? (sortState.direction === 'asc' ? 'Descending' : 'Default') : 'Ascending'})`"
                   >
                     <div class="flex items-center space-x-1.5 justify-between pr-2">
                       <span class="truncate">{{ col }}</span>
                       <div class="flex items-center text-[10px] shrink-0">
-                        <span v-if="sortState.colIdx === cIdx" class="text-amber-400 font-bold">
+                        <span v-if="isColSorted(cIdx, col)" class="text-amber-400 font-bold">
                           {{ sortState.direction === 'asc' ? '▲' : '▼' }}
                         </span>
                         <span v-else class="text-slate-600 opacity-0 group-hover:opacity-100 transition">
@@ -2628,7 +2628,7 @@ import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
-import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql, formatSql } from '../utils/dbmsSql.js';
+import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql, formatSql, buildSelectTableQuery } from '../utils/dbmsSql.js';
 import DataImporterModal from './DataImporterModal.vue';
 import DatabaseDumpModal from './DatabaseDumpModal.vue';
 import ProcesslistModal from './ProcesslistModal.vue';
@@ -3176,6 +3176,11 @@ interface SubQueryTab {
   filterState: FilterState;
   pendingEdits: Record<string, PendingCellEdit>;
   pendingNewRows: PendingNewRow[];
+  sortState: {
+    colIdx: number | null;
+    colName: string | null;
+    direction: 'asc' | 'desc';
+  };
 }
 
 function createDefaultTab(
@@ -3215,6 +3220,11 @@ function createDefaultTab(
     },
     pendingEdits: {},
     pendingNewRows: [],
+    sortState: {
+      colIdx: null,
+      colName: null,
+      direction: 'asc',
+    },
   };
 }
 
@@ -3360,26 +3370,53 @@ async function confirmBulkDeleteRows() {
   handlePageChange(currentPage.value);
 }
 
-const sortState = ref<{
-  colIdx: number | null;
-  direction: 'asc' | 'desc';
-}>({
-  colIdx: null,
-  direction: 'asc',
+const sortState = computed({
+  get: () => activeQueryTab.value?.sortState ?? { colIdx: null, colName: null, direction: 'asc' },
+  set: (val: { colIdx: number | null; colName: string | null; direction: 'asc' | 'desc' }) => {
+    if (activeQueryTab.value) activeQueryTab.value.sortState = val;
+  },
 });
 
+function isColSorted(cIdx: number, col: string): boolean {
+  if (sortState.value.colName) {
+    return sortState.value.colName === col;
+  }
+  return sortState.value.colIdx === cIdx;
+}
+
 function toggleSortColumn(cIdx: number) {
-  if (sortState.value.colIdx === cIdx) {
-    if (sortState.value.direction === 'asc') {
-      sortState.value.direction = 'desc';
+  if (executing.value) return;
+
+  const colName = queryResult.value?.columns?.[cIdx] || activeTable.value?.columns?.[cIdx]?.name || null;
+  const current = sortState.value;
+  const isSame = current.colIdx === cIdx || (colName !== null && current.colName === colName);
+
+  if (isSame) {
+    if (current.direction === 'asc') {
+      sortState.value = { colIdx: cIdx, colName, direction: 'desc' };
     } else {
-      // Reset sort
-      sortState.value.colIdx = null;
-      sortState.value.direction = 'asc';
+      sortState.value = { colIdx: null, colName: null, direction: 'asc' };
     }
   } else {
-    sortState.value.colIdx = cIdx;
-    sortState.value.direction = 'asc';
+    sortState.value = { colIdx: cIdx, colName, direction: 'asc' };
+  }
+
+  // Jika activeTable belum terpasang, coba deteksi tabel dari query saat ini
+  if (!activeTable.value && schemaOverview.value?.tables) {
+    const match = currentQueryText.value.match(/\bFROM\s+[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+    if (match && match[1]) {
+      const found = schemaOverview.value.tables.find(t => t.name.toLowerCase() === match[1]!.toLowerCase());
+      if (found) {
+        activeTable.value = found;
+        if (!activeQueryTab.value.tableName) {
+          activeQueryTab.value.tableName = found.name;
+        }
+      }
+    }
+  }
+
+  if (activeTable.value && isSqlEngine(engine.value)) {
+    handlePageChange(1);
   }
 }
 
@@ -3391,23 +3428,26 @@ const displayRows = computed(() => {
     rows = rows.filter(r => r.some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
   }
 
-  const { colIdx, direction } = sortState.value;
-  if (colIdx !== null) {
-    rows.sort((a, b) => {
-      const valA = a[colIdx];
-      const valB = b[colIdx];
+  // In-memory sort fallback jika query tidak berasal dari tabel SQL aktif
+  if (!activeTable.value || !isSqlEngine(engine.value)) {
+    const { colIdx, direction } = sortState.value;
+    if (colIdx !== null) {
+      rows.sort((a, b) => {
+        const valA = a[colIdx];
+        const valB = b[colIdx];
 
-      if (valA === null || valA === undefined) return direction === 'asc' ? 1 : -1;
-      if (valB === null || valB === undefined) return direction === 'asc' ? -1 : 1;
+        if (valA === null || valA === undefined) return direction === 'asc' ? 1 : -1;
+        if (valB === null || valB === undefined) return direction === 'asc' ? -1 : 1;
 
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return direction === 'asc' ? valA - valB : valB - valA;
-      }
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          return direction === 'asc' ? valA - valB : valB - valA;
+        }
 
-      const strA = String(valA).toLowerCase();
-      const strB = String(valB).toLowerCase();
-      return direction === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
-    });
+        const strA = String(valA).toLowerCase();
+        const strB = String(valB).toLowerCase();
+        return direction === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+      });
+    }
   }
 
   return rows;
@@ -4535,7 +4575,12 @@ async function fetchTableCount(tableName: string) {
 function handleSelectTable(tbl: DbTableMeta) {
   const generatedSql = engine.value === 'redis'
     ? `GET ${tbl.name}`
-    : `SELECT * FROM ${qi(tbl.name)} LIMIT 100 OFFSET 0;`;
+    : buildSelectTableQuery({
+        engine: engine.value,
+        table: tbl.name,
+        limit: 100,
+        offset: 0,
+      });
 
   fetchTableCount(tbl.name);
 
@@ -4557,6 +4602,7 @@ function handleSelectTable(tbl: DbTableMeta) {
       firstTab.tableName = tbl.name;
       firstTab.text = generatedSql;
       firstTab.activeTable = tbl;
+      firstTab.sortState = { colIdx: null, colName: null, direction: 'asc' };
       firstTab.showQueryEditor = false; // Sembunyikan query jika dibuka dari tabel
       activeQueryTabId.value = firstTab.id;
       executeQuery();
@@ -4573,19 +4619,23 @@ function handleSelectTable(tbl: DbTableMeta) {
 function handlePageChange(page: number) {
   if (page < 1 || !activeTable.value) return;
   currentPage.value = page;
+  editingCell.value = null;
+  selectedRowIndices.value = [];
   const offset = (page - 1) * pageSize.value;
-  const tableIdent = qi(activeTable.value.name);
-  let sql = '';
-  if (filterState.value.active) {
-    const whereClause = buildWhereClause();
-    if (whereClause) {
-      sql = `SELECT * FROM ${tableIdent} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET ${offset};`;
-    } else {
-      sql = `SELECT * FROM ${tableIdent} LIMIT ${pageSize.value} OFFSET ${offset};`;
-    }
-  } else {
-    sql = `SELECT * FROM ${tableIdent} LIMIT ${pageSize.value} OFFSET ${offset};`;
-  }
+  const whereClause = filterState.value.active ? buildWhereClause() : '';
+  const { colName, colIdx, direction } = sortState.value;
+  const targetCol = colName || (colIdx !== null && queryResult.value?.columns?.[colIdx] ? queryResult.value.columns[colIdx] : null);
+
+  const sql = buildSelectTableQuery({
+    engine: engine.value,
+    table: activeTable.value.name,
+    whereClause,
+    orderByColumn: targetCol,
+    orderDirection: direction,
+    limit: pageSize.value,
+    offset,
+  });
+
   currentQueryText.value = sql;
   executeQuery(sql);
 }
@@ -4655,10 +4705,7 @@ function applyMultiFilter() {
     return;
   }
   filterState.value.active = true;
-  currentPage.value = 1;
-  const sql = `SELECT * FROM ${qi(activeTable.value.name)} WHERE ${whereClause} LIMIT ${pageSize.value} OFFSET 0;`;
-  currentQueryText.value = sql;
-  executeQuery(sql);
+  handlePageChange(1);
 }
 
 function resetMultiFilter() {
@@ -4668,12 +4715,7 @@ function resetMultiFilter() {
       r.value = '';
     });
   }
-  currentPage.value = 1;
-  if (activeTable.value) {
-    const sql = `SELECT * FROM ${qi(activeTable.value.name)} LIMIT ${pageSize.value} OFFSET 0;`;
-    currentQueryText.value = sql;
-    executeQuery(sql);
-  }
+  handlePageChange(1);
 }
 
 async function executeQuery(customQuery?: string) {

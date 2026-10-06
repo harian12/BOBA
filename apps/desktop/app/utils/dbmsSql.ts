@@ -41,6 +41,57 @@ export function supportsTruncate(engine: string | undefined | null): boolean {
   return ['mysql', 'mariadb', 'postgres', 'postgresql'].includes(e);
 }
 
+export interface BuildSelectQueryOptions {
+  engine: string | undefined | null;
+  table: string;
+  columns?: string[];
+  whereClause?: string;
+  orderByColumn?: string | null;
+  orderDirection?: 'asc' | 'desc' | 'ASC' | 'DESC';
+  limit?: number;
+  offset?: number;
+}
+
+export function buildSelectTableQuery(options: BuildSelectQueryOptions): string {
+  const {
+    engine,
+    table,
+    columns = ['*'],
+    whereClause,
+    orderByColumn,
+    orderDirection = 'asc',
+    limit,
+    offset,
+  } = options;
+
+  const tableIdent = quoteIdent(engine, table);
+  const cols = columns.length === 1 && columns[0] === '*'
+    ? '*'
+    : columns.map(c => (c === '*' ? '*' : quoteIdent(engine, c))).join(', ');
+
+  const parts = [`SELECT ${cols} FROM ${tableIdent}`];
+
+  if (whereClause && whereClause.trim()) {
+    parts.push(`WHERE ${whereClause.trim()}`);
+  }
+
+  if (orderByColumn && orderByColumn.trim()) {
+    const colIdent = quoteIdent(engine, orderByColumn.trim());
+    const dir = String(orderDirection).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+    parts.push(`ORDER BY ${colIdent} ${dir}`);
+  }
+
+  if (typeof limit === 'number') {
+    parts.push(`LIMIT ${limit}`);
+  }
+
+  if (typeof offset === 'number') {
+    parts.push(`OFFSET ${offset}`);
+  }
+
+  return parts.join(' ') + ';';
+}
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')

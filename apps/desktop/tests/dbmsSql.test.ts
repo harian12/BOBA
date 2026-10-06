@@ -7,6 +7,7 @@ import {
   isSqlEngine,
   normalizeEngine,
   highlightSql,
+  buildSelectTableQuery,
 } from '../app/utils/dbmsSql.ts';
 
 test('normalizeEngine lowercases and tolerates empty input', () => {
@@ -89,4 +90,39 @@ test('highlightSql formats comments, keywords, and strings with distinct classes
   const out2 = highlightSql('/* blok komentar */ WHERE name = \'boba\'');
   assert.match(out2, /<span class="text-slate-500 italic">\/\* blok komentar \*\/<\/span>/);
   assert.match(out2, /<span class="text-emerald-400">&#39;boba&#39;<\/span>/);
+});
+
+test('buildSelectTableQuery builds queries with order, pagination, and where clauses', () => {
+  // Basic query
+  assert.equal(
+    buildSelectTableQuery({ engine: 'mysql', table: 'users', limit: 100, offset: 0 }),
+    'SELECT * FROM `users` LIMIT 100 OFFSET 0;'
+  );
+
+  // PostgreSQL identifier quotes and ORDER BY ASC
+  assert.equal(
+    buildSelectTableQuery({
+      engine: 'postgres',
+      table: 'users',
+      orderByColumn: 'email',
+      orderDirection: 'asc',
+      limit: 50,
+      offset: 0,
+    }),
+    'SELECT * FROM "users" ORDER BY "email" ASC LIMIT 50 OFFSET 0;'
+  );
+
+  // ORDER BY DESC with WHERE clause
+  assert.equal(
+    buildSelectTableQuery({
+      engine: 'sqlite',
+      table: 'orders',
+      whereClause: '`status` = \'paid\'',
+      orderByColumn: 'created_at',
+      orderDirection: 'desc',
+      limit: 25,
+      offset: 50,
+    }),
+    'SELECT * FROM `orders` WHERE `status` = \'paid\' ORDER BY `created_at` DESC LIMIT 25 OFFSET 50;'
+  );
 });
