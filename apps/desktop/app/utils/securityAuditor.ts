@@ -31,15 +31,14 @@ export interface SecurityAuditReport {
 
 export function buildSecurityAuditScript(useSudo: boolean = false): string {
   const sudoPrefix = useSudo ? 'sudo ' : '';
-  return `sh -c '
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+  return `export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 echo "===BOBA_SECTION:SSH==="
 SSHD_OUT=$(${sudoPrefix}sshd -T 2>/dev/null || true)
 if echo "$SSHD_OUT" | grep -qi "permitrootlogin"; then
   echo "$SSHD_OUT" | grep -iE "^(permitrootlogin|passwordauthentication|port|maxauthtries)"
 else
-  grep -hriE "^\\s*#?\\s*(PermitRootLogin|PasswordAuthentication|Port|MaxAuthTries)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null || true
+  grep -hriE "^[[:space:]]*#?[[:space:]]*(PermitRootLogin|PasswordAuthentication|Port|MaxAuthTries)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null || true
 fi
 
 echo "===BOBA_SECTION:FIREWALL==="
@@ -70,8 +69,8 @@ fi
 ${sudoPrefix}ss -H -tulpn 2>/dev/null | grep -E "(0\\.0\\.0\\.0|:::|\\*):(3306|5432|6379|27017|9200)\\b" || true
 
 echo "===BOBA_SECTION:AUTH==="
-${sudoPrefix}awk -F: '\''($2 == "") {print "empty_pass:" $1}'\'' /etc/shadow 2>/dev/null || true
-awk -F: '\''($3 == 0 && $1 != "root") {print "extra_uid_0:" $1}'\'' /etc/passwd 2>/dev/null || true
+${sudoPrefix}awk -F: '($2 == "") {print "empty_pass:" $1}' /etc/shadow 2>/dev/null || true
+awk -F: '($3 == 0 && $1 != "root") {print "extra_uid_0:" $1}' /etc/passwd 2>/dev/null || true
 if systemctl is-active --quiet fail2ban 2>/dev/null; then
   echo "fail2ban:active"
 elif systemctl is-active --quiet crowdsec 2>/dev/null; then
@@ -87,15 +86,16 @@ else
   echo "reboot_required:no"
 fi
 
-if grep -rqi "APT::Periodic::Unattended-Upgrade\\s*\\\"1\\\"" /etc/apt/apt.conf.d/ 2>/dev/null \
-   || dpkg-query -W -f='\${Status}' unattended-upgrades 2>/dev/null | grep -qi "ok installed" \
-   || systemctl is-enabled apt-daily-upgrade.timer 2>/dev/null | grep -qi "enabled" \
-   || systemctl is-active --quiet apt-daily-upgrade.timer 2>/dev/null \
-   || systemctl is-enabled unattended-upgrades 2>/dev/null | grep -qi "enabled" \
-   || systemctl is-active --quiet unattended-upgrades 2>/dev/null \
-   || rpm -q dnf-automatic >/dev/null 2>&1 \
-   || systemctl is-enabled --quiet dnf-automatic.timer 2>/dev/null \
-   || systemctl is-active --quiet dnf-automatic.timer 2>/dev/null \
+if grep -rqi "APT::Periodic::Unattended-Upgrade.*1" /etc/apt/apt.conf.d/ 2>/dev/null \\
+   || dpkg -s unattended-upgrades 2>/dev/null | grep -qi "Status: install ok installed" \\
+   || dpkg-query -W -f='\${Status}' unattended-upgrades 2>/dev/null | grep -qi "ok installed" \\
+   || systemctl is-enabled apt-daily-upgrade.timer 2>/dev/null | grep -qi "enabled" \\
+   || systemctl is-active --quiet apt-daily-upgrade.timer 2>/dev/null \\
+   || systemctl is-enabled unattended-upgrades 2>/dev/null | grep -qi "enabled" \\
+   || systemctl is-active --quiet unattended-upgrades 2>/dev/null \\
+   || rpm -q dnf-automatic >/dev/null 2>&1 \\
+   || systemctl is-enabled --quiet dnf-automatic.timer 2>/dev/null \\
+   || systemctl is-active --quiet dnf-automatic.timer 2>/dev/null \\
    || systemctl is-enabled --quiet yum-cron 2>/dev/null; then
   echo "auto_updates:yes"
 else
@@ -115,7 +115,7 @@ echo "is_container:$IS_CONTAINER"
 echo "core_dumps:$(cat /proc/sys/fs/suid_dumpable 2>/dev/null || /sbin/sysctl -n fs.suid_dumpable 2>/dev/null || sysctl -n fs.suid_dumpable 2>/dev/null || echo 1)"
 echo "tcp_syncookies:$(cat /proc/sys/net/ipv4/tcp_syncookies 2>/dev/null || /sbin/sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || echo 0)"
 echo "ip_forward:$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || /sbin/sysctl -n net.ipv4.ip_forward 2>/dev/null || sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
-'`;
+`;
 }
 
 export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
