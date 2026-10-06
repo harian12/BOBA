@@ -143,6 +143,16 @@
               <Icon icon="lucide:shield-check" class="w-3 h-3 text-rose-400" />
               <span>Firewall</span>
             </button>
+
+            <!-- Network & SSL Inspector Modal Button -->
+            <button
+              @click.stop="isNetworkModalOpen = true"
+              class="px-2 py-0.5 bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Network & SSL Inspector"
+            >
+              <Icon icon="lucide:network" class="w-3 h-3 text-cyan-400" />
+              <span>Net/SSL</span>
+            </button>
           </div>
         </div>
 
@@ -217,6 +227,13 @@
             >
               <Icon icon="lucide:shield-check" class="w-3.5 h-3.5 text-rose-400" />
               <span>Firewall & Ports</span>
+            </button>
+            <button
+              @click="isNetworkModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-cyan-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:network" class="w-3.5 h-3.5 text-cyan-400" />
+              <span>Network & SSL Inspector</span>
             </button>
           </div>
         </div>
@@ -501,6 +518,17 @@
         </div>
       </button>
 
+      <!-- Open Network & SSL Context Menu -->
+      <button
+        @click="closeContextMenu(); isNetworkModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-cyan-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">🌐</span>
+          <span>Network & SSL Inspector</span>
+        </div>
+      </button>
+
       <div class="h-px bg-[#232936] my-1"></div>
 
       <!-- Reconnect -->
@@ -714,6 +742,15 @@
         :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
         @close="isFirewallModalOpen = false"
       />
+
+      <!-- Network & SSL Inspector Modal -->
+      <NetworkSslModal
+        v-if="isNetworkModalOpen"
+        :isOpen="isNetworkModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isNetworkModalOpen = false"
+      />
     </Teleport>
   </div>
 </template>
@@ -737,6 +774,7 @@ import SystemdManagerModal from './SystemdManagerModal.vue';
 import TunnelManagerModal from './TunnelManagerModal.vue';
 import CronManagerModal from './CronManagerModal.vue';
 import FirewallPortsModal from './FirewallPortsModal.vue';
+import NetworkSslModal from './NetworkSslModal.vue';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -773,6 +811,9 @@ const isCronModalOpen = ref(false);
 // Firewall & Ports State
 const isFirewallModalOpen = ref(false);
 
+// Network & SSL Inspector State
+const isNetworkModalOpen = ref(false);
+
 // Responsive Tools Dropdown State
 const isToolsMenuOpen = ref(false);
 
@@ -782,7 +823,8 @@ const isAnyModalOpen = computed(() =>
   isSystemdModalOpen.value ||
   isTunnelModalOpen.value ||
   isCronModalOpen.value ||
-  isFirewallModalOpen.value
+  isFirewallModalOpen.value ||
+  isNetworkModalOpen.value
 );
 
 // Resource Metrics
