@@ -314,18 +314,29 @@
 
                 <!-- Remediation Block -->
                 <div v-if="item.remediationCmd" class="mt-3 bg-[#11141f] rounded-lg p-3 border border-[#262c3d] space-y-2 text-xs">
-                  <div class="flex items-center justify-between text-[11px] text-rose-300 font-semibold">
-                    <div class="flex items-center space-x-1.5">
+                  <div class="flex items-center justify-between text-[11px] text-rose-300 font-semibold gap-2">
+                    <div class="flex items-center space-x-1.5 shrink-0">
                       <Icon icon="lucide:wrench" class="w-3.5 h-3.5 text-rose-400" />
                       <span>Rekomendasi Perbaikan:</span>
                     </div>
-                    <button
-                      @click="copyText(item.remediationCmd)"
-                      class="text-slate-400 hover:text-white text-[10px] flex items-center space-x-1 cursor-pointer"
-                    >
-                      <Icon icon="lucide:copy" class="w-3 h-3" />
-                      <span>Salin Command</span>
-                    </button>
+                    <div class="flex items-center space-x-2 shrink-0">
+                      <button
+                        @click="copyText(item.remediationCmd)"
+                        class="text-slate-400 hover:text-white text-[10px] flex items-center space-x-1 cursor-pointer"
+                      >
+                        <Icon icon="lucide:copy" class="w-3 h-3" />
+                        <span>Salin Command</span>
+                      </button>
+                      <button
+                        @click="applyFix(item)"
+                        :disabled="applyingFixId === item.id"
+                        class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded text-[10px] font-medium flex items-center space-x-1 cursor-pointer transition shadow"
+                        title="Eksekusi perintah perbaikan otomatis ke server via SSH"
+                      >
+                        <Icon icon="lucide:zap" :class="['w-3 h-3', applyingFixId === item.id ? 'animate-spin' : '']" />
+                        <span>{{ applyingFixId === item.id ? 'Menerapkan...' : 'Perbaiki Otomatis' }}</span>
+                      </button>
+                    </div>
                   </div>
                   <p v-if="item.remediationDesc" class="text-slate-400 text-[11px]">{{ item.remediationDesc }}</p>
                   <div class="bg-[#0b0d13] p-2 rounded font-mono text-[11px] text-amber-300 overflow-x-auto select-all border border-[#1b2130]">
@@ -389,6 +400,7 @@ const selectedCategory = ref<string>('all');
 const onlyIssues = ref(false);
 
 const report = ref<SecurityAuditReport | null>(null);
+const applyingFixId = ref<string | null>(null);
 
 const filteredItems = computed(() => {
   if (!report.value) return [];
@@ -423,6 +435,22 @@ async function runAudit() {
 function copyText(text: string) {
   navigator.clipboard.writeText(text);
   dialogStore.showToast('Perintah disalin ke clipboard', 'success');
+}
+
+async function applyFix(item: any) {
+  if (!item.remediationCmd || applyingFixId.value) return;
+  applyingFixId.value = item.id;
+  dialogStore.showToast(`Menerapkan perbaikan untuk ${item.title}...`, 'info');
+
+  try {
+    await tauriBridge.sshExecCommand(props.sessionId, item.remediationCmd);
+    dialogStore.showToast(`Perbaikan untuk ${item.title} berhasil diterapkan! Memindai ulang...`, 'success');
+    await runAudit();
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal menerapkan perbaikan: ${err.message || err}`, 'error');
+  } finally {
+    applyingFixId.value = null;
+  }
 }
 
 function exportReportMarkdown() {

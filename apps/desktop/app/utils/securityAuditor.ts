@@ -86,14 +86,35 @@ if [ -f /var/run/reboot-required ] || [ -f /run/reboot-required ]; then
 else
   echo "reboot_required:no"
 fi
-if dpkg -l unattended-upgrades 2>/dev/null | grep -q "^ii" || rpm -q dnf-automatic >/dev/null 2>&1 || systemctl is-active --quiet unattended-upgrades 2>/dev/null; then
+
+if grep -rqi "APT::Periodic::Unattended-Upgrade\\s*\\\"1\\\"" /etc/apt/apt.conf.d/ 2>/dev/null \
+   || dpkg-query -W -f='\${Status}' unattended-upgrades 2>/dev/null | grep -qi "ok installed" \
+   || systemctl is-enabled apt-daily-upgrade.timer 2>/dev/null | grep -qi "enabled" \
+   || systemctl is-active --quiet apt-daily-upgrade.timer 2>/dev/null \
+   || systemctl is-enabled unattended-upgrades 2>/dev/null | grep -qi "enabled" \
+   || systemctl is-active --quiet unattended-upgrades 2>/dev/null \
+   || rpm -q dnf-automatic >/dev/null 2>&1 \
+   || systemctl is-enabled --quiet dnf-automatic.timer 2>/dev/null \
+   || systemctl is-active --quiet dnf-automatic.timer 2>/dev/null \
+   || systemctl is-enabled --quiet yum-cron 2>/dev/null; then
   echo "auto_updates:yes"
 else
   echo "auto_updates:no"
 fi
-echo "core_dumps:$(cat /proc/sys/fs/suid_dumpable 2>/dev/null || sysctl -n fs.suid_dumpable 2>/dev/null || echo 1)"
-echo "tcp_syncookies:$(cat /proc/sys/net/ipv4/tcp_syncookies 2>/dev/null || sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || echo 0)"
-echo "ip_forward:$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
+
+IS_CONTAINER="no"
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+  IS_CONTAINER="yes"
+elif grep -qi "docker\\|lxc\\|kubepods" /proc/1/cgroup 2>/dev/null; then
+  IS_CONTAINER="yes"
+elif command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt --container >/dev/null 2>&1; then
+  IS_CONTAINER="yes"
+fi
+echo "is_container:$IS_CONTAINER"
+
+echo "core_dumps:$(cat /proc/sys/fs/suid_dumpable 2>/dev/null || /sbin/sysctl -n fs.suid_dumpable 2>/dev/null || sysctl -n fs.suid_dumpable 2>/dev/null || echo 1)"
+echo "tcp_syncookies:$(cat /proc/sys/net/ipv4/tcp_syncookies 2>/dev/null || /sbin/sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || sysctl -n net.ipv4.tcp_syncookies 2>/dev/null || echo 0)"
+echo "ip_forward:$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || /sbin/sysctl -n net.ipv4.ip_forward 2>/dev/null || sysctl -n net.ipv4.ip_forward 2>/dev/null || echo 0)"
 '`;
 }
 
@@ -345,7 +366,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       id: 'auto_updates',
       category: 'system',
       title: 'Automatic Security Updates Aktif',
-      description: 'Paket unattended-upgrades / dnf-automatic terdeteksi aktif menginstall patch keamanan.',
+      description: 'Pembaruan keamanan otomatis aktif melalui unattended-upgrades atau package timer distro.',
       status: 'pass',
       severity: 'medium',
       observedValue: 'Enabled'
@@ -359,14 +380,16 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       status: 'warn',
       severity: 'medium',
       observedValue: 'Disabled',
-      remediationCmd: 'sudo apt-get update && sudo apt-get install -y unattended-upgrades && sudo dpkg-reconfigure -f noninteractive unattended-upgrades',
-      remediationDesc: 'Pasang unattended-upgrades untuk mengotomatisasi patching CVE distro.'
+      remediationCmd: 'sudo apt-get update && sudo apt-get install -y unattended-upgrades && printf \'APT::Periodic::Update-Package-Lists "1";\\nAPT::Periodic::Unattended-Upgrade "1";\\n\' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades && sudo systemctl enable --now apt-daily-upgrade.timer',
+      remediationDesc: 'Pasang unattended-upgrades, konfigurasikan periodic auto-upgrade, dan aktifkan apt-daily-upgrade.timer.'
     });
   }
 
   // 9. SYN Flood Protection
+  const isContainer = sysSection.includes('is_container:yes');
   const synCookiesMatch = sysSection.match(/tcp_syncookies:(\d+)/);
   const synCookiesVal = synCookiesMatch ? synCookiesMatch[1] : '0';
+
   if (synCookiesVal === '1' || synCookiesVal === '2') {
     items.push({
       id: 'tcp_syncookies',
@@ -377,6 +400,16 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       severity: 'low',
       observedValue: `${synCookiesVal} (Aktif)`
     });
+  } else if (isContainer) {
+    items.push({
+      id: 'tcp_syncookies',
+      category: 'network',
+      title: 'SYN Flood Protection (Container Environment)',
+      description: 'Server berjalan di dalam Container (Docker/LXC). Pengaturan kernel tcp_syncookies dikelola langsung oleh host server.',
+      status: 'info',
+      severity: 'low',
+      observedValue: 'Managed by Container Host'
+    });
   } else {
     items.push({
       id: 'tcp_syncookies',
@@ -385,9 +418,9 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
       description: 'Proteksi kernel terhadap SYN flood mati (net.ipv4.tcp_syncookies = 0).',
       status: 'warn',
       severity: 'low',
-      observedValue: '0 (Nonaktif)',
-      remediationCmd: 'echo "net.ipv4.tcp_syncookies = 1" | sudo tee /etc/sysctl.d/99-syncookies.conf && sudo sysctl -p /etc/sysctl.d/99-syncookies.conf',
-      remediationDesc: 'Aktifkan tcp_syncookies secara permanen di /etc/sysctl.d/'
+      observedValue: `${synCookiesVal || '0'} (Nonaktif)`,
+      remediationCmd: 'sudo sysctl -w net.ipv4.tcp_syncookies=1 && echo "net.ipv4.tcp_syncookies = 1" | sudo tee /etc/sysctl.d/99-syncookies.conf',
+      remediationDesc: 'Tulis langsung ke kernel runtime (-w) dan simpan permanen di /etc/sysctl.d/.'
     });
   }
 
@@ -434,7 +467,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
 
   for (const item of items) {
     const w = weights[item.id] || { pass: 5, warn: 2 };
-    if (item.status === 'pass') {
+    if (item.status === 'pass' || item.status === 'info') {
       score += w.pass;
     } else if (item.status === 'warn') {
       score += w.warn;
@@ -463,7 +496,7 @@ export function parseSecurityAuditOutput(raw: string): SecurityAuditReport {
     gradeLabel = 'Bahaya Tinggi';
   }
 
-  const passCount = items.filter((i) => i.status === 'pass').length;
+  const passCount = items.filter((i) => i.status === 'pass' || i.status === 'info').length;
   const warnCount = items.filter((i) => i.status === 'warn').length;
   const failCount = items.filter((i) => i.status === 'fail').length;
 
