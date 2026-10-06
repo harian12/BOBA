@@ -1,31 +1,46 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4 animate-fade-in"
     @click.self="$emit('close')"
+    @click.stop
   >
     <div
-      class="bg-[#12151e] border border-[#262c3d] rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden text-slate-200 select-none"
+      class="bg-[#12151e] border border-[#262c3d] rounded-xl shadow-2xl w-full max-w-5xl h-[92vh] sm:h-[85vh] flex flex-col overflow-hidden text-slate-200"
+      @click.stop
     >
       <!-- Header -->
-      <div class="h-14 border-b border-[#23293a] px-5 flex items-center justify-between bg-[#161a26] shrink-0">
-        <div class="flex items-center space-x-3">
-          <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+      <div class="min-h-[3.5rem] py-2 border-b border-[#23293a] px-4 sm:px-5 flex items-center justify-between bg-[#161a26] shrink-0 gap-3">
+        <div class="flex items-center space-x-3 min-w-0">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
             <Icon icon="lucide:calendar-clock" class="w-5 h-5" />
           </div>
-          <div>
+          <div class="min-w-0">
             <div class="flex items-center space-x-2">
-              <h2 class="font-bold text-sm tracking-wide text-white">Cron Manager</h2>
-              <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">
+              <h2 class="font-bold text-sm tracking-wide text-white truncate">Cron Job Manager</h2>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700 truncate max-w-[180px]">
                 {{ hostTitle }}
               </span>
             </div>
-            <p class="text-[11px] text-slate-400">Kelola jadwal cron jobs di remote server.</p>
+            <p class="text-[11px] text-slate-400 truncate">Kelola jadwal cron jobs di remote server dengan aman.</p>
           </div>
         </div>
 
-        <div class="flex items-center space-x-2.5">
-          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer bg-[#1e2333] px-2.5 py-1.5 rounded-lg border border-[#2e374d]">
+        <div class="flex items-center space-x-2 shrink-0">
+          <!-- Guide Toggle Button -->
+          <button
+            @click="showGuide = !showGuide"
+            :class="[
+              'px-2.5 py-1.5 rounded-lg border text-xs transition flex items-center space-x-1.5',
+              showGuide ? 'bg-amber-950/60 border-amber-500 text-amber-300' : 'bg-[#1e2333] border-[#2e374d] text-slate-300 hover:text-white'
+            ]"
+            title="Buka panduan & cara penggunaan fitur ini"
+          >
+            <Icon icon="lucide:help-circle" class="w-4 h-4 text-amber-400" />
+            <span class="hidden sm:inline font-medium">Panduan</span>
+          </button>
+
+          <label class="flex items-center space-x-1.5 text-xs text-slate-300 cursor-pointer bg-[#1e2333] px-2.5 py-1.5 rounded-lg border border-[#2e374d]">
             <input
               type="checkbox"
               v-model="useSudo"
@@ -51,13 +66,45 @@
         </div>
       </div>
 
+      <!-- Collapsible Beginner Guide Banner -->
+      <div v-if="showGuide" class="p-3.5 bg-amber-950/30 border-b border-amber-900/50 text-xs text-slate-300 space-y-2 shrink-0">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center space-x-2 font-semibold text-amber-300 text-xs">
+            <Icon icon="lucide:book-open" class="w-4 h-4 text-amber-400" />
+            <span>Apa itu Cron Job & Cara Menggunakannya?</span>
+          </div>
+          <button @click="showGuide = false" class="text-slate-400 hover:text-slate-200 text-xs">Tutup ✕</button>
+        </div>
+        <p class="leading-relaxed text-[11px] text-slate-300">
+          <strong class="text-white">Fungsi:</strong> Menjalankan tugas atau skrip otomatis secara berulang pada waktu tertentu di server Linux (misal: backup database harian, pembersihan log mingguan, sinkronisasi data).
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+          <div class="bg-[#121622] p-2 rounded border border-amber-800/40">
+            <div class="font-bold text-amber-400 mb-0.5">1. Pilih Tab Crontab</div>
+            <p class="text-slate-400"><strong>User Crontab</strong> untuk tugas akun Anda. <strong>System Crontab</strong> (/etc/crontab) untuk tugas sistem global.</p>
+          </div>
+          <div class="bg-[#121622] p-2 rounded border border-amber-800/40">
+            <div class="font-bold text-amber-400 mb-0.5">2. Jadwal Praktis</div>
+            <p class="text-slate-400">Pilih preset seperti <em>"Setiap Hari Jam 02:00"</em>. Sistem otomatis menerjemahkan sintaks bintang (*) ke bahasa Indonesia.</p>
+          </div>
+          <div class="bg-[#121622] p-2 rounded border border-amber-800/40">
+            <div class="font-bold text-amber-400 mb-0.5">3. Tombol Run (▶)</div>
+            <p class="text-slate-400">Klik ikon Play untuk menguji coba perintah langsung tanpa menunggu jadwal tiba, memastikan perintah bekerja.</p>
+          </div>
+          <div class="bg-[#121622] p-2 rounded border border-amber-800/40">
+            <div class="font-bold text-amber-400 mb-0.5">4. Saklar On / Off</div>
+            <p class="text-slate-400">Geser tombol switch untuk menonaktifkan cron sementara tanpa menghapus perintah skrip.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Tabs & Add Button -->
-      <div class="h-10 border-b border-[#23293a] bg-[#141722] px-5 flex items-center justify-between shrink-0">
-        <div class="flex items-center space-x-2">
+      <div class="min-h-[2.5rem] py-1 border-b border-[#23293a] bg-[#141722] px-4 sm:px-5 flex items-center justify-between gap-2 shrink-0">
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
           <button
             @click="activeTab = 'user'"
             :class="[
-              'px-3.5 py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
+              'px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
               activeTab === 'user' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:text-slate-200'
             ]"
           >
@@ -67,7 +114,7 @@
           <button
             @click="activeTab = 'system'"
             :class="[
-              'px-3.5 py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
+              'px-3 sm:px-3.5 py-1 sm:py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
               activeTab === 'system' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:text-slate-200'
             ]"
           >
@@ -77,7 +124,7 @@
         </div>
         <button
           @click="openAddForm"
-          class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded border border-amber-500/50 flex items-center space-x-1.5 transition"
+          class="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded border border-amber-500/50 flex items-center space-x-1.5 transition shrink-0"
         >
           <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
           <span>New Cron Job</span>
@@ -140,10 +187,12 @@
             <div class="flex items-center space-x-1.5 ml-4 opacity-50 group-hover:opacity-100 transition shrink-0">
               <button
                 @click="runJob(job)"
-                class="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-lg transition"
+                :disabled="runningJobId === job.id"
+                class="p-2 text-slate-400 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-lg transition disabled:opacity-50"
                 title="Run Now"
               >
-                <Icon icon="lucide:play" class="w-4 h-4" />
+                <Icon v-if="runningJobId === job.id" icon="lucide:loader-2" class="w-4 h-4 animate-spin text-emerald-400" />
+                <Icon v-else icon="lucide:play" class="w-4 h-4" />
               </button>
               <button
                 @click="editJob(job)"
@@ -154,10 +203,12 @@
               </button>
               <button
                 @click="deleteJob(job)"
-                class="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition"
+                :disabled="deletingJobId === job.id"
+                class="p-2 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition disabled:opacity-50"
                 title="Delete"
               >
-                <Icon icon="lucide:trash-2" class="w-4 h-4" />
+                <Icon v-if="deletingJobId === job.id" icon="lucide:loader-2" class="w-4 h-4 animate-spin text-red-400" />
+                <Icon v-else icon="lucide:trash-2" class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -166,8 +217,8 @@
     </div>
 
     <!-- Add/Edit Form Modal -->
-    <div v-if="showForm" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-      <div class="bg-[#161a26] border border-[#2e374d] rounded-xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden">
+    <div v-if="showForm" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm animate-fade-in" @click.stop>
+      <div class="bg-[#161a26] border border-[#2e374d] rounded-xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden" @click.stop>
         <!-- Header -->
         <div class="px-5 py-4 border-b border-[#2e374d] flex justify-between items-center bg-[#1e2333]">
           <h3 class="font-bold text-white text-sm flex items-center space-x-2">
@@ -304,9 +355,13 @@ const emit = defineEmits<{
 
 const dialogStore = useDialogStore();
 
+const showGuide = ref(false);
+
 const activeTab = ref<'user' | 'system'>('user');
 const useSudo = ref(props.initialUseSudo ?? false);
 const isLoading = ref(false);
+const runningJobId = ref<string | null>(null);
+const deletingJobId = ref<string | null>(null);
 const jobs = ref<CronJobItem[]>([]);
 
 const showForm = ref(false);
@@ -369,13 +424,16 @@ const doSaveJobs = async (newJobsList: CronJobItem[]) => {
 };
 
 const runJob = async (job: CronJobItem) => {
+  runningJobId.value = job.id;
   try {
-    dialogStore.showToast('Menjalankan cron job...', 'info');
+    dialogStore.showToast('Menjalankan cron job...', 'info', 2000);
     const cmdToRun = useSudo.value ? `sudo ${job.command}` : job.command;
     const output = await tauriBridge.sshExecCommand(props.sessionId, cmdToRun);
-    dialogStore.showToast(`Selesai: ${output ? output.slice(0, 100) : 'Tanpa output'}`, 'success');
+    dialogStore.showToast(`Cron job selesai: ${output ? output.slice(0, 100) : 'Tanpa error'}`, 'success', 3000);
   } catch (e: any) {
-    dialogStore.showToast(`Gagal: ${e.message || e}`, 'error');
+    dialogStore.showToast(`Gagal menjalankan cron: ${e.message || e}`, 'error');
+  } finally {
+    runningJobId.value = null;
   }
 };
 
@@ -387,16 +445,23 @@ const deleteJob = async (job: CronJobItem) => {
     isDestructive: true,
   });
   if (!confirmed) return;
-  const newJobs = jobs.value.filter(j => j.id !== job.id);
-  await doSaveJobs(newJobs);
+  deletingJobId.value = job.id;
+  try {
+    const newJobs = jobs.value.filter(j => j.id !== job.id);
+    await doSaveJobs(newJobs);
+    dialogStore.showToast('Cron job berhasil dihapus', 'success', 2500);
+  } finally {
+    deletingJobId.value = null;
+  }
 };
 
-const toggleJob = (job: CronJobItem) => {
+const toggleJob = async (job: CronJobItem) => {
   const newJobs = jobs.value.map(j => {
     if (j.id === job.id) return { ...j, enabled: !j.enabled };
     return j;
   });
-  doSaveJobs(newJobs);
+  await doSaveJobs(newJobs);
+  dialogStore.showToast(job.enabled ? 'Cron job dinonaktifkan' : 'Cron job diaktifkan', 'success', 2000);
 };
 
 const openAddForm = () => {

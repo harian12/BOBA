@@ -5,18 +5,18 @@
   >
     <!-- Compact Terminal Quick Toolbar (Header) -->
     <div
-      class="h-7 border-b flex items-center justify-between px-2.5 text-[11px] select-none shrink-0 transition-colors"
+      class="h-7 border-b flex items-center justify-between px-2 text-[11px] select-none shrink-0 transition-colors gap-2 relative z-30"
       :class="[
         sessionStore.activeTabId === tab.id
           ? 'bg-[#181d28] border-sky-500/50 text-slate-100'
           : 'bg-[#12141c] border-[#232936] text-slate-400'
       ]"
     >
-      <div class="flex items-center space-x-2 truncate">
+      <div class="flex items-center space-x-1.5 min-w-0 truncate shrink-0 max-w-[200px]">
         <span
           :class="['w-1.5 h-1.5 rounded-full shrink-0', tab.connected ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : isReconnecting ? 'bg-amber-400 animate-ping' : 'bg-rose-500']"
         ></span>
-        <span class="font-mono font-semibold truncate" :class="{ 'text-sky-300': sessionStore.activeTabId === tab.id }">
+        <span class="font-mono font-semibold truncate text-[11px]" :class="{ 'text-sky-300': sessionStore.activeTabId === tab.id }">
           {{ tab.title }}
         </span>
         <span v-if="tab.error" class="text-rose-400 truncate text-[10px]">({{ tab.error }})</span>
@@ -25,119 +25,201 @@
         </span>
       </div>
 
-      <div class="flex items-center space-x-1 shrink-0">
-        <!-- Ask AI Copilot Button -->
-        <button
-          @click.stop="handleAskCopilot"
-          class="px-2 py-0.5 bg-sky-950/60 hover:bg-sky-900/80 hover:text-sky-200 text-sky-300 border border-sky-700/60 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Tanya AI Copilot tentang kendala atau diagnosa server ini"
-        >
-          <Icon icon="lucide:sparkles" class="w-3 h-3 text-purple-400" />
-          <span>Copilot</span>
-        </button>
+      <div class="flex items-center space-x-1 min-w-0 justify-end">
+        <!-- Quick Action Buttons Strip -->
+        <div class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 min-w-0">
+          <!-- Ask AI Copilot Button -->
+          <button
+            @click.stop="handleAskCopilot"
+            class="px-2 py-0.5 bg-sky-950/60 hover:bg-sky-900/80 hover:text-sky-200 text-sky-300 border border-sky-700/60 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+            title="Tanya AI Copilot tentang kendala atau diagnosa server ini"
+          >
+            <Icon icon="lucide:sparkles" class="w-3 h-3 text-purple-400" />
+            <span class="hidden sm:inline">Copilot</span>
+          </button>
 
-        <!-- Quick Commands Toggle -->
-        <button
-          @click.stop="showCommandsBar = !showCommandsBar"
-          :class="['px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1', showCommandsBar ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-[#1a1e29] text-slate-400 hover:text-slate-200']"
-          title="Quick Commands"
-        >
-          <Icon icon="lucide:terminal" class="w-3 h-3 text-amber-400" />
-          <span>Commands ({{ allSnippets.length }})</span>
-        </button>
+          <!-- Quick Commands Toggle -->
+          <button
+            @click.stop="showCommandsBar = !showCommandsBar"
+            :class="['px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer', showCommandsBar ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-[#1a1e29] text-slate-400 hover:text-slate-200']"
+            title="Quick Commands"
+          >
+            <Icon icon="lucide:terminal" class="w-3 h-3 text-amber-400" />
+            <span class="hidden sm:inline">Commands</span>
+            <span class="text-[9px] px-1 rounded-full bg-slate-800 text-slate-300 font-mono">({{ allSnippets.length }})</span>
+          </button>
 
-        <!-- Cancel Auto Reconnect Button -->
-        <button
-          v-if="isReconnecting"
-          @click.stop="cancelAutoReconnect"
-          class="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-[10px] font-medium transition"
-          title="Cancel auto reconnect"
-        >
-          Cancel Auto-Retry
-        </button>
+          <!-- Cancel Auto Reconnect Button -->
+          <button
+            v-if="isReconnecting"
+            @click.stop="cancelAutoReconnect"
+            class="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-[10px] font-medium transition shrink-0 cursor-pointer"
+            title="Cancel auto reconnect"
+          >
+            Cancel
+          </button>
 
-        <!-- Manual Reconnect -->
-        <button
-          v-else
-          @click.stop="reconnect"
-          class="px-2 py-0.5 bg-[#1a1e29] hover:bg-[#232936] text-slate-300 rounded text-[10px] font-medium transition flex items-center space-x-1"
-          title="Reconnect SSH"
-        >
-          <Icon icon="lucide:refresh-cw" class="w-3 h-3" />
-          <span>Reconnect</span>
-        </button>
+          <!-- Manual Reconnect -->
+          <button
+            v-else
+            @click.stop="reconnect"
+            class="px-2 py-0.5 bg-[#1a1e29] hover:bg-[#232936] text-slate-300 rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer"
+            title="Reconnect SSH"
+          >
+            <Icon icon="lucide:refresh-cw" class="w-3 h-3" />
+            <span class="hidden md:inline">Reconnect</span>
+          </button>
 
-        <!-- SFTP Tab Open Button -->
-        <button
-          @click.stop="sessionStore.openSftpTab(tab)"
-          class="px-2 py-0.5 bg-[#1a1e29] hover:bg-sky-950/60 hover:text-sky-300 text-slate-400 border border-[#2e3748] rounded text-[10px] font-medium transition flex items-center space-x-1"
-          title="Open SFTP FileZilla Tab"
-        >
-          <Icon icon="lucide:folder-sync" class="w-3 h-3 text-sky-400" />
-          <span>SFTP</span>
-        </button>
+          <!-- SFTP Tab Open Button -->
+          <button
+            @click.stop="sessionStore.openSftpTab(tab)"
+            class="px-2 py-0.5 bg-[#1a1e29] hover:bg-sky-950/60 hover:text-sky-300 text-slate-400 border border-[#2e3748] rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer"
+            title="Open SFTP FileZilla Tab"
+          >
+            <Icon icon="lucide:folder-sync" class="w-3 h-3 text-sky-400" />
+            <span class="hidden md:inline">SFTP</span>
+          </button>
 
-        <!-- Monitoring Dashboard Window Button -->
-        <button
-          @click.stop="openMonitoringWindow"
-          class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Buka Dedicated Monitoring Window"
-        >
-          <Icon icon="lucide:activity" class="w-3 h-3 text-emerald-400" />
-          <span>Monitoring</span>
-        </button>
+          <!-- Direct Action Buttons (Desktop Ultra-Wide screen >= 2xl) -->
+          <div class="hidden 2xl:flex items-center space-x-1">
+            <!-- Monitoring Dashboard Window Button -->
+            <button
+              @click.stop="openMonitoringWindow"
+              class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Dedicated Monitoring Window"
+            >
+              <Icon icon="lucide:activity" class="w-3 h-3 text-emerald-400" />
+              <span>Monitoring</span>
+            </button>
 
-        <!-- Docker Manager Modal Button (Hanya muncul jika server memiliki Docker) -->
-        <button
-          v-if="hasDocker"
-          @click.stop="isDockerModalOpen = true"
-          class="px-2 py-0.5 bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 border border-sky-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Buka Docker Manager"
-        >
-          <Icon icon="lucide:container" class="w-3 h-3 text-sky-400" />
-          <span>Docker</span>
-        </button>
+            <!-- Docker Manager Modal Button -->
+            <button
+              v-if="hasDocker"
+              @click.stop="isDockerModalOpen = true"
+              class="px-2 py-0.5 bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 border border-sky-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Docker Manager"
+            >
+              <Icon icon="lucide:container" class="w-3 h-3 text-sky-400" />
+              <span>Docker</span>
+            </button>
 
-        <!-- Systemd Manager Modal Button (Hanya muncul jika server memiliki systemd) -->
-        <button
-          v-if="hasSystemd"
-          @click.stop="isSystemdModalOpen = true"
-          class="px-2 py-0.5 bg-violet-950/40 hover:bg-violet-900/60 text-violet-300 border border-violet-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Buka Systemd Manager"
-        >
-          <Icon icon="lucide:cpu" class="w-3 h-3 text-violet-400" />
-          <span>Systemd</span>
-        </button>
+            <!-- Systemd Manager Modal Button -->
+            <button
+              v-if="hasSystemd"
+              @click.stop="isSystemdModalOpen = true"
+              class="px-2 py-0.5 bg-violet-950/40 hover:bg-violet-900/60 text-violet-300 border border-violet-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Systemd Manager"
+            >
+              <Icon icon="lucide:cpu" class="w-3 h-3 text-violet-400" />
+              <span>Systemd</span>
+            </button>
 
-        <!-- SSH Tunnel / Port Forwarding Modal Button -->
-        <button
-          @click.stop="isTunnelModalOpen = true"
-          class="px-2 py-0.5 bg-teal-950/40 hover:bg-teal-900/60 text-teal-300 border border-teal-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Buka SSH Port Forwarding / Tunnel Manager"
-        >
-          <Icon icon="lucide:network" class="w-3 h-3 text-teal-400" />
-          <span>Tunnel</span>
-        </button>
+            <!-- SSH Tunnel / Port Forwarding Modal Button -->
+            <button
+              @click.stop="isTunnelModalOpen = true"
+              class="px-2 py-0.5 bg-teal-950/40 hover:bg-teal-900/60 text-teal-300 border border-teal-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka SSH Port Forwarding / Tunnel Manager"
+            >
+              <Icon icon="lucide:network" class="w-3 h-3 text-teal-400" />
+              <span>Tunnel</span>
+            </button>
 
-        <!-- Cron Job Manager Modal Button -->
-        <button
-          @click.stop="isCronModalOpen = true"
-          class="px-2 py-0.5 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Buka Cron Job Manager (Crontab)"
-        >
-          <Icon icon="lucide:calendar-clock" class="w-3 h-3 text-amber-400" />
-          <span>Cron</span>
-        </button>
+            <!-- Cron Job Manager Modal Button -->
+            <button
+              @click.stop="isCronModalOpen = true"
+              class="px-2 py-0.5 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Cron Job Manager (Crontab)"
+            >
+              <Icon icon="lucide:calendar-clock" class="w-3 h-3 text-amber-400" />
+              <span>Cron</span>
+            </button>
 
-        <!-- Firewall & Listening Ports Modal Button -->
-        <button
-          @click.stop="isFirewallModalOpen = true"
-          class="px-2 py-0.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm"
-          title="Buka Firewall (UFW) & Listening Ports Inspector"
-        >
-          <Icon icon="lucide:shield-check" class="w-3 h-3 text-rose-400" />
-          <span>Firewall</span>
-        </button>
+            <!-- Firewall & Listening Ports Modal Button -->
+            <button
+              @click.stop="isFirewallModalOpen = true"
+              class="px-2 py-0.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Firewall (UFW) & Listening Ports Inspector"
+            >
+              <Icon icon="lucide:shield-check" class="w-3 h-3 text-rose-400" />
+              <span>Firewall</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Responsive "Fitur / Tools" Dropdown (Ditaruh di luar strip scroll agar tidak terpotong) -->
+        <div class="relative 2xl:hidden shrink-0">
+          <button
+            @click.stop="isToolsMenuOpen = !isToolsMenuOpen"
+            :class="[
+              'px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 border shadow-sm cursor-pointer',
+              isToolsMenuOpen
+                ? 'bg-sky-950 border-sky-500 text-sky-200'
+                : 'bg-[#1a1e29] hover:bg-[#232936] text-slate-300 border-[#2e3748]'
+            ]"
+            title="Daftar Alat & Fitur Server"
+          >
+            <Icon icon="lucide:layout-grid" class="w-3 h-3 text-sky-400" />
+            <span class="font-medium">Fitur</span>
+            <Icon icon="lucide:chevron-down" class="w-2.5 h-2.5 text-slate-400" />
+          </button>
+
+          <!-- Transparent Click-Outside Backdrop -->
+          <div
+            v-if="isToolsMenuOpen"
+            class="fixed inset-0 z-40 cursor-default"
+            @click.stop="isToolsMenuOpen = false"
+          ></div>
+
+          <!-- Dropdown Popover -->
+          <div
+            v-if="isToolsMenuOpen"
+            class="absolute right-0 top-full mt-1.5 w-52 bg-[#141824] border border-[#262c3d] rounded-lg shadow-2xl py-1 z-50 text-xs font-sans text-slate-200 animate-in fade-in zoom-in-95 duration-100"
+            @click.stop
+          >
+            <button
+              @click="isSystemdModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-violet-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:cpu" class="w-3.5 h-3.5 text-violet-400" />
+              <span>Systemd Manager</span>
+            </button>
+            <button
+              @click="isDockerModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-sky-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:container" class="w-3.5 h-3.5 text-sky-400" />
+              <span>Docker Manager</span>
+            </button>
+            <button
+              @click="openMonitoringWindow(); isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-emerald-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:activity" class="w-3.5 h-3.5 text-emerald-400" />
+              <span>Monitoring Server</span>
+            </button>
+            <button
+              @click="isTunnelModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-teal-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:network" class="w-3.5 h-3.5 text-teal-400" />
+              <span>SSH Tunnel / Port</span>
+            </button>
+            <button
+              @click="isCronModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-amber-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:calendar-clock" class="w-3.5 h-3.5 text-amber-400" />
+              <span>Cron Job Manager</span>
+            </button>
+            <button
+              @click="isFirewallModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-rose-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:shield-check" class="w-3.5 h-3.5 text-rose-400" />
+              <span>Firewall & Ports</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -584,52 +666,55 @@
       </div>
     </Teleport>
 
-    <!-- Docker Manager Modal -->
-    <DockerManagerModal
-      v-if="isDockerModalOpen"
-      :isOpen="isDockerModalOpen"
-      :sessionId="tab.id"
-      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
-      :initialUseSudo="dockerNeedsSudo"
-      @close="isDockerModalOpen = false"
-    />
+    <!-- Modals Teleported to Body to avoid stacking & event capture issues -->
+    <Teleport to="body">
+      <!-- Docker Manager Modal -->
+      <DockerManagerModal
+        v-if="isDockerModalOpen"
+        :isOpen="isDockerModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        :initialUseSudo="dockerNeedsSudo"
+        @close="isDockerModalOpen = false"
+      />
 
       <!-- Systemd Manager Modal -->
-    <SystemdManagerModal
-      v-if="isSystemdModalOpen"
-      :isOpen="isSystemdModalOpen"
-      :sessionId="tab.id"
-      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
-      :initialUseSudo="systemdNeedsSudo"
-      @close="isSystemdModalOpen = false"
-    />
+      <SystemdManagerModal
+        v-if="isSystemdModalOpen"
+        :isOpen="isSystemdModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        :initialUseSudo="systemdNeedsSudo"
+        @close="isSystemdModalOpen = false"
+      />
 
-    <!-- Tunnel Manager Modal -->
-    <TunnelManagerModal
-      v-if="isTunnelModalOpen"
-      :isOpen="isTunnelModalOpen"
-      :sessionId="tab.id"
-      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
-      @close="isTunnelModalOpen = false"
-    />
+      <!-- Tunnel Manager Modal -->
+      <TunnelManagerModal
+        v-if="isTunnelModalOpen"
+        :isOpen="isTunnelModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isTunnelModalOpen = false"
+      />
 
-    <!-- Cron Manager Modal -->
-    <CronManagerModal
-      v-if="isCronModalOpen"
-      :isOpen="isCronModalOpen"
-      :sessionId="tab.id"
-      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
-      @close="isCronModalOpen = false"
-    />
+      <!-- Cron Manager Modal -->
+      <CronManagerModal
+        v-if="isCronModalOpen"
+        :isOpen="isCronModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isCronModalOpen = false"
+      />
 
-    <!-- Firewall & Ports Modal -->
-    <FirewallPortsModal
-      v-if="isFirewallModalOpen"
-      :isOpen="isFirewallModalOpen"
-      :sessionId="tab.id"
-      :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
-      @close="isFirewallModalOpen = false"
-    />
+      <!-- Firewall & Ports Modal -->
+      <FirewallPortsModal
+        v-if="isFirewallModalOpen"
+        :isOpen="isFirewallModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isFirewallModalOpen = false"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -675,7 +760,7 @@ const dockerNeedsSudo = ref(false);
 const isDockerModalOpen = ref(false);
 
 // Systemd Manager State
-const hasSystemd = ref(false);
+const hasSystemd = ref(true);
 const systemdNeedsSudo = ref(false);
 const isSystemdModalOpen = ref(false);
 
@@ -687,6 +772,18 @@ const isCronModalOpen = ref(false);
 
 // Firewall & Ports State
 const isFirewallModalOpen = ref(false);
+
+// Responsive Tools Dropdown State
+const isToolsMenuOpen = ref(false);
+
+const isAnyModalOpen = computed(() =>
+  isAddModalOpen.value ||
+  isDockerModalOpen.value ||
+  isSystemdModalOpen.value ||
+  isTunnelModalOpen.value ||
+  isCronModalOpen.value ||
+  isFirewallModalOpen.value
+);
 
 // Resource Metrics
 const metrics = ref<ServerMetrics | null>(null);
@@ -728,6 +825,9 @@ function openContextMenu(e: MouseEvent) {
 function closeContextMenu() {
   if (contextMenu.value.show) {
     contextMenu.value.show = false;
+  }
+  if (isToolsMenuOpen.value) {
+    isToolsMenuOpen.value = false;
   }
 }
 
@@ -887,9 +987,16 @@ async function fetchMetrics() {
   }
 }
 
-function focusThisTab() {
+function focusThisTab(e?: MouseEvent) {
   sessionStore.activeTabId = props.tab.id;
-  if (!isAddModalOpen.value && term) {
+  if (isAnyModalOpen.value) return;
+
+  const target = e?.target as HTMLElement | null;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.closest('[role="dialog"]') || target.closest('.fixed'))) {
+    return;
+  }
+
+  if (term) {
     term.focus();
   }
 }
@@ -898,7 +1005,7 @@ function focusThisTab() {
 watch(
   () => sessionStore.activeTabId,
   (newActiveId) => {
-    if (newActiveId === props.tab.id && !isAddModalOpen.value && term) {
+    if (newActiveId === props.tab.id && !isAnyModalOpen.value && term) {
       nextTick(() => {
         term?.focus();
       });

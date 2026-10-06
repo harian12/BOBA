@@ -1,36 +1,51 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4 animate-fade-in"
     @click.self="close"
+    @click.stop
   >
     <div
-      class="bg-[#12151e] border border-[#262c3d] rounded-xl shadow-2xl w-full max-w-6xl h-[88vh] flex flex-col overflow-hidden text-slate-200 select-none"
+      class="bg-[#12151e] border border-[#262c3d] rounded-xl shadow-2xl w-full max-w-6xl h-[94vh] sm:h-[88vh] flex flex-col overflow-hidden text-slate-200"
+      @click.stop
     >
       <!-- Header -->
-      <div class="h-14 border-b border-[#23293a] px-5 flex items-center justify-between bg-[#161a26] shrink-0">
-        <div class="flex items-center space-x-3">
-          <div class="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
+      <div class="min-h-[3.5rem] py-2 border-b border-[#23293a] px-3 sm:px-5 flex items-center justify-between bg-[#161a26] shrink-0 gap-3">
+        <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+          <div class="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30 shrink-0">
             <Icon icon="lucide:container" class="w-5 h-5" />
           </div>
-          <div>
+          <div class="min-w-0">
             <div class="flex items-center space-x-2">
-              <h2 class="font-bold text-sm tracking-wide text-white">Docker Manager</h2>
-              <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">
+              <h2 class="font-bold text-sm tracking-wide text-white truncate">Docker Manager</h2>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700 truncate max-w-[160px] sm:max-w-xs">
                 {{ hostTitle }}
               </span>
             </div>
-            <p class="text-[11px] text-slate-400">Kelola container, image, volume, network & resource secara real-time di server.</p>
+            <p class="text-[11px] text-slate-400 truncate hidden sm:block">Kelola container, image, volume, network & resource secara real-time di server.</p>
           </div>
         </div>
 
-        <!-- Controls: Auto-Refresh, Sudo Toggle, Refresh, Close -->
-        <div class="flex items-center space-x-2.5">
+        <!-- Controls: Guide, Auto-Refresh, Sudo Toggle, Refresh, Close -->
+        <div class="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
+          <!-- Guide Toggle Button -->
+          <button
+            @click="showGuide = !showGuide"
+            :class="[
+              'px-2.5 py-1.5 rounded-lg border text-xs transition flex items-center space-x-1.5',
+              showGuide ? 'bg-sky-950/60 border-sky-500 text-sky-300' : 'bg-[#1e2333] border-[#2e374d] text-slate-300 hover:text-white'
+            ]"
+            title="Buka panduan & cara penggunaan fitur ini"
+          >
+            <Icon icon="lucide:help-circle" class="w-4 h-4 text-sky-400" />
+            <span class="hidden md:inline font-medium">Panduan</span>
+          </button>
+
           <!-- Auto Refresh Polling Toggle -->
           <button
             @click="isAutoRefresh = !isAutoRefresh"
             :class="[
-              'px-2.5 py-1.5 rounded-lg border text-xs font-mono transition flex items-center space-x-1.5',
+              'px-2 sm:px-2.5 py-1.5 rounded-lg border text-xs font-mono transition flex items-center space-x-1.5',
               isAutoRefresh
                 ? 'bg-emerald-950/60 border-emerald-600/50 text-emerald-300'
                 : 'bg-[#1e2333] border-[#2e374d] text-slate-400 hover:text-slate-200'
@@ -38,11 +53,11 @@
             title="Auto refresh data setiap 6 detik"
           >
             <span :class="['w-1.5 h-1.5 rounded-full', isAutoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500']"></span>
-            <span>Auto {{ isAutoRefresh ? 'ON (6s)' : 'OFF' }}</span>
+            <span class="hidden sm:inline">Auto {{ isAutoRefresh ? 'ON (6s)' : 'OFF' }}</span>
           </button>
 
           <!-- Sudo Toggle -->
-          <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer bg-[#1e2333] px-2.5 py-1.5 rounded-lg border border-[#2e374d]">
+          <label class="flex items-center space-x-1.5 text-xs text-slate-300 cursor-pointer bg-[#1e2333] px-2 sm:px-2.5 py-1.5 rounded-lg border border-[#2e374d]">
             <input
               type="checkbox"
               v-model="useSudo"
@@ -72,14 +87,46 @@
         </div>
       </div>
 
+      <!-- Collapsible Beginner Guide Banner -->
+      <div v-if="showGuide" class="p-3.5 bg-sky-950/30 border-b border-sky-900/50 text-xs text-slate-300 space-y-2 shrink-0">
+        <div class="flex items-start justify-between">
+          <div class="flex items-center space-x-2 font-semibold text-sky-300 text-xs">
+            <Icon icon="lucide:book-open" class="w-4 h-4 text-sky-400" />
+            <span>Panduan: Kelola Docker Container & Images</span>
+          </div>
+          <button @click="showGuide = false" class="text-slate-400 hover:text-slate-200 text-xs">Tutup ✕</button>
+        </div>
+        <p class="leading-relaxed text-[11px] text-slate-300">
+          <strong class="text-white">Apa itu Docker?</strong> Platform untuk menjalankan aplikasi dalam kontainer virtual terisolasi yang ringan, efisien, dan tidak bentrok antar satu sama lain di remote server.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+          <div class="bg-[#121622] p-2 rounded border border-sky-800/40">
+            <div class="font-bold text-sky-400 mb-0.5">1. Kontrol Kontainer</div>
+            <p class="text-slate-400">Gunakan tombol <strong>Start/Stop</strong> (▶/■) dan <strong>Restart</strong> (↻) untuk mengelola siklus hidup kontainer aplikasi Anda.</p>
+          </div>
+          <div class="bg-[#121622] p-2 rounded border border-sky-800/40">
+            <div class="font-bold text-sky-400 mb-0.5">2. Buka Console (CLI)</div>
+            <p class="text-slate-400">Klik ikon Terminal (▶_) pada kontainer untuk masuk langsung ke shell interactive kontainer (seperti <code>docker exec -it sh</code>).</p>
+          </div>
+          <div class="bg-[#121622] p-2 rounded border border-sky-800/40">
+            <div class="font-bold text-sky-400 mb-0.5">3. Live Logs</div>
+            <p class="text-slate-400">Klik ikon Dokumen (<strong>Logs</strong>) untuk melihat output console aplikasi di dalam kontainer secara real-time.</p>
+          </div>
+          <div class="bg-[#121622] p-2 rounded border border-sky-800/40">
+            <div class="font-bold text-sky-400 mb-0.5">4. Images & Storage</div>
+            <p class="text-slate-400">Tab Images & Volumes berguna untuk memantau kapasitas disk dan membersihkan image lama yang sudah tidak terpakai.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Navigation Tabs & Search -->
-      <div class="h-10 border-b border-[#23293a] bg-[#141722] px-5 flex items-center justify-between shrink-0">
-        <div class="flex items-center space-x-2">
+      <div class="min-h-[2.5rem] py-1.5 border-b border-[#23293a] bg-[#141722] px-3 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0">
+        <div class="flex items-center space-x-1 sm:space-x-2 overflow-x-auto no-scrollbar py-0.5">
           <!-- Tab Containers -->
           <button
             @click="activeTab = 'containers'"
             :class="[
-              'px-3.5 py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
+              'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-1.5 sm:space-x-2 shrink-0',
               activeTab === 'containers'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                 : 'text-slate-400 hover:text-slate-200'
@@ -94,7 +141,7 @@
           <button
             @click="activeTab = 'images'"
             :class="[
-              'px-3.5 py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
+              'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-1.5 sm:space-x-2 shrink-0',
               activeTab === 'images'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                 : 'text-slate-400 hover:text-slate-200'
@@ -109,7 +156,7 @@
           <button
             @click="activeTab = 'volumes'"
             :class="[
-              'px-3.5 py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
+              'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-1.5 sm:space-x-2 shrink-0',
               activeTab === 'volumes'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                 : 'text-slate-400 hover:text-slate-200'
@@ -124,7 +171,7 @@
           <button
             @click="activeTab = 'networks'"
             :class="[
-              'px-3.5 py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-2',
+              'px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-md text-xs font-medium transition flex items-center space-x-1.5 sm:space-x-2 shrink-0',
               activeTab === 'networks'
                 ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                 : 'text-slate-400 hover:text-slate-200'
@@ -136,15 +183,44 @@
           </button>
         </div>
 
-        <!-- Filter Search Bar -->
-        <div class="relative w-64">
-          <Icon icon="lucide:search" class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Cari nama, image, network..."
-            class="w-full pl-8 pr-3 py-1 bg-[#1b202e] border border-[#2a3247] rounded-md text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
-          />
+        <!-- Controls: View Mode & Search Bar -->
+        <div class="flex items-center space-x-2 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
+          <!-- View Mode Toggle -->
+          <div class="flex items-center space-x-0.5 bg-[#1b202e] border border-[#2a3247] p-0.5 rounded-md shrink-0">
+            <button
+              @click="viewMode = 'table'"
+              :class="[
+                'px-2 py-1 rounded text-xs flex items-center space-x-1 transition cursor-pointer',
+                viewMode === 'table' ? 'bg-[#282f44] text-white shadow-sm font-semibold' : 'text-slate-400 hover:text-slate-200'
+              ]"
+              title="Tampilan Tabel"
+            >
+              <Icon icon="lucide:table" class="w-3.5 h-3.5" />
+              <span class="text-[11px]">Tabel</span>
+            </button>
+            <button
+              @click="viewMode = 'card'"
+              :class="[
+                'px-2 py-1 rounded text-xs flex items-center space-x-1 transition cursor-pointer',
+                viewMode === 'card' ? 'bg-[#282f44] text-white shadow-sm font-semibold' : 'text-slate-400 hover:text-slate-200'
+              ]"
+              title="Tampilan Kartu (Cards)"
+            >
+              <Icon icon="lucide:layout-grid" class="w-3.5 h-3.5" />
+              <span class="text-[11px]">Kartu</span>
+            </button>
+          </div>
+
+          <!-- Filter Search Bar -->
+          <div class="relative w-full sm:w-56 md:w-64 shrink-0">
+            <Icon icon="lucide:search" class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Cari nama, image, network..."
+              class="w-full pl-8 pr-3 py-1 bg-[#1b202e] border border-[#2a3247] rounded-md text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
+            />
+          </div>
         </div>
       </div>
 
@@ -180,7 +256,8 @@
             <p class="text-xs">Tidak ada container yang ditemukan.</p>
           </div>
 
-          <div v-else class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
+          <!-- Containers Table View -->
+          <div v-else-if="viewMode === 'table'" class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse min-w-[820px]">
               <thead>
                 <tr class="bg-[#171c2a] border-b border-[#222838] text-slate-400 text-[11px] font-mono">
@@ -271,10 +348,11 @@
                         v-if="c.state !== 'running'"
                         @click="runContainerAction(c, 'start')"
                         :disabled="actionLoadingId === c.id"
-                        class="p-1.5 bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded transition shrink-0"
+                        class="p-1.5 bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded transition shrink-0 disabled:opacity-50"
                         title="Start Container"
                       >
-                        <Icon icon="lucide:play" class="w-3.5 h-3.5" />
+                        <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                        <Icon v-else icon="lucide:play" class="w-3.5 h-3.5" />
                       </button>
 
                       <!-- Stop (dengan konfirmasi) -->
@@ -282,20 +360,22 @@
                         v-if="c.state === 'running'"
                         @click="confirmStopContainer(c)"
                         :disabled="actionLoadingId === c.id"
-                        class="p-1.5 bg-amber-950/60 hover:bg-amber-900 border border-amber-800 text-amber-300 rounded transition shrink-0"
+                        class="p-1.5 bg-amber-950/60 hover:bg-amber-900 border border-amber-800 text-amber-300 rounded transition shrink-0 disabled:opacity-50"
                         title="Stop Container"
                       >
-                        <Icon icon="lucide:square" class="w-3.5 h-3.5" />
+                        <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                        <Icon v-else icon="lucide:square" class="w-3.5 h-3.5" />
                       </button>
 
                       <!-- Restart (dengan konfirmasi) -->
                       <button
                         @click="confirmRestartContainer(c)"
                         :disabled="actionLoadingId === c.id"
-                        class="p-1.5 bg-[#202637] hover:bg-[#2b344b] border border-[#303a52] text-slate-300 rounded transition shrink-0"
+                        class="p-1.5 bg-[#202637] hover:bg-[#2b344b] border border-[#303a52] text-slate-300 rounded transition shrink-0 disabled:opacity-50"
                         title="Restart Container"
                       >
-                        <Icon icon="lucide:rotate-cw" class="w-3.5 h-3.5" />
+                        <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin text-amber-400" />
+                        <Icon v-else icon="lucide:rotate-cw" class="w-3.5 h-3.5" />
                       </button>
 
                       <!-- View Logs -->
@@ -311,16 +391,141 @@
                       <button
                         @click="confirmDeleteContainer(c)"
                         :disabled="actionLoadingId === c.id"
-                        class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition shrink-0"
+                        class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition shrink-0 disabled:opacity-50"
                         title="Delete Container (rm -f)"
                       >
-                        <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                        <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                        <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Containers Card View -->
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div
+              v-for="c in filteredContainers"
+              :key="c.id"
+              class="bg-[#131622] border border-[#22283a] hover:border-sky-500/40 rounded-xl p-3.5 flex flex-col justify-between transition-all group shadow-sm hover:shadow-md"
+            >
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span
+                    :class="[
+                      'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-sans font-medium',
+                      c.state === 'running' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                      c.state === 'exited' ? 'bg-slate-800 text-slate-400 border border-slate-700' :
+                      'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                    ]"
+                  >
+                    <span
+                      :class="[
+                        'w-1.5 h-1.5 rounded-full mr-1.5 shrink-0',
+                        c.state === 'running' ? 'bg-emerald-400 animate-pulse' :
+                        c.state === 'exited' ? 'bg-slate-500' :
+                        'bg-amber-400'
+                      ]"
+                    ></span>
+                    {{ c.state.toUpperCase() }}
+                  </span>
+
+                  <span v-if="c.cpuPercent" class="text-[10px] text-sky-400 font-mono">
+                    {{ c.cpuPercent }}
+                  </span>
+                </div>
+
+                <h3 class="font-bold text-xs text-white break-all mb-0.5 select-text">{{ c.names }}</h3>
+                <div class="text-[10px] text-slate-500 font-mono mb-2">{{ c.id.substring(0, 12) }}</div>
+
+                <div class="text-[11px] text-slate-400 space-y-1 mb-3">
+                  <div class="flex items-start space-x-1.5">
+                    <span class="text-slate-500 shrink-0">Image:</span>
+                    <span class="text-slate-300 font-mono truncate" :title="c.image">{{ c.image }}</span>
+                  </div>
+                  <div v-if="c.ports" class="flex items-start space-x-1.5">
+                    <span class="text-slate-500 shrink-0">Ports:</span>
+                    <span class="text-amber-300 font-mono truncate" :title="c.ports">{{ c.ports }}</span>
+                  </div>
+                  <div class="flex items-start space-x-1.5">
+                    <span class="text-slate-500 shrink-0">Status:</span>
+                    <span class="text-slate-400 truncate">{{ c.status }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer Actions -->
+              <div class="pt-2.5 border-t border-[#1e2333] flex items-center justify-end space-x-1.5 mt-auto">
+                <!-- Exec Shell -->
+                <button
+                  v-if="c.state === 'running'"
+                  @click="execContainerShell(c)"
+                  class="p-1.5 bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 rounded transition shrink-0"
+                  title="Exec Shell"
+                >
+                  <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-indigo-400" />
+                </button>
+
+                <!-- Start -->
+                <button
+                  v-if="c.state !== 'running'"
+                  @click="runContainerAction(c, 'start')"
+                  :disabled="actionLoadingId === c.id"
+                  class="px-2 py-1 bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded text-xs transition flex items-center space-x-1 disabled:opacity-50"
+                  title="Start Container"
+                >
+                  <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                  <Icon v-else icon="lucide:play" class="w-3.5 h-3.5" />
+                  <span class="text-[11px]">Start</span>
+                </button>
+
+                <!-- Stop -->
+                <button
+                  v-if="c.state === 'running'"
+                  @click="confirmStopContainer(c)"
+                  :disabled="actionLoadingId === c.id"
+                  class="px-2 py-1 bg-amber-950/60 hover:bg-amber-900 border border-amber-800 text-amber-300 rounded text-xs transition flex items-center space-x-1 disabled:opacity-50"
+                  title="Stop Container"
+                >
+                  <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                  <Icon v-else icon="lucide:square" class="w-3.5 h-3.5" />
+                  <span class="text-[11px]">Stop</span>
+                </button>
+
+                <!-- Restart -->
+                <button
+                  @click="confirmRestartContainer(c)"
+                  :disabled="actionLoadingId === c.id"
+                  class="p-1.5 bg-[#1e2436] hover:bg-[#283048] border border-[#2e374d] text-slate-300 rounded transition disabled:opacity-50"
+                  title="Restart Container"
+                >
+                  <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin text-amber-400" />
+                  <Icon v-else icon="lucide:rotate-cw" class="w-3.5 h-3.5" />
+                </button>
+
+                <!-- Logs -->
+                <button
+                  @click="openLogs(c)"
+                  class="p-1.5 bg-sky-950/60 hover:bg-sky-900 border border-sky-800 text-sky-300 rounded transition"
+                  title="View Container Logs"
+                >
+                  <Icon icon="lucide:file-text" class="w-3.5 h-3.5" />
+                </button>
+
+                <!-- Delete -->
+                <button
+                  @click="confirmDeleteContainer(c)"
+                  :disabled="actionLoadingId === c.id"
+                  class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition disabled:opacity-50"
+                  title="Delete Container"
+                >
+                  <Icon v-if="actionLoadingId === c.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                  <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -339,7 +544,8 @@
             <p class="text-xs">Tidak ada image yang ditemukan.</p>
           </div>
 
-          <div v-else class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
+          <!-- Images Table View -->
+          <div v-else-if="viewMode === 'table'" class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse min-w-[700px]">
               <thead>
                 <tr class="bg-[#171c2a] border-b border-[#222838] text-slate-400 text-[11px] font-mono">
@@ -376,15 +582,49 @@
                     <button
                       @click="confirmDeleteImage(img)"
                       :disabled="actionLoadingId === img.id"
-                      class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition"
+                      class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition disabled:opacity-50"
                       title="Delete Image (rmi)"
                     >
-                      <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                      <Icon v-if="actionLoadingId === img.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                      <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Images Card View -->
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div
+              v-for="img in filteredImages"
+              :key="img.id"
+              class="bg-[#131622] border border-[#22283a] hover:border-sky-500/40 rounded-xl p-3.5 flex flex-col justify-between"
+            >
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-sky-950/60 border border-sky-700/60 text-sky-300 font-mono">{{ img.tag }}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">{{ img.size }}</span>
+                </div>
+                <h4 class="font-bold text-xs text-white break-all mb-1 select-text">{{ img.repository }}</h4>
+                <div class="text-[10px] text-slate-500 font-mono mb-2">{{ img.id.replace('sha256:', '').substring(0, 12) }}</div>
+                <div class="text-[11px] text-slate-400 mb-3">
+                  <span class="text-slate-500">Dibuat: </span>{{ img.created }}
+                </div>
+              </div>
+              <div class="pt-2.5 border-t border-[#1e2333] flex items-center justify-end mt-auto">
+                <button
+                  @click="confirmDeleteImage(img)"
+                  :disabled="actionLoadingId === img.id"
+                  class="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs transition flex items-center space-x-1.5 disabled:opacity-50"
+                  title="Hapus Image"
+                >
+                  <Icon v-if="actionLoadingId === img.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                  <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                  <span>Hapus</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -403,7 +643,8 @@
             <p class="text-xs">Tidak ada volume yang ditemukan.</p>
           </div>
 
-          <div v-else class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
+          <!-- Volumes Table View -->
+          <div v-else-if="viewMode === 'table'" class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse min-w-[600px]">
               <thead>
                 <tr class="bg-[#171c2a] border-b border-[#222838] text-slate-400 text-[11px] font-mono">
@@ -432,15 +673,45 @@
                     <button
                       @click="confirmDeleteVolume(v)"
                       :disabled="actionLoadingId === v.name"
-                      class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition"
+                      class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition disabled:opacity-50"
                       title="Delete Volume (volume rm)"
                     >
-                      <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                      <Icon v-if="actionLoadingId === v.name" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                      <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Volumes Card View -->
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div
+              v-for="v in filteredVolumes"
+              :key="v.name"
+              class="bg-[#131622] border border-[#22283a] hover:border-sky-500/40 rounded-xl p-3.5 flex flex-col justify-between"
+            >
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">{{ v.driver }}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">{{ v.scope }}</span>
+                </div>
+                <h4 class="font-mono font-bold text-xs text-white break-all mb-3 select-text">{{ v.name }}</h4>
+              </div>
+              <div class="pt-2.5 border-t border-[#1e2333] flex items-center justify-end mt-auto">
+                <button
+                  @click="confirmDeleteVolume(v)"
+                  :disabled="actionLoadingId === v.name"
+                  class="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs transition flex items-center space-x-1.5 disabled:opacity-50"
+                  title="Hapus Volume"
+                >
+                  <Icon v-if="actionLoadingId === v.name" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                  <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                  <span>Hapus</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -459,7 +730,8 @@
             <p class="text-xs">Tidak ada network yang ditemukan.</p>
           </div>
 
-          <div v-else class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
+          <!-- Networks Table View -->
+          <div v-else-if="viewMode === 'table'" class="border border-[#222838] rounded-lg bg-[#131620] overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse min-w-[600px]">
               <thead>
                 <tr class="bg-[#171c2a] border-b border-[#222838] text-slate-400 text-[11px] font-mono">
@@ -493,16 +765,51 @@
                       v-if="!['bridge', 'host', 'none'].includes(net.name)"
                       @click="confirmDeleteNetwork(net)"
                       :disabled="actionLoadingId === net.id"
-                      class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition"
+                      class="p-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded transition disabled:opacity-50"
                       title="Delete Network (network rm)"
                     >
-                      <Icon icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                      <Icon v-if="actionLoadingId === net.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                      <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
                     </button>
                     <span v-else class="text-[10px] text-slate-600 italic px-2">system</span>
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Networks Card View -->
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div
+              v-for="net in filteredNetworks"
+              :key="net.id"
+              class="bg-[#131622] border border-[#22283a] hover:border-sky-500/40 rounded-xl p-3.5 flex flex-col justify-between"
+            >
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-sky-400 font-mono">{{ net.driver }}</span>
+                  <span class="text-[10px] text-slate-500 font-mono">{{ net.id.substring(0, 12) }}</span>
+                </div>
+                <h4 class="font-mono font-bold text-xs text-white break-all mb-1 select-text">{{ net.name }}</h4>
+                <div class="text-[11px] text-slate-400 mb-3">
+                  <span class="text-slate-500">Scope: </span>{{ net.scope }}
+                </div>
+              </div>
+              <div class="pt-2.5 border-t border-[#1e2333] flex items-center justify-end mt-auto">
+                <button
+                  v-if="!['bridge', 'host', 'none'].includes(net.name)"
+                  @click="confirmDeleteNetwork(net)"
+                  :disabled="actionLoadingId === net.id"
+                  class="px-2.5 py-1 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs transition flex items-center space-x-1.5 disabled:opacity-50"
+                  title="Hapus Network"
+                >
+                  <Icon v-if="actionLoadingId === net.id" icon="lucide:loader-2" class="w-3.5 h-3.5 animate-spin" />
+                  <Icon v-else icon="lucide:trash-2" class="w-3.5 h-3.5" />
+                  <span>Hapus</span>
+                </button>
+                <span v-else class="text-[10px] text-slate-600 italic">system default</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -676,10 +983,12 @@ const dialogStore = useDialogStore();
 const aiAgentStore = useAiAgentStore();
 
 const activeTab = ref<'containers' | 'images' | 'volumes' | 'networks'>('containers');
+const viewMode = ref<'table' | 'card'>('table');
 const searchQuery = ref('');
 const useSudo = ref(props.initialUseSudo ?? false);
 const isLoading = ref(false);
 const isAutoRefresh = ref(false);
+const showGuide = ref(false);
 const permissionError = ref<string | null>(null);
 const actionLoadingId = ref<string | null>(null);
 const actionMessage = ref<string | null>(null);
@@ -853,7 +1162,10 @@ async function runContainerAction(c: DockerContainer, action: 'start' | 'stop' |
   try {
     const cmd = buildDockerCommand(`docker ${action} ${c.id}`, useSudo.value);
     await tauriBridge.sshExecCommand(props.sessionId, cmd);
-    setFlashMessage(`Container ${c.names} berhasil di-${action}`);
+    const actionLabel = action === 'restart' ? 'Restart' : action === 'start' ? 'Start' : 'Stop';
+    const msg = `${actionLabel} container "${c.names}" berhasil`;
+    setFlashMessage(msg);
+    dialogStore.showToast(msg, 'success', 2500);
     await fetchData(true);
   } catch (err: any) {
     dialogStore.showToast(`Gagal ${action} container: ${err.message || err}`, 'error');
@@ -897,7 +1209,9 @@ async function confirmDeleteContainer(c: DockerContainer) {
   try {
     const cmd = buildDockerCommand(`docker rm -f ${c.id}`, useSudo.value);
     await tauriBridge.sshExecCommand(props.sessionId, cmd);
-    setFlashMessage(`Container ${c.names} berhasil dihapus`);
+    const msg = `Container "${c.names}" berhasil dihapus`;
+    setFlashMessage(msg);
+    dialogStore.showToast(msg, 'success', 2500);
     await fetchData(true);
   } catch (err: any) {
     dialogStore.showToast(`Gagal menghapus container: ${err.message || err}`, 'error');
@@ -920,7 +1234,9 @@ async function confirmDeleteImage(img: DockerImage) {
   try {
     const cmd = buildDockerCommand(`docker rmi ${img.id}`, useSudo.value);
     await tauriBridge.sshExecCommand(props.sessionId, cmd);
-    setFlashMessage(`Image ${imgLabel} berhasil dihapus`);
+    const msg = `Image "${imgLabel}" berhasil dihapus`;
+    setFlashMessage(msg);
+    dialogStore.showToast(msg, 'success', 2500);
     await fetchData(true);
   } catch (err: any) {
     dialogStore.showToast(`Gagal menghapus image: ${err.message || err}`, 'error');
@@ -942,7 +1258,9 @@ async function confirmDeleteVolume(v: DockerVolume) {
   try {
     const cmd = buildDockerCommand(`docker volume rm ${v.name}`, useSudo.value);
     await tauriBridge.sshExecCommand(props.sessionId, cmd);
-    setFlashMessage(`Volume ${v.name} berhasil dihapus`);
+    const msg = `Volume "${v.name}" berhasil dihapus`;
+    setFlashMessage(msg);
+    dialogStore.showToast(msg, 'success', 2500);
     await fetchData(true);
   } catch (err: any) {
     dialogStore.showToast(`Gagal menghapus volume: ${err.message || err}`, 'error');
@@ -964,7 +1282,9 @@ async function confirmDeleteNetwork(net: DockerNetwork) {
   try {
     const cmd = buildDockerCommand(`docker network rm ${net.id}`, useSudo.value);
     await tauriBridge.sshExecCommand(props.sessionId, cmd);
-    setFlashMessage(`Network ${net.name} berhasil dihapus`);
+    const msg = `Network "${net.name}" berhasil dihapus`;
+    setFlashMessage(msg);
+    dialogStore.showToast(msg, 'success', 2500);
     await fetchData(true);
   } catch (err: any) {
     dialogStore.showToast(`Gagal menghapus network: ${err.message || err}`, 'error');
