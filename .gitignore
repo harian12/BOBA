@@ -16,4 +16,5 @@ target/
 *.sqlite-wal
 *.sqlite-shm
 docs/
+.mytermin/
 

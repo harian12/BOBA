@@ -1,6 +1,6 @@
 [package]
 name = "boba-desktop"
-version = "0.2.11"
+version = "0.2.12"
 description = "BOBA - Remote Terminal & SFTP Suite with Multi-Device Sync"
 authors = ["BOBA Team"]
 edition = "2021"

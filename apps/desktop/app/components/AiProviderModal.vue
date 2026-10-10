@@ -409,11 +409,17 @@ function changeType(type: AiProviderType) {
   }
 }
 
-function selectProvider(p: AiProviderConfig) {
+async function selectProvider(p: AiProviderConfig) {
   isGuideActive.value = false;
   selectedId.value = p.id;
   form.value = { ...p };
   availableModels.value = p.availableModels || [];
+  if (!p.apiKey && p.type !== 'ollama') {
+    const enriched = await aiStore.getProviderWithSecret(p);
+    if (enriched?.apiKey && selectedId.value === p.id) {
+      form.value.apiKey = enriched.apiKey;
+    }
+  }
 }
 
 function handleNewProvider() {
@@ -460,17 +466,17 @@ async function handleFetchModels() {
   }
 }
 
-function handleSave() {
+async function handleSave() {
   if (!form.value.name.trim()) {
     form.value.name = `${form.value.type} profile`;
   }
   form.value.availableModels = availableModels.value;
-  aiStore.saveProvider(form.value);
+  await aiStore.saveProvider(form.value);
   dialogStore.showToast('Provider AI berhasil disimpan', 'success', 1500);
 }
 
-function handleSetDefault() {
-  handleSave();
+async function handleSetDefault() {
+  await handleSave();
   aiStore.setActiveProvider(form.value.id);
   dialogStore.showToast(`Provider aktif: ${form.value.name}`, 'success', 1500);
 }

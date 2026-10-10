@@ -46,15 +46,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       if (savedProviders) {
         const parsed = JSON.parse(savedProviders) as AiProviderConfig[];
         const legacySecrets = parsed.map(p => ({ id: p.id, apiKey: p.apiKey || '' }));
-        providers.value = parsed.map(p => ({ ...p, apiKey: '' }));
-        localStorage.setItem('boba_ai_providers', JSON.stringify(providers.value));
+        providers.value = parsed.map(p => ({ ...p, apiKey: p.apiKey || '' }));
+        localStorage.setItem('boba_ai_providers', JSON.stringify(providers.value.map(p => ({ ...p, apiKey: '' }))));
         for (const secret of legacySecrets) {
           if (secret.apiKey) void tauriBridge.aiSetProviderSecret(secret.id, secret.apiKey);
         }
-        void Promise.all(providers.value.map(async p => {
-          const secret = await tauriBridge.aiGetProviderSecret(p.id);
-          if (secret) p.apiKey = secret;
-        }));
       } else {
         // Sample default providers
         providers.value = [
@@ -84,6 +80,14 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
           },
         ];
       }
+
+      void Promise.all(providers.value.map(async p => {
+        if (p.type === 'ollama') return;
+        try {
+          const secret = await tauriBridge.aiGetProviderSecret(p.id);
+          if (secret) p.apiKey = secret;
+        } catch {}
+      }));
 
       const savedActive = localStorage.getItem('boba_ai_active_provider');
       if (savedActive && providers.value.some(p => p.id === savedActive)) {
@@ -203,9 +207,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
   async function getProviderWithSecret(provider: AiProviderConfig | null): Promise<AiProviderConfig | null> {
     if (!provider) return null;
+    if (provider.apiKey) return provider;
     if (provider.type === 'ollama') return { ...provider, apiKey: '' };
     try {
       const apiKey = await tauriBridge.aiGetProviderSecret(provider.id);
+      if (apiKey) provider.apiKey = apiKey;
       return { ...provider, apiKey: apiKey || '' };
     } catch {
       return { ...provider, apiKey: '' };
@@ -361,18 +367,27 @@ Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan ya
     isDrawerOpen.value = false;
   }
 
-  function saveProvider(config: AiProviderConfig) {
-    const provider = { ...config, apiKey: '' };
+  async function saveProvider(config: AiProviderConfig) {
+    const provider = { ...config };
     const idx = providers.value.findIndex(p => p.id === config.id);
     if (idx >= 0) {
       providers.value[idx] = provider;
     } else {
       providers.value.push(provider);
     }
-    if (config.apiKey) {
-      void tauriBridge.aiSetProviderSecret(config.id, config.apiKey);
-    } else {
-      void tauriBridge.aiDeleteProviderSecret(config.id);
+    const cleanKey = (config.apiKey || '').trim();
+    if (cleanKey) {
+      try {
+        await tauriBridge.aiSetProviderSecret(config.id, cleanKey);
+      } catch (e) {
+        console.warn('Gagal menyimpan AI secret:', e);
+      }
+    } else if (config.type !== 'ollama') {
+      try {
+        await tauriBridge.aiDeleteProviderSecret(config.id);
+      } catch (e) {
+        console.warn('Gagal menghapus AI secret:', e);
+      }
     }
     if (!activeProviderId.value) {
       activeProviderId.value = config.id;
@@ -398,7 +413,7 @@ Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan ya
   function setActiveModel(modelName: string) {
     if (!activeProvider.value) return;
     activeProvider.value.model = modelName;
-    saveProvider(activeProvider.value);
+    saveState();
   }
 
   function setExecutionMode(mode: 'confirm' | 'auto') {
@@ -1252,6 +1267,7 @@ You have access to tools to inspect and configure the server and database:
     closeDrawer,
     saveProvider,
     deleteProvider,
+    getProviderWithSecret,
     setActiveProvider,
     setActiveModel,
     setExecutionMode,
