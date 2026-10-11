@@ -159,12 +159,23 @@
             <label class="block text-xs font-semibold text-slate-300">
               {{ form.engine === 'redis' ? 'Redis Password / AUTH (opsional)' : 'Password' }}
             </label>
-            <input
-              v-model="form.password"
-              type="password"
-              placeholder="••••••••"
-              class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none font-mono"
-            />
+            <div class="relative">
+              <input
+                v-model="form.password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="••••••••"
+                class="w-full bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg pl-3 pr-9 py-1.5 text-xs text-slate-100 focus:outline-none font-mono"
+              />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                tabindex="-1"
+                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition focus:outline-none"
+                :title="showPassword ? 'Sembunyikan password' : 'Lihat password'"
+              >
+                <Icon :icon="showPassword ? 'lucide:eye-off' : 'lucide:eye'" class="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -302,6 +313,7 @@ const colorOptions = [
 
 const testing = ref(false);
 const testResult = ref<{ success: boolean; message: string } | null>(null);
+const showPassword = ref(false);
 
 function selectEngine(engId: any) {
   form.value.engine = engId;
@@ -316,6 +328,7 @@ watch(
   () => props.isOpen,
   (open) => {
     if (open) {
+      showPassword.value = false;
       testResult.value = null;
       if (props.dbConfig && props.dbConfig.id) {
         form.value = JSON.parse(JSON.stringify(props.dbConfig));
