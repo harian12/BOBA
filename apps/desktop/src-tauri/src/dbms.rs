@@ -124,6 +124,14 @@ pub struct DbmsManager {
     sqlite_pools: Arc<Mutex<HashMap<String, sqlx::SqlitePool>>>,
 }
 
+fn decimal_to_json_number_or_string(s: String) -> Value {
+    if let Ok(num) = s.parse::<serde_json::Number>() {
+        Value::Number(num)
+    } else {
+        Value::String(s)
+    }
+}
+
 fn percent_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.as_bytes() {
@@ -964,6 +972,10 @@ impl DbmsManager {
                             for (idx, _col) in r.columns().iter().enumerate() {
                                 let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
                                     Value::String(s)
+                                } else if let Ok(d) = r.try_get::<rust_decimal::Decimal, _>(idx) {
+                                    decimal_to_json_number_or_string(d.to_string())
+                                } else if let Ok(bd) = r.try_get::<bigdecimal::BigDecimal, _>(idx) {
+                                    decimal_to_json_number_or_string(bd.to_string())
                                 } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
                                     Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
                                 } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
@@ -976,10 +988,24 @@ impl DbmsManager {
                                     Value::Number(i.into())
                                 } else if let Ok(i) = r.try_get::<i32, _>(idx) {
                                     Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i16, _>(idx) {
+                                    Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i8, _>(idx) {
+                                    Value::Number(i.into())
                                 } else if let Ok(u) = r.try_get::<u64, _>(idx) {
+                                    Value::Number(u.into())
+                                } else if let Ok(u) = r.try_get::<u32, _>(idx) {
+                                    Value::Number(u.into())
+                                } else if let Ok(u) = r.try_get::<u16, _>(idx) {
+                                    Value::Number(u.into())
+                                } else if let Ok(u) = r.try_get::<u8, _>(idx) {
                                     Value::Number(u.into())
                                 } else if let Ok(f) = r.try_get::<f64, _>(idx) {
                                     serde_json::Number::from_f64(f)
+                                        .map(Value::Number)
+                                        .unwrap_or(Value::Null)
+                                } else if let Ok(f) = r.try_get::<f32, _>(idx) {
+                                    serde_json::Number::from_f64(f as f64)
                                         .map(Value::Number)
                                         .unwrap_or(Value::Null)
                                 } else if let Ok(b) = r.try_get::<bool, _>(idx) {
@@ -1084,6 +1110,10 @@ impl DbmsManager {
                             for (idx, _col) in r.columns().iter().enumerate() {
                                 let val: Value = if let Ok(s) = r.try_get::<String, _>(idx) {
                                     Value::String(s)
+                                } else if let Ok(d) = r.try_get::<rust_decimal::Decimal, _>(idx) {
+                                    decimal_to_json_number_or_string(d.to_string())
+                                } else if let Ok(bd) = r.try_get::<bigdecimal::BigDecimal, _>(idx) {
+                                    decimal_to_json_number_or_string(bd.to_string())
                                 } else if let Ok(dt) = r.try_get::<chrono::DateTime<chrono::Utc>, _>(idx) {
                                     Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
                                 } else if let Ok(dt) = r.try_get::<chrono::NaiveDateTime, _>(idx) {
@@ -1100,8 +1130,14 @@ impl DbmsManager {
                                     Value::Number(i.into())
                                 } else if let Ok(i) = r.try_get::<i16, _>(idx) {
                                     Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i8, _>(idx) {
+                                    Value::Number(i.into())
                                 } else if let Ok(f) = r.try_get::<f64, _>(idx) {
                                     serde_json::Number::from_f64(f)
+                                        .map(Value::Number)
+                                        .unwrap_or(Value::Null)
+                                } else if let Ok(f) = r.try_get::<f32, _>(idx) {
+                                    serde_json::Number::from_f64(f as f64)
                                         .map(Value::Number)
                                         .unwrap_or(Value::Null)
                                 } else if let Ok(b) = r.try_get::<bool, _>(idx) {
@@ -1206,8 +1242,14 @@ impl DbmsManager {
                                     Value::String(d.format("%Y-%m-%d").to_string())
                                 } else if let Ok(i) = r.try_get::<i64, _>(idx) {
                                     Value::Number(i.into())
+                                } else if let Ok(i) = r.try_get::<i32, _>(idx) {
+                                    Value::Number(i.into())
                                 } else if let Ok(f) = r.try_get::<f64, _>(idx) {
                                     serde_json::Number::from_f64(f)
+                                        .map(Value::Number)
+                                        .unwrap_or(Value::Null)
+                                } else if let Ok(f) = r.try_get::<f32, _>(idx) {
+                                    serde_json::Number::from_f64(f as f64)
                                         .map(Value::Number)
                                         .unwrap_or(Value::Null)
                                 } else if let Ok(b) = r.try_get::<bool, _>(idx) {
@@ -2082,6 +2124,22 @@ mod tests {
     #[test]
     fn percent_encode_leaves_unreserved_alone() {
         assert_eq!(percent_encode("abcXYZ019-_.~"), "abcXYZ019-_.~");
+    }
+
+    #[test]
+    fn decimal_to_json_number_or_string_parses_numbers() {
+        assert_eq!(
+            decimal_to_json_number_or_string("123.45".to_string()),
+            Value::Number("123.45".parse().unwrap())
+        );
+        assert_eq!(
+            decimal_to_json_number_or_string("-0.01".to_string()),
+            Value::Number("-0.01".parse().unwrap())
+        );
+        assert_eq!(
+            decimal_to_json_number_or_string("invalid_decimal".to_string()),
+            Value::String("invalid_decimal".to_string())
+        );
     }
 
     #[test]
