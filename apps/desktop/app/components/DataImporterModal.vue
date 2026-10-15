@@ -60,7 +60,15 @@
               type="text"
               placeholder="Pilih file .sql..."
               readonly
-              class="flex-1 bg-boba-950 border border-boba-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono"
+              @click="browseSqlFile"
+              class="flex-1 bg-boba-950 border border-boba-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono cursor-pointer"
+            />
+            <input
+              ref="sqlFileInputRef"
+              type="file"
+              accept=".sql,text/plain"
+              class="hidden"
+              @change="handleSqlFileSelected"
             />
             <button
               type="button"
@@ -89,7 +97,15 @@
               type="text"
               placeholder="Pilih file .csv..."
               readonly
-              class="flex-1 bg-boba-950 border border-boba-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono"
+              @click="browseCsvFile"
+              class="flex-1 bg-boba-950 border border-boba-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono cursor-pointer"
+            />
+            <input
+              ref="csvFileInputRef"
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              class="hidden"
+              @change="handleCsvFileSelected"
             />
             <button
               type="button"
@@ -158,6 +174,7 @@ import { ref, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { tauriBridge } from '../services/tauriBridge.js';
+import { quoteIdent } from '../utils/dbmsSql.js';
 import type { DbConnectionConfig, DbTableMeta } from '../types/index.js';
 
 const props = defineProps<{
@@ -176,11 +193,13 @@ const importMode = ref<'sql' | 'csv'>('sql');
 const sqlFilePath = ref('');
 const sqlScriptContent = ref('');
 const sqlScriptPreview = ref('');
+const sqlFileInputRef = ref<HTMLInputElement | null>(null);
 
 const csvFilePath = ref('');
 const csvHeaders = ref<string[]>([]);
 const csvParsedRows = ref<string[][]>([]);
 const targetTableName = ref('');
+const csvFileInputRef = ref<HTMLInputElement | null>(null);
 
 const importing = ref(false);
 const importStatus = ref<{ success: boolean; message: string } | null>(null);
@@ -195,42 +214,44 @@ watch(
   }
 );
 
-async function browseSqlFile() {
-  try {
-    const { open } = await import('@tauri-apps/plugin-dialog');
-    const selected = await open({
-      multiple: false,
-      directory: false,
-      filters: [{ name: 'SQL Script', extensions: ['sql'] }, { name: 'All Files', extensions: ['*'] }],
-    });
+function browseSqlFile() {
+  sqlFileInputRef.value?.click();
+}
 
-    if (selected && typeof selected === 'string') {
-      sqlFilePath.value = selected;
-      const content = await tauriBridge.fsReadTextFile(selected);
-      sqlScriptContent.value = content;
-      sqlScriptPreview.value = content.slice(0, 1500) + (content.length > 1500 ? '\n... (konten dipotong untuk preview)' : '');
-    }
-  } catch (err) {
-    console.error('File picker error:', err);
+async function handleSqlFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  sqlFilePath.value = file.name;
+  try {
+    const content = await file.text();
+    sqlScriptContent.value = content;
+    sqlScriptPreview.value = content.slice(0, 1500) + (content.length > 1500 ? '\n... (konten dipotong untuk preview)' : '');
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal membaca file: ${err?.message || err}`, 'error', 3000);
+  } finally {
+    input.value = '';
   }
 }
 
-async function browseCsvFile() {
-  try {
-    const { open } = await import('@tauri-apps/plugin-dialog');
-    const selected = await open({
-      multiple: false,
-      directory: false,
-      filters: [{ name: 'CSV File', extensions: ['csv'] }, { name: 'All Files', extensions: ['*'] }],
-    });
+function browseCsvFile() {
+  csvFileInputRef.value?.click();
+}
 
-    if (selected && typeof selected === 'string') {
-      csvFilePath.value = selected;
-      const content = await tauriBridge.fsReadTextFile(selected);
-      parseCsv(content);
-    }
-  } catch (err) {
-    console.error('File picker error:', err);
+async function handleCsvFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  csvFilePath.value = file.name;
+  try {
+    const content = await file.text();
+    parseCsv(content);
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal membaca file CSV: ${err?.message || err}`, 'error', 3000);
+  } finally {
+    input.value = '';
   }
 }
 
@@ -348,7 +369,9 @@ async function handleExecuteImport() {
       if (!targetTableName.value) throw new Error('Tabel tujuan belum dipilih');
 
       // Generate Batch INSERT statements
-      const cols = csvHeaders.value.map(c => `\`${c}\``).join(', ');
+      const engine = props.dbConfig?.engine;
+      const targetIdent = quoteIdent(engine, targetTableName.value);
+      const cols = csvHeaders.value.map(c => quoteIdent(engine, c)).join(', ');
       let insertCount = 0;
 
       // Group into chunks of 100
@@ -363,7 +386,7 @@ async function handleExecuteImport() {
           return `(${vals.join(', ')})`;
         });
 
-        const sql = `INSERT INTO \`${targetTableName.value}\` (${cols}) VALUES ${valueTuples.join(', ')};`;
+        const sql = `INSERT INTO ${targetIdent} (${cols}) VALUES ${valueTuples.join(', ')};`;
         await tauriBridge.dbmsExecuteQuery(props.dbConfig, props.activeDb, sql);
         insertCount += chunk.length;
       }
