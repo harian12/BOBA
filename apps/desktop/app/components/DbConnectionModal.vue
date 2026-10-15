@@ -111,6 +111,13 @@
             placeholder="D:/data/app.sqlite atau C:/data/db.sqlite3"
             class="flex-1 bg-boba-950 border border-boba-700 focus:border-boba-accent rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none font-mono"
           />
+          <input
+            ref="sqliteFileInputRef"
+            type="file"
+            accept=".db,.sqlite,.sqlite3,.db3,.s3db,*"
+            class="hidden"
+            @change="handleSqliteFileSelected"
+          />
           <button
             type="button"
             @click="browseSqliteFile"
@@ -354,6 +361,8 @@ watch(
   }
 );
 
+const sqliteFileInputRef = ref<HTMLInputElement | null>(null);
+
 async function browseSqliteFile() {
   try {
     const { open } = await import('@tauri-apps/plugin-dialog');
@@ -379,10 +388,26 @@ async function browseSqliteFile() {
         const fileName = parts[parts.length - 1] || 'SQLite DB';
         form.value.name = fileName;
       }
+      return;
     }
-  } catch (err) {
-    console.error('File dialog error:', err);
+  } catch {
+    // Fallback if plugin-dialog is not active
   }
+
+  sqliteFileInputRef.value?.click();
+}
+
+function handleSqliteFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  const path = (file as any).path || file.name;
+  form.value.sqlite_path = path;
+  if (!form.value.name) {
+    form.value.name = file.name.replace(/\.[^/.]+$/, '') || 'SQLite DB';
+  }
+  input.value = '';
 }
 
 async function handleTestConnection() {
