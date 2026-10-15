@@ -83,6 +83,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     hint: 'Saat tab DBMS aktif',
     items: [
       { keys: ['Ctrl', 'Enter'], description: 'Jalankan query di kursor' },
+      { keys: ['Ctrl', 'R'], description: 'Muat ulang data tabel atau query' },
       { keys: ['↑', '↓'], description: 'Pilih saran di daftar autocomplete' },
       { keys: ['Tab'], description: 'Terima saran autocomplete' },
       { keys: ['Enter'], description: 'Terima saran autocomplete' },

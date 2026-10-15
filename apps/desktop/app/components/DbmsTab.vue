@@ -527,8 +527,19 @@
             </div>
           </div>
 
-          <!-- Actions: Insert Row & Export Tools -->
+          <!-- Actions: Refresh, Insert Row & Export Tools -->
           <div class="flex items-center space-x-1.5">
+            <button
+              v-if="activeViewTab === 'data'"
+              @click="refreshData()"
+              :disabled="executing"
+              class="px-2.5 py-1 bg-boba-800 hover:bg-boba-700 text-slate-200 hover:text-white rounded text-[11px] font-medium transition flex items-center space-x-1 border border-boba-700/60 shadow-sm disabled:opacity-50"
+              title="Muat ulang data (Ctrl+R)"
+            >
+              <Icon icon="lucide:refresh-cw" :class="['w-3 h-3 text-sky-400', executing ? 'animate-spin' : '']" />
+              <span>Refresh</span>
+            </button>
+
             <button
               v-if="activeTable?.columns && activeTable.columns.length > 0 && activeViewTab === 'data'"
               @click="insertDraftRow()"
@@ -2628,6 +2639,7 @@ import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { useDbmsStore } from '../stores/dbmsStore.js';
+import { useSessionStore } from '../stores/sessionStore.js';
 import { quoteIdent, sqlLiteral, supportsTruncate, isSqlEngine, highlightSql, formatSql, buildSelectTableQuery } from '../utils/dbmsSql.js';
 import DataImporterModal from './DataImporterModal.vue';
 import DatabaseDumpModal from './DatabaseDumpModal.vue';
@@ -2643,6 +2655,7 @@ const props = defineProps<{
 
 const dialogStore = useDialogStore();
 const dbmsStore = useDbmsStore();
+const sessionStore = useSessionStore();
 
 // Export dropdown state
 const isExportDropdownOpen = ref(false);
@@ -4625,6 +4638,53 @@ function handleSelectTable(tbl: DbTableMeta) {
   activeViewTab.value = 'data';
 }
 
+async function refreshData() {
+  if (executing.value) return;
+
+  if (activeViewTab.value === 'structure') {
+    if (activeTable.value) {
+      await loadTableIndexes();
+    }
+    await loadSchemaOverview();
+    dialogStore.showToast('Struktur tabel dimuat ulang', 'info', 1500);
+    return;
+  }
+
+  if (activeViewTab.value === 'erd') {
+    await loadSchemaOverview();
+    dialogStore.showToast('Diagram ERD dimuat ulang', 'info', 1500);
+    return;
+  }
+
+  // Jika sedang membuka data tabel langsung (query editor tersembunyi)
+  if (activeTable.value && !showQueryEditor.value && isSqlEngine(engine.value)) {
+    fetchTableCount(activeTable.value.name);
+    handlePageChange(currentPage.value);
+    dialogStore.showToast('Data tabel dimuat ulang', 'info', 1500);
+    return;
+  }
+
+  // Jika ada teks query aktif
+  if (currentQueryText.value.trim()) {
+    if (activeTable.value && isSqlEngine(engine.value)) {
+      fetchTableCount(activeTable.value.name);
+    }
+    await executeQuery(currentQueryText.value);
+    dialogStore.showToast('Data query dimuat ulang', 'info', 1500);
+    return;
+  }
+
+  // Fallback
+  if (activeTable.value && isSqlEngine(engine.value)) {
+    fetchTableCount(activeTable.value.name);
+    handlePageChange(1);
+    dialogStore.showToast('Data tabel dimuat ulang', 'info', 1500);
+  } else {
+    await loadSchemaOverview();
+    dialogStore.showToast('Skema database dimuat ulang', 'info', 1500);
+  }
+}
+
 function handlePageChange(page: number) {
   if (page < 1 || !activeTable.value) return;
   currentPage.value = page;
@@ -5076,6 +5136,13 @@ function handleEditorKeyDown(e: KeyboardEvent) {
       showSuggestions.value = false;
       return;
     }
+  }
+
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) {
+    e.preventDefault();
+    e.stopPropagation();
+    refreshData();
+    return;
   }
 
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -5872,6 +5939,14 @@ function handleNewSubTabEvent(e: any) {
   addNewQueryTab();
 }
 
+function handleWindowKeyDown(e: KeyboardEvent) {
+  if (sessionStore.activeTabId !== props.tab.id) return;
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+    e.preventDefault();
+    refreshData();
+  }
+}
+
 onMounted(() => {
   try {
     const savedWidth = localStorage.getItem('boba_dbms_sidebar_width');
@@ -5893,12 +5968,14 @@ onMounted(() => {
   }
   loadSchemaOverview();
   window.addEventListener('click', handleExportDropdownOutside);
+  window.addEventListener('keydown', handleWindowKeyDown);
   window.addEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
   window.addEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener('click', handleExportDropdownOutside);
+  window.removeEventListener('keydown', handleWindowKeyDown);
   window.removeEventListener('boba:dbms-close-subtab', handleCloseSubTabEvent as EventListener);
   window.removeEventListener('boba:dbms-new-subtab', handleNewSubTabEvent as EventListener);
 });
