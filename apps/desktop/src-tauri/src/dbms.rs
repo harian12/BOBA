@@ -514,55 +514,129 @@ impl DbmsManager {
                 let mut tables = Vec::new();
 
                 if let Some(ref active_db) = cur_db {
+                    use sqlx::Row;
+
                     let use_query = format!("USE {}", quote_mysql_identifier(active_db));
                     let _ = sqlx::query(&use_query).execute(&pool).await;
 
-                    let t_rows: Vec<(String, String)> = sqlx::query_as(
-                        "SELECT table_name, table_type
-                         FROM information_schema.tables
-                         WHERE table_schema = ?
-                         ORDER BY table_name",
-                    )
-                    .bind(active_db)
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
+                    // 1. Fetch tables with multiple robust fallbacks
+                    let mut t_rows: Vec<(String, String)> = Vec::new();
 
-                    let col_rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(
-                        "SELECT table_name, column_name, column_type, is_nullable, column_default
-                         FROM information_schema.COLUMNS
-                         WHERE table_schema = ?
-                         ORDER BY table_name, ordinal_position",
-                    )
-                    .bind(active_db)
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
-                    let pk_rows: Vec<(String, String)> = sqlx::query_as(
-                        "SELECT table_name, column_name
-                         FROM information_schema.KEY_COLUMN_USAGE
-                         WHERE table_schema = ? AND constraint_name = 'PRIMARY'",
-                    )
-                    .bind(active_db)
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
-                    let pk_columns: HashSet<(String, String)> =
-                        pk_rows.into_iter().collect();
+                    // Tier 1: SHOW FULL TABLES FROM `active_db` (Standard, direct, ignores session state)
+                    let show_full_query = format!("SHOW FULL TABLES FROM {}", quote_mysql_identifier(active_db));
+                    if let Ok(rows) = sqlx::query(&show_full_query).fetch_all(&pool).await {
+                        for r in rows {
+                            if let Ok(name) = r.try_get::<String, _>(0) {
+                                let kind = r.try_get::<String, _>(1).unwrap_or_else(|_| "BASE TABLE".to_string());
+                                t_rows.push((name, kind));
+                            }
+                        }
+                    }
+
+                    // Tier 2: information_schema.TABLES with case-insensitive schema match
+                    if t_rows.is_empty() {
+                        let info_query = "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES WHERE LOWER(TABLE_SCHEMA) = LOWER(?) ORDER BY TABLE_NAME";
+                        if let Ok(rows) = sqlx::query(info_query).bind(active_db).fetch_all(&pool).await {
+                            for r in rows {
+                                if let Ok(name) = r.try_get::<String, _>(0) {
+                                    let kind = r.try_get::<String, _>(1).unwrap_or_else(|_| "BASE TABLE".to_string());
+                                    t_rows.push((name, kind));
+                                }
+                            }
+                        }
+                    }
+
+                    // Tier 3: Bare SHOW TABLES FROM `active_db`
+                    if t_rows.is_empty() {
+                        let show_query = format!("SHOW TABLES FROM {}", quote_mysql_identifier(active_db));
+                        if let Ok(rows) = sqlx::query(&show_query).fetch_all(&pool).await {
+                            for r in rows {
+                                if let Ok(name) = r.try_get::<String, _>(0) {
+                                    t_rows.push((name, "BASE TABLE".to_string()));
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Fetch Columns
                     let mut columns_by_table: HashMap<String, Vec<DbColumnMeta>> = HashMap::new();
+                    let col_query = "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+                                     FROM information_schema.COLUMNS
+                                     WHERE LOWER(TABLE_SCHEMA) = LOWER(?)
+                                     ORDER BY TABLE_NAME, ORDINAL_POSITION";
+                    if let Ok(col_rows) = sqlx::query(col_query).bind(active_db).fetch_all(&pool).await {
+                        for r in col_rows {
+                            let table_name: String = r.try_get(0).unwrap_or_default();
+                            let column_name: String = r.try_get(1).unwrap_or_default();
+                            let data_type: String = r.try_get(2).unwrap_or_default();
+                            let is_nullable: String = r.try_get(3).unwrap_or_default();
+                            let default_value: Option<String> = r.try_get(4).ok();
+                            if !table_name.is_empty() && !column_name.is_empty() {
+                                columns_by_table
+                                    .entry(table_name)
+                                    .or_default()
+                                    .push(DbColumnMeta {
+                                        name: column_name,
+                                        data_type,
+                                        is_nullable: is_nullable.eq_ignore_ascii_case("YES"),
+                                        is_primary_key: false,
+                                        default_value,
+                                    });
+                            }
+                        }
+                    }
 
-                    for (table_name, column_name, data_type, is_nullable, default_value) in col_rows {
-                        let is_primary_key = pk_columns.contains(&(table_name.clone(), column_name.clone()));
-                        columns_by_table
-                            .entry(table_name)
-                            .or_default()
-                            .push(DbColumnMeta {
-                                name: column_name,
-                                data_type,
-                                is_nullable: is_nullable == "YES",
-                                is_primary_key,
-                                default_value,
-                            });
+                    // 3. Fetch Primary Keys
+                    let pk_query = "SELECT TABLE_NAME, COLUMN_NAME
+                                    FROM information_schema.KEY_COLUMN_USAGE
+                                    WHERE LOWER(TABLE_SCHEMA) = LOWER(?) AND CONSTRAINT_NAME = 'PRIMARY'";
+                    let mut pk_columns: HashSet<(String, String)> = HashSet::new();
+                    if let Ok(pk_rows) = sqlx::query(pk_query).bind(active_db).fetch_all(&pool).await {
+                        for r in pk_rows {
+                            let t: String = r.try_get(0).unwrap_or_default();
+                            let c: String = r.try_get(1).unwrap_or_default();
+                            if !t.is_empty() && !c.is_empty() {
+                                pk_columns.insert((t, c));
+                            }
+                        }
+                    }
+
+                    // Fallback: For any table missing columns from information_schema, use SHOW COLUMNS
+                    for (table_name, _) in &t_rows {
+                        if !columns_by_table.contains_key(table_name) {
+                            let show_col_query = format!("SHOW COLUMNS FROM {}.{}", quote_mysql_identifier(active_db), quote_mysql_identifier(table_name));
+                            if let Ok(rows) = sqlx::query(&show_col_query).fetch_all(&pool).await {
+                                let mut cols = Vec::new();
+                                for r in rows {
+                                    let c_name: String = r.try_get(0).unwrap_or_default();
+                                    let c_type: String = r.try_get(1).unwrap_or_default();
+                                    let is_null: String = r.try_get(2).unwrap_or_default();
+                                    let key: String = r.try_get(3).unwrap_or_default();
+                                    let def_val: Option<String> = r.try_get(4).ok();
+                                    if !c_name.is_empty() {
+                                        cols.push(DbColumnMeta {
+                                            name: c_name,
+                                            data_type: c_type,
+                                            is_nullable: is_null.eq_ignore_ascii_case("YES"),
+                                            is_primary_key: key.to_uppercase().contains("PRI"),
+                                            default_value: def_val,
+                                        });
+                                    }
+                                }
+                                if !cols.is_empty() {
+                                    columns_by_table.insert(table_name.clone(), cols);
+                                }
+                            }
+                        }
+                    }
+
+                    // Apply primary key flags
+                    for (t_name, cols) in columns_by_table.iter_mut() {
+                        for col in cols.iter_mut() {
+                            if pk_columns.contains(&(t_name.clone(), col.name.clone())) {
+                                col.is_primary_key = true;
+                            }
+                        }
                     }
 
                     for (table_name, table_kind) in t_rows {
@@ -570,7 +644,7 @@ impl DbmsManager {
                             columns: columns_by_table.remove(&table_name).unwrap_or_default(),
                             name: table_name,
                             schema: Some(active_db.clone()),
-                            table_type: if table_kind.contains("VIEW") {
+                            table_type: if table_kind.to_uppercase().contains("VIEW") {
                                 "VIEW".to_string()
                             } else {
                                 "TABLE".to_string()
