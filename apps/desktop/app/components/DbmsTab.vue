@@ -3127,7 +3127,7 @@ function handleDataImported() {
 
 const loadingSchema = ref(false);
 const schemaOverview = ref<DbSchemaOverview | null>(null);
-const activeDatabase = ref<string>('');
+const activeDatabase = ref<string>(props.tab.dbConnection?.database || '');
 const tableFilter = ref('');
 
 // Fitur 6: Multi-Tab SQL Queries
@@ -4530,6 +4530,11 @@ async function loadSchemaOverview() {
     schemaOverview.value = overview;
     if (overview.current_database) {
       activeDatabase.value = overview.current_database;
+    } else if (!activeDatabase.value && overview.databases && overview.databases.length > 0) {
+      const found = overview.databases.find(d =>
+        !['information_schema', 'performance_schema', 'mysql', 'sys'].includes(d.toLowerCase())
+      );
+      activeDatabase.value = found || overview.databases[0] || '';
     }
 
     // Refresh foreign keys for structure badges if not SQLite/NoSQL
@@ -4573,6 +4578,10 @@ async function fetchTableCount(tableName: string) {
 }
 
 function handleSelectTable(tbl: DbTableMeta) {
+  if (tbl.schema && !activeDatabase.value) {
+    activeDatabase.value = tbl.schema;
+  }
+
   const generatedSql = engine.value === 'redis'
     ? `GET ${tbl.name}`
     : buildSelectTableQuery({
@@ -4592,7 +4601,7 @@ function handleSelectTable(tbl: DbTableMeta) {
     if (!existingTab.tableName) existingTab.tableName = tbl.name;
     if (existingTab.queryResults.length === 0) {
       if (!existingTab.text.trim()) existingTab.text = generatedSql;
-      executeQuery();
+      executeQuery(generatedSql);
     }
   } else {
     // Jika tab tunggal saat ini masih berupa tab default kosong "SQL 1", gunakan & beri nama tabel (dan hide query editor)
@@ -4605,11 +4614,11 @@ function handleSelectTable(tbl: DbTableMeta) {
       firstTab.sortState = { colIdx: null, colName: null, direction: 'asc' };
       firstTab.showQueryEditor = false; // Sembunyikan query jika dibuka dari tabel
       activeQueryTabId.value = firstTab.id;
-      executeQuery();
+      executeQuery(generatedSql);
     } else {
       // Buka tab query baru otomatis dengan nama tabel & sembunyikan query editor
       addNewQueryTab(tbl.name, generatedSql, tbl.name, tbl, false);
-      executeQuery();
+      executeQuery(generatedSql);
     }
   }
 

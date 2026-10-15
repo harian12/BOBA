@@ -476,7 +476,14 @@ impl DbmsManager {
             "mysql" | "mariadb" => {
                 let mut cfg = config.clone();
                 if let Some(ref db) = selected_db {
-                    cfg.database = Some(db.clone());
+                    if !db.trim().is_empty() {
+                        cfg.database = Some(db.clone());
+                    }
+                }
+                if let Some(ref db) = cfg.database {
+                    if db.trim().is_empty() {
+                        cfg.database = None;
+                    }
                 }
                 let url = Self::build_mysql_url(&cfg);
                 let pool = self.mysql_pool(&url).await?;
@@ -487,17 +494,39 @@ impl DbmsManager {
                     .unwrap_or_default();
                 let databases: Vec<String> = db_rows.into_iter().map(|r| r.0).collect();
 
-                let cur_db = cfg.database.clone().or_else(|| databases.first().cloned());
+                let cur_db = cfg
+                    .database
+                    .as_deref()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        databases
+                            .iter()
+                            .find(|d| {
+                                !matches!(
+                                    d.to_lowercase().as_str(),
+                                    "information_schema" | "performance_schema" | "mysql" | "sys"
+                                )
+                            })
+                            .cloned()
+                            .or_else(|| databases.first().cloned())
+                    });
                 let mut tables = Vec::new();
 
                 if let Some(ref active_db) = cur_db {
                     let use_query = format!("USE {}", quote_mysql_identifier(active_db));
                     let _ = sqlx::query(&use_query).execute(&pool).await;
 
-                    let t_rows: Vec<(String, String)> = sqlx::query_as("SHOW FULL TABLES")
-                        .fetch_all(&pool)
-                        .await
-                        .unwrap_or_default();
+                    let t_rows: Vec<(String, String)> = sqlx::query_as(
+                        "SELECT table_name, table_type
+                         FROM information_schema.tables
+                         WHERE table_schema = ?
+                         ORDER BY table_name",
+                    )
+                    .bind(active_db)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
 
                     let col_rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(
                         "SELECT table_name, column_name, column_type, is_nullable, column_default
@@ -560,7 +589,14 @@ impl DbmsManager {
             "postgres" | "postgresql" => {
                 let mut cfg = config.clone();
                 if let Some(ref db) = selected_db {
-                    cfg.database = Some(db.clone());
+                    if !db.trim().is_empty() {
+                        cfg.database = Some(db.clone());
+                    }
+                }
+                if let Some(ref db) = cfg.database {
+                    if db.trim().is_empty() {
+                        cfg.database = None;
+                    }
                 }
                 let url = Self::build_pg_url(&cfg);
                 let pool = self.pg_pool(&url).await?;
@@ -573,7 +609,12 @@ impl DbmsManager {
                 .unwrap_or_default();
                 let databases: Vec<String> = db_rows.into_iter().map(|r| r.0).collect();
 
-                let cur_db = cfg.database.clone().or_else(|| databases.first().cloned());
+                let cur_db = cfg
+                    .database
+                    .as_deref()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string())
+                    .or_else(|| databases.first().cloned());
                 let mut tables = Vec::new();
 
                 let metadata_rows: Vec<(
@@ -790,7 +831,14 @@ impl DbmsManager {
             "mysql" | "mariadb" => {
                 let mut cfg = config.clone();
                 if let Some(ref db) = selected_db {
-                    cfg.database = Some(db.clone());
+                    if !db.trim().is_empty() {
+                        cfg.database = Some(db.clone());
+                    }
+                }
+                if let Some(ref db) = cfg.database {
+                    if db.trim().is_empty() {
+                        cfg.database = None;
+                    }
                 }
                 let url = Self::build_mysql_url(&cfg);
                 let pool = sqlx::mysql::MySqlPoolOptions::new()
@@ -907,7 +955,14 @@ impl DbmsManager {
             "postgres" | "postgresql" => {
                 let mut cfg = config.clone();
                 if let Some(ref db) = selected_db {
-                    cfg.database = Some(db.clone());
+                    if !db.trim().is_empty() {
+                        cfg.database = Some(db.clone());
+                    }
+                }
+                if let Some(ref db) = cfg.database {
+                    if db.trim().is_empty() {
+                        cfg.database = None;
+                    }
                 }
                 let url = Self::build_pg_url(&cfg);
                 let pool = sqlx::postgres::PgPoolOptions::new()
