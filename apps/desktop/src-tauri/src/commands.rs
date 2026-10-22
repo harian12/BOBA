@@ -1312,9 +1312,512 @@ pub async fn dbms_get_database_users(
     state.dbms_manager.get_database_users(&config).await
 }
 
+// --- Local AI Provider Auto-Discovery ---
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct DetectedAiProvider {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub provider_type: String,
+    #[serde(rename = "baseUrl")]
+    pub base_url: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: String,
+    pub model: String,
+    #[serde(rename = "availableModels")]
+    pub available_models: Vec<String>,
+    pub source: String,
+}
+
+pub fn clean_jsonc(input: &str) -> String {
+    let mut without_comments = String::with_capacity(input.len());
+    let chars: Vec<char> = input.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+    let mut in_string = false;
+    let mut escape = false;
+
+    while i < len {
+        let c = chars[i];
+        if in_string {
+            without_comments.push(c);
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '"' {
+            in_string = true;
+            without_comments.push(c);
+            i += 1;
+            continue;
+        }
+
+        if c == '/' && i + 1 < len && chars[i + 1] == '/' {
+            i += 2;
+            while i < len && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if c == '/' && i + 1 < len && chars[i + 1] == '*' {
+            i += 2;
+            while i + 1 < len && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            i = (i + 2).min(len);
+            continue;
+        }
+
+        without_comments.push(c);
+        i += 1;
+    }
+
+    let chars: Vec<char> = without_comments.chars().collect();
+    let len = chars.len();
+    let mut out = String::with_capacity(len);
+    let mut i = 0;
+    in_string = false;
+    escape = false;
+
+    while i < len {
+        let c = chars[i];
+        if in_string {
+            out.push(c);
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if c == '"' {
+            in_string = true;
+            out.push(c);
+            i += 1;
+            continue;
+        }
+
+        if c == ',' {
+            let mut j = i + 1;
+            while j < len && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < len && (chars[j] == '}' || chars[j] == ']') {
+                i += 1;
+                continue;
+            }
+        }
+
+        out.push(c);
+        i += 1;
+    }
+
+    out
+}
+
+#[tauri::command]
+pub async fn detect_local_ai_providers() -> Result<Vec<DetectedAiProvider>, String> {
+    let mut results: Vec<DetectedAiProvider> = Vec::new();
+    let mut auth_keys: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let home_opt = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()
+        .map(std::path::PathBuf::from);
+
+    if let Some(ref home) = home_opt {
+        // 1. OpenCode auth.json (~/.local/share/opencode/auth.json)
+        let opencode_auth_path = home.join(".local").join("share").join("opencode").join("auth.json");
+        if opencode_auth_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&opencode_auth_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(obj) = json.as_object() {
+                        for (key, val) in obj {
+                            let key_lower = key.to_lowercase();
+                            let api_key = val
+                                .get("key")
+                                .or_else(|| val.get("token"))
+                                .or_else(|| val.get("apiKey"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .trim()
+                                .to_string();
+
+                            if !api_key.is_empty() {
+                                auth_keys.insert(key_lower.clone(), api_key.clone());
+
+                                let (name, p_type, base_url, model) = match key_lower.as_str() {
+                                    "deepseek" => (
+                                        "DeepSeek (OpenCode)".to_string(),
+                                        "openai".to_string(),
+                                        "https://api.deepseek.com/v1".to_string(),
+                                        "deepseek-chat".to_string(),
+                                    ),
+                                    "openai" => (
+                                        "OpenAI (OpenCode)".to_string(),
+                                        "openai".to_string(),
+                                        "https://api.openai.com/v1".to_string(),
+                                        "gpt-4o".to_string(),
+                                    ),
+                                    "anthropic" => (
+                                        "Claude (OpenCode)".to_string(),
+                                        "anthropic".to_string(),
+                                        "https://api.anthropic.com".to_string(),
+                                        "claude-3-7-sonnet-20250219".to_string(),
+                                    ),
+                                    "gemini" => (
+                                        "Gemini (OpenCode)".to_string(),
+                                        "gemini".to_string(),
+                                        "https://generativelanguage.googleapis.com".to_string(),
+                                        "gemini-2.0-flash".to_string(),
+                                    ),
+                                    "openrouter" => (
+                                        "OpenRouter (OpenCode)".to_string(),
+                                        "openai".to_string(),
+                                        "https://openrouter.ai/api/v1".to_string(),
+                                        "deepseek/deepseek-chat".to_string(),
+                                    ),
+                                    "groq" => (
+                                        "Groq (OpenCode)".to_string(),
+                                        "openai".to_string(),
+                                        "https://api.groq.com/openai/v1".to_string(),
+                                        "llama-3.3-70b-versatile".to_string(),
+                                    ),
+                                    _ => (
+                                        format!("{} (OpenCode)", key),
+                                        "openai".to_string(),
+                                        "https://api.openai.com/v1".to_string(),
+                                        "".to_string(),
+                                    ),
+                                };
+
+                                results.push(DetectedAiProvider {
+                                    id: format!("opencode_auth_{}", key_lower),
+                                    name,
+                                    provider_type: p_type,
+                                    base_url,
+                                    api_key,
+                                    model,
+                                    available_models: Vec::new(),
+                                    source: "OpenCode (auth.json)".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. OpenCode config (~/.config/opencode/opencode.jsonc or opencode.json)
+        let config_candidates = [
+            home.join(".config").join("opencode").join("opencode.jsonc"),
+            home.join(".config").join("opencode").join("opencode.json"),
+        ];
+
+        for cfg_path in &config_candidates {
+            if cfg_path.exists() {
+                if let Ok(raw) = std::fs::read_to_string(cfg_path) {
+                    let cleaned = clean_jsonc(&raw);
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&cleaned) {
+                        let top_model = json.get("model").and_then(|v| v.as_str()).unwrap_or("");
+                        let prov_obj = json
+                            .get("provider")
+                            .or_else(|| json.get("providers"))
+                            .and_then(|v| v.as_object());
+
+                        if let Some(providers) = prov_obj {
+                            for (prov_id, prov_val) in providers {
+                                let base_url = prov_val
+                                    .get("options")
+                                    .and_then(|o| o.get("baseURL"))
+                                    .or_else(|| prov_val.get("settings").and_then(|s| s.get("baseURL")))
+                                    .or_else(|| prov_val.get("baseURL"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .trim()
+                                    .to_string();
+
+                                let mut api_key = prov_val
+                                    .get("options")
+                                    .and_then(|o| o.get("apiKey"))
+                                    .or_else(|| prov_val.get("settings").and_then(|s| s.get("apiKey")))
+                                    .or_else(|| prov_val.get("apiKey"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .trim()
+                                    .to_string();
+
+                                // Resolve {env:VARIABLE_NAME}
+                                if api_key.starts_with("{env:") && api_key.ends_with('}') {
+                                    let env_name = &api_key[5..api_key.len() - 1];
+                                    api_key = std::env::var(env_name).unwrap_or_default();
+                                }
+
+                                // Fallback to auth.json credential if config has none
+                                if api_key.is_empty() {
+                                    if let Some(k) = auth_keys.get(&prov_id.to_lowercase()) {
+                                        api_key = k.clone();
+                                    }
+                                }
+
+                                let mut models = Vec::new();
+                                if let Some(m_obj) = prov_val.get("models").and_then(|m| m.as_object()) {
+                                    for m_key in m_obj.keys() {
+                                        models.push(m_key.clone());
+                                    }
+                                }
+
+                                let default_model = if !top_model.is_empty() && top_model.starts_with(&format!("{}/", prov_id)) {
+                                    top_model[prov_id.len() + 1..].to_string()
+                                } else if let Some(first_m) = models.first() {
+                                    first_m.clone()
+                                } else {
+                                    "".to_string()
+                                };
+
+                                let p_type = if base_url.contains("anthropic") || prov_id.to_lowercase().contains("anthropic") {
+                                    "anthropic"
+                                } else if base_url.contains("gemini") || base_url.contains("generativelanguage") || prov_id.to_lowercase().contains("gemini") {
+                                    "gemini"
+                                } else if base_url.contains("11434") || prov_id.to_lowercase().contains("ollama") {
+                                    "ollama"
+                                } else {
+                                    "openai"
+                                };
+
+                                let display_name = prov_val
+                                    .get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(prov_id)
+                                    .to_string();
+
+                                if !base_url.is_empty() || !api_key.is_empty() || !models.is_empty() {
+                                    results.push(DetectedAiProvider {
+                                        id: format!("opencode_cfg_{}", prov_id),
+                                        name: format!("{} (OpenCode)", display_name),
+                                        provider_type: p_type.to_string(),
+                                        base_url,
+                                        api_key,
+                                        model: default_model,
+                                        available_models: models,
+                                        source: "OpenCode Config".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        // 3. Codex CLI (~/.codex/auth.json)
+        let codex_auth_path = home.join(".codex").join("auth.json");
+        if codex_auth_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&codex_auth_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    let key = json
+                        .get("OPENAI_API_KEY")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+
+                    // Only import if it's an actual OpenAI API Key (sk-...)
+                    if key.starts_with("sk-") {
+                        results.push(DetectedAiProvider {
+                            id: "codex_cli_openai".to_string(),
+                            name: "OpenAI (Codex CLI)".to_string(),
+                            provider_type: "openai".to_string(),
+                            base_url: "https://api.openai.com/v1".to_string(),
+                            api_key: key,
+                            model: "gpt-4o".to_string(),
+                            available_models: vec![
+                                "gpt-4o".to_string(),
+                                "gpt-4o-mini".to_string(),
+                                "o3-mini".to_string(),
+                                "o1".to_string(),
+                            ],
+                            source: "Codex CLI".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // 4. Claude CLI (~/.claude/.credentials.json)
+        let claude_cred_path = home.join(".claude").join(".credentials.json");
+        if claude_cred_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&claude_cred_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    let token = json
+                        .get("claudeAiOauth")
+                        .and_then(|o| o.get("accessToken"))
+                        .or_else(|| json.get("apiKey"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+
+                    if !token.is_empty() && token.starts_with("sk-ant-") {
+                        results.push(DetectedAiProvider {
+                            id: "claude_cli_anthropic".to_string(),
+                            name: "Claude (Claude CLI)".to_string(),
+                            provider_type: "anthropic".to_string(),
+                            base_url: "https://api.anthropic.com".to_string(),
+                            api_key: token,
+                            model: "claude-3-7-sonnet-20250219".to_string(),
+                            available_models: vec![
+                                "claude-3-7-sonnet-20250219".to_string(),
+                                "claude-3-5-sonnet-20241022".to_string(),
+                                "claude-3-5-haiku-20241022".to_string(),
+                            ],
+                            source: "Claude CLI".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. Ollama Local (http://127.0.0.1:11434/api/tags)
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(1500))
+        .build();
+
+    if let Ok(http) = client {
+        if let Ok(res) = http.get("http://127.0.0.1:11434/api/tags").send().await {
+            if res.status().is_success() {
+                if let Ok(json) = res.json::<serde_json::Value>().await {
+                    if let Some(arr) = json.get("models").and_then(|m| m.as_array()) {
+                        let models: Vec<String> = arr
+                            .iter()
+                            .filter_map(|m| {
+                                m.get("name")
+                                    .or_else(|| m.get("model"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .collect();
+
+                        let default_model = models.first().cloned().unwrap_or_else(|| "llama3.2".to_string());
+                        results.push(DetectedAiProvider {
+                            id: "local_ollama".to_string(),
+                            name: "Ollama (Lokal)".to_string(),
+                            provider_type: "ollama".to_string(),
+                            base_url: "http://localhost:11434".to_string(),
+                            api_key: "".to_string(),
+                            model: default_model,
+                            available_models: models,
+                            source: "Ollama (Lokal)".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 6. OS Environment Variables
+    let env_defs = [
+        ("OPENAI_API_KEY", "OpenAI (Env)", "openai", "https://api.openai.com/v1", "gpt-4o"),
+        ("ANTHROPIC_API_KEY", "Claude (Env)", "anthropic", "https://api.anthropic.com", "claude-3-7-sonnet-20250219"),
+        ("DEEPSEEK_API_KEY", "DeepSeek (Env)", "openai", "https://api.deepseek.com/v1", "deepseek-chat"),
+        ("GEMINI_API_KEY", "Gemini (Env)", "gemini", "https://generativelanguage.googleapis.com", "gemini-2.0-flash"),
+        ("OPENROUTER_API_KEY", "OpenRouter (Env)", "openai", "https://openrouter.ai/api/v1", "deepseek/deepseek-chat"),
+    ];
+
+    for (env_var, name, p_type, base_url, model) in &env_defs {
+        if let Ok(val) = std::env::var(env_var) {
+            let trimmed = val.trim();
+            if !trimmed.is_empty() {
+                results.push(DetectedAiProvider {
+                    id: format!("env_{}", env_var.to_lowercase()),
+                    name: name.to_string(),
+                    provider_type: p_type.to_string(),
+                    base_url: base_url.to_string(),
+                    api_key: trimmed.to_string(),
+                    model: model.to_string(),
+                    available_models: Vec::new(),
+                    source: "Environment Variable".to_string(),
+                });
+            }
+        }
+    }
+
+    // 7. Deduplicate & Merge by (provider_type, normalized base_url) or matching ID
+    let mut deduped: Vec<DetectedAiProvider> = Vec::new();
+    for item in results {
+        let normalized_url = item.base_url.trim_end_matches('/').to_lowercase();
+        let existing = deduped.iter_mut().find(|d| {
+            let same_endpoint = !normalized_url.is_empty()
+                && d.base_url.trim_end_matches('/').to_lowercase() == normalized_url
+                && d.provider_type == item.provider_type;
+            let same_id = d.id == item.id;
+
+            if same_endpoint || same_id {
+                if !d.api_key.is_empty() && !item.api_key.is_empty() {
+                    d.api_key == item.api_key
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
+        });
+
+        if let Some(ext) = existing {
+            if ext.api_key.is_empty() && !item.api_key.is_empty() {
+                ext.api_key = item.api_key;
+            }
+            if ext.available_models.is_empty() && !item.available_models.is_empty() {
+                ext.available_models = item.available_models;
+            }
+            if ext.model.is_empty() && !item.model.is_empty() {
+                ext.model = item.model;
+            }
+            if ext.source.contains("auth.json") && item.source.contains("Config") {
+                ext.source = item.source;
+                ext.name = item.name;
+            }
+        } else {
+            deduped.push(item);
+        }
+    }
+
+    Ok(deduped)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_external_url;
+    use super::{clean_jsonc, validate_external_url};
+
+    #[test]
+    fn cleans_jsonc_comments_and_trailing_commas() {
+        let jsonc = r#"{
+            // line comment
+            "provider": {
+                /* block comment */
+                "name": "test",
+                "baseURL": "https://example.com/api", // trailing comma below
+            },
+        }"#;
+        let cleaned = clean_jsonc(jsonc);
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).expect("must parse");
+        assert_eq!(parsed["provider"]["name"], "test");
+        assert_eq!(parsed["provider"]["baseURL"], "https://example.com/api");
+    }
 
     #[test]
     fn accepts_http_and_https_urls() {

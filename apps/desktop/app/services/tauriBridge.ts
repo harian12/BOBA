@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbProcessItem, DbForeignKeyRelation, DbUserItem, ActiveTunnelInfo } from '../types/index.js';
+import type { VaultSnapshot, SshSessionConfig, SshKeyItem, RemoteFileItem, LocalFileItem, LocalDriveItem, AppUpdateInfo, DbConnectionConfig, DbSchemaOverview, DbQueryResult, DbServerMetrics, DbExplainResult, DbProcessItem, DbForeignKeyRelation, DbUserItem, ActiveTunnelInfo, AiProviderConfig } from '../types/index.js';
 
 export const tauriBridge = {
   async getAppDataDir(): Promise<string> {
@@ -54,6 +54,10 @@ export const tauriBridge = {
 
   async aiDeleteProviderSecret(providerId: string): Promise<void> {
     return await invoke('ai_delete_provider_secret', { providerId });
+  },
+
+  async detectLocalAiProviders(): Promise<AiProviderConfig[]> {
+    return await invoke('detect_local_ai_providers');
   },
 
   // Update commands

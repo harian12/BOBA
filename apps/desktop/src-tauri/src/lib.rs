@@ -105,6 +105,7 @@ pub fn run() {
             commands::open_log_file,
             commands::read_recent_logs,
             commands::fetch_ai_models,
+            commands::detect_local_ai_providers,
             commands::ai_http_stream,
             commands::check_app_update,
             commands::open_external_url,

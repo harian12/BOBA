@@ -237,6 +237,7 @@ export interface AiProviderConfig {
   apiKey: string;
   model: string;
   availableModels?: string[];
+  source?: string;
 }
 
 export interface AiToolCall {
