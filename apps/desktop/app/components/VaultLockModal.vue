@@ -1,5 +1,9 @@
 <template>
-  <div v-if="!vaultStore.isUnlocked" class="fixed inset-0 bg-boba-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none">
+  <div
+    v-if="!vaultStore.isUnlocked"
+    class="fixed inset-0 bg-boba-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none"
+    @click="handleBackdropClick"
+  >
     <div class="bg-boba-900 border border-boba-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-6">
       <div class="flex items-center space-x-3">
         <img src="/logo.png" alt="BOBA" class="w-10 h-10 rounded-lg" />
@@ -17,7 +21,9 @@
             {{ hasExistingVault ? 'Master Password' : 'Buat Master Password Baru' }}
           </label>
           <input
+            ref="passwordInputRef"
             v-model="passwordInput"
+            v-focus
             type="password"
             autofocus
             placeholder="Ketik password master..."
@@ -57,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useSyncStore } from '../stores/syncStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
@@ -71,6 +77,55 @@ const passwordInput = ref('');
 const errorMessage = ref('');
 const loading = ref(false);
 const hasExistingVault = ref(false);
+const passwordInputRef = ref<HTMLInputElement | null>(null);
+
+function focusPasswordInput() {
+  nextTick(() => {
+    passwordInputRef.value?.focus();
+  });
+  setTimeout(() => {
+    passwordInputRef.value?.focus();
+  }, 50);
+}
+
+const vFocus = {
+  mounted: (el: HTMLInputElement) => {
+    el.focus();
+    setTimeout(() => el.focus(), 50);
+  },
+};
+
+function onWindowFocus() {
+  if (!vaultStore.isUnlocked) {
+    focusPasswordInput();
+  }
+}
+
+function handleGlobalKeyDown(e: KeyboardEvent) {
+  if (vaultStore.isUnlocked) return;
+  if (document.activeElement !== passwordInputRef.value) {
+    if ((e.target as HTMLElement)?.closest('button, a')) return;
+    passwordInputRef.value?.focus();
+  }
+}
+
+function handleBackdropClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null;
+  if (target && !target.closest('button, a, input')) {
+    focusPasswordInput();
+  }
+}
+
+watch(
+  () => vaultStore.isUnlocked,
+  (unlocked) => {
+    if (!unlocked) {
+      errorMessage.value = '';
+      passwordInput.value = '';
+      focusPasswordInput();
+    }
+  }
+);
 
 onMounted(() => {
   const localBlob = localStorage.getItem('boba_local_vault_blob');
@@ -79,6 +134,15 @@ onMounted(() => {
   if (!cachedSalt) {
     safeSetItem('boba_user_salt', cachedSalt);
   }
+
+  focusPasswordInput();
+  window.addEventListener('focus', onWindowFocus);
+  window.addEventListener('keydown', handleGlobalKeyDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('focus', onWindowFocus);
+  window.removeEventListener('keydown', handleGlobalKeyDown);
 });
 
 async function handleUnlock() {
@@ -99,6 +163,8 @@ async function handleUnlock() {
     }
   } catch (err: any) {
     errorMessage.value = 'Password salah. Tidak dapat mendekripsi data yang tersimpan.';
+    focusPasswordInput();
+    passwordInputRef.value?.select();
   } finally {
     loading.value = false;
   }
@@ -117,5 +183,6 @@ async function handleResetVault() {
   hasExistingVault.value = false;
   errorMessage.value = '';
   passwordInput.value = '';
+  focusPasswordInput();
 }
 </script>

@@ -17,6 +17,7 @@
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1">Master Password Saat Ini</label>
           <input
+            ref="oldPasswordInputRef"
             v-model="oldPassword"
             type="password"
             required
@@ -78,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { useVaultStore } from '../stores/vaultStore.js';
 
 const props = defineProps<{ isOpen: boolean }>();
@@ -86,6 +87,7 @@ const emit = defineEmits(['close']);
 
 const vaultStore = useVaultStore();
 
+const oldPasswordInputRef = ref<HTMLInputElement | null>(null);
 const oldPassword = ref('');
 const newPassword = ref('');
 const confirmPassword = ref('');
@@ -100,6 +102,12 @@ watch(() => props.isOpen, (open) => {
     confirmPassword.value = '';
     errorMsg.value = '';
     successMsg.value = '';
+    nextTick(() => {
+      oldPasswordInputRef.value?.focus();
+    });
+    setTimeout(() => {
+      oldPasswordInputRef.value?.focus();
+    }, 50);
   }
 });
 
