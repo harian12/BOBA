@@ -117,8 +117,18 @@
           <span class="text-[9px] text-slate-400">▼</span>
         </button>
 
-        <span class="text-[10px] text-slate-500 font-mono hidden sm:inline">
-          ({{ currentMessages.length }} pesan)
+        <span class="text-[10px] text-slate-500 font-mono hidden sm:inline-flex items-center space-x-1">
+          <span>({{ currentMessages.length }} pesan</span>
+          <span
+            v-if="aiStore.currentThreadTokens.total > 0"
+            class="text-amber-400 font-medium flex items-center space-x-0.5 cursor-help"
+            :title="`Total Token Percakapan Ini: ${aiStore.currentThreadTokens.total.toLocaleString()} (Prompt: ${aiStore.currentThreadTokens.prompt.toLocaleString()} • Output: ${aiStore.currentThreadTokens.completion.toLocaleString()})`"
+          >
+            <span>•</span>
+            <Icon icon="lucide:coins" class="w-2.5 h-2.5 ml-0.5 text-amber-400" />
+            <span>{{ formatTokenCount(aiStore.currentThreadTokens.total) }}</span>
+          </span>
+          <span>)</span>
         </span>
       </div>
 
@@ -603,9 +613,17 @@
             </div>
           </div>
 
-          <span class="text-[9px] text-slate-500 font-mono px-1">
-            {{ formatTime(msg.createdAt) }}
-          </span>
+          <div class="flex items-center space-x-2 px-1 text-[9px] text-slate-500 font-mono">
+            <span>{{ formatTime(msg.createdAt) }}</span>
+            <span
+              v-if="msg.tokens && (msg.tokens.totalTokens || msg.tokens.completionTokens)"
+              class="text-amber-400/80 flex items-center space-x-0.5 cursor-help"
+              :title="`Token Pesan: ${(msg.tokens.totalTokens || ((msg.tokens.promptTokens || 0) + (msg.tokens.completionTokens || 0))).toLocaleString()} (Prompt: ${(msg.tokens.promptTokens || 0).toLocaleString()} • Output: ${(msg.tokens.completionTokens || 0).toLocaleString()})`"
+            >
+              <Icon icon="lucide:coins" class="w-2.5 h-2.5 text-amber-400" />
+              <span>{{ formatTokenCount(msg.tokens.totalTokens || ((msg.tokens.promptTokens || 0) + (msg.tokens.completionTokens || 0))) }}</span>
+            </span>
+          </div>
         </div>
       </template>
 
@@ -727,6 +745,16 @@
               <Icon icon="lucide:languages" class="w-3 h-3 text-sky-400" />
               <span>{{ (aiStore.aiLanguage || 'en').toUpperCase() }}</span>
             </button>
+
+            <!-- Total Tokens Badge -->
+            <div
+              v-if="aiStore.currentThreadTokens.total > 0"
+              class="px-2 py-1 rounded-md text-[10px] font-mono font-medium flex items-center space-x-1 border shrink-0 bg-boba-850 border-boba-700 text-amber-300 shadow-sm cursor-help"
+              :title="`Total Token Percakapan Ini: ${aiStore.currentThreadTokens.total.toLocaleString()} (Prompt: ${aiStore.currentThreadTokens.prompt.toLocaleString()} • Output: ${aiStore.currentThreadTokens.completion.toLocaleString()})`"
+            >
+              <Icon icon="lucide:coins" class="w-3 h-3 text-amber-400" />
+              <span>{{ formatTokenCount(aiStore.currentThreadTokens.total) }}</span>
+            </div>
           </div>
 
           <!-- Right Controls: Clear & Send / Stop Button -->
@@ -1174,6 +1202,13 @@ function formatTime(timestamp: number): string {
   if (!timestamp) return '';
   const d = new Date(timestamp);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatTokenCount(num: number): string {
+  if (!num || num <= 0) return '0';
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k`;
+  return num.toLocaleString();
 }
 
 function handleSend() {

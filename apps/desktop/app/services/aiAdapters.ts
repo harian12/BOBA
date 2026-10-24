@@ -1,4 +1,4 @@
-import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode } from '../types/index.ts';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode, AiTokenUsage } from '../types/index.ts';
 import { tauriBridge } from './tauriBridge.ts';
 
 export const AGENT_TOOLS = [
@@ -511,7 +511,7 @@ export interface StreamCallbacks {
   onToken: (text: string) => void;
   onToolCalls: (toolCalls: AiToolCall[]) => void;
   onError: (err: any) => void;
-  onFinish: () => void;
+  onFinish: (tokens?: AiTokenUsage) => void;
 }
 
 export async function streamChat(
@@ -529,12 +529,12 @@ export async function streamChat(
   if (type === 'opencode') {
     await streamOpencode(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode, aiLanguage);
   } else if (type === 'anthropic') {
-    await streamAnthropic(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
+    await streamAnthropic(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode, aiLanguage);
   } else if (type === 'gemini') {
-    await streamGemini(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
+    await streamGemini(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode, aiLanguage);
   } else {
     // OpenAI, Ollama, DeepSeek, OpenRouter, Custom
-    await streamOpenAiCompatible(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
+    await streamOpenAiCompatible(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode, aiLanguage);
   }
 }
 
@@ -563,6 +563,10 @@ async function streamOpencode(
   if (isId) {
     prompt += `[Instruksi Format Eksekusi Tool - WAJIB]:
 PERHATIAN PENTING: Anda berfungsi sebagai perencana & penganalisis inferensi AI untuk BOBA (bukan agen coding lokal PC ini). Anda TIDAK perlu mengeksekusi tool lokal sendiri. Runtime BOBA di sisi klien yang akan mengeksekusi perintah terminal ke server target melalui SSH berdasarkan blok JSON yang Anda hasilkan. Jangan pernah menolak perintah dengan alasan tool lokal tidak tersedia atau tidak terhubung ke remote server; cukup keluarkan blok JSON 'exec_command'!
+ATURAN BAHASA MUTLAK:
+- SELURUH respon Anda (termasuk kalimat pembuka, penalaran, atau uraian sebelum blok JSON) WAJIB 100% menggunakan BAHASA INDONESIA.
+- DILARANG KERAS menggunakan kalimat pembuka atau penalaran berbahasa Inggris sebelum blok JSON (contoh DILARANG: "CPU usage is at 100%, therefore examining...", "The ps command will be executed...", dsb). Tulislah dalam Bahasa Indonesia (contoh: "Penggunaan CPU mencapai 100%, saya akan memeriksa proses yang paling membebani CPU...").
+- Pertahankan hanya perintah bash, nama proses, kode, dan istilah teknis standar apa adanya.
 Anda SUDAH terhubung ke server target melalui runtime BOBA.
 DILARANG KERAS mencoba koneksi SSH sendiri (jangan memanggil 'ssh ...').
 DILARANG KERAS mengakses atau membaca SSH keys / public key / authorized_keys.
@@ -613,9 +617,11 @@ DO NOT respond with empty promises without including the JSON block above!\n\n`;
     if (isId) {
       prompt += `[Instruksi Analisis Output & Kesimpulan]:
 Perintah terminal di atas telah selesai dieksekusi.
-Anda WAJIB membaca dan menganalisis output tersebut secara mendalam.
-Sajikan ringkasan temuan penting, kesehatan sistem, dan KESIMPULAN LENGKAP kepada pengguna dalam Bahasa Indonesia.
-JANGAN berhenti dengan pesan kosong!\n\n`;
+ATURAN BAHASA MUTLAK:
+1. Anda WAJIB menyajikan SELURUH respon Anda—mulai dari kata pertama, kalimat pembuka, analisis teknis, hingga kesimpulan akhir—100% dalam BAHASA INDONESIA.
+2. DILARANG KERAS menulis paragraf pembuka, observasi, atau pendahuluan dalam Bahasa Inggris (seperti "High CPU and memory usage is concentrated within several active processes...", dsb). Ubah kalimat tersebut ke Bahasa Indonesia (contoh: "Penggunaan CPU dan memori tinggi terkonsentrasi pada beberapa proses aktif...").
+3. Pertahankan istilah teknis, nama proses, dan nilai metrik apa adanya.
+4. JANGAN berhenti dengan pesan kosong!\n\n`;
     } else {
       prompt += `[Output Analysis & Conclusion Instructions]:
 The terminal command above has completed execution.
@@ -625,7 +631,11 @@ DO NOT return an empty response!\n\n`;
     }
   }
 
-  prompt += `Assistant: `;
+  if (isId) {
+    prompt += `[Pengingat Bahasa]: Seluruh respon pembuka dan analisis WAJIB dalam Bahasa Indonesia.\nAssistant: `;
+  } else {
+    prompt += `Assistant: `;
+  }
 
   return new Promise<void>(async (resolve, reject) => {
     let unlisten: (() => void) | null = null;
@@ -689,7 +699,28 @@ DO NOT return an empty response!\n\n`;
               callbacks.onToolCalls([firstTool]);
             }
 
-            callbacks.onFinish();
+            let tokens: AiTokenUsage | undefined = undefined;
+            if (payload.tokens && typeof payload.tokens === 'object') {
+              const inp = Number(payload.tokens.input) || 0;
+              const out = Number(payload.tokens.output) || 0;
+              const reas = Number(payload.tokens.reasoning) || 0;
+              tokens = {
+                promptTokens: inp,
+                completionTokens: out + reas,
+                totalTokens: inp + out + reas,
+              };
+            }
+            if (!tokens || (tokens.totalTokens || 0) <= 0) {
+              const estPrompt = Math.ceil((prompt.length || 0) / 4);
+              const estComp = Math.ceil((accumulatedText.length || 0) / 4);
+              tokens = {
+                promptTokens: estPrompt,
+                completionTokens: estComp,
+                totalTokens: estPrompt + estComp,
+              };
+            }
+
+            callbacks.onFinish(tokens);
             resolve();
           }
         }
@@ -791,7 +822,8 @@ async function streamViaNativeHttp(
 // -------------------------------------------------------------
 export function sanitizeMessagesForOpenAi(
   messages: AiChatMessage[],
-  systemPrompt: string
+  systemPrompt: string,
+  aiLanguage: string = 'en'
 ): any[] {
   // Seluruh riwayat pesan dikirim penuh (tanpa limit pemotongan pesan)
   const windowedMessages = [...messages];
@@ -861,7 +893,15 @@ export function sanitizeMessagesForOpenAi(
     }
   }
 
-  const normalized: any[] = [{ role: 'system', content: systemPrompt }];
+  let effectiveSystemPrompt = systemPrompt;
+  if (aiLanguage === 'id') {
+    const lastMsg = windowedMessages[windowedMessages.length - 1];
+    if (lastMsg && lastMsg.role === 'tool') {
+      effectiveSystemPrompt += '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
+    }
+  }
+
+  const normalized: any[] = [{ role: 'system', content: effectiveSystemPrompt }];
 
   for (let i = 0; i < rawFormatted.length; i++) {
     const item = rawFormatted[i];
@@ -939,7 +979,8 @@ async function streamOpenAiCompatible(
   systemPrompt: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
-  copilotMode: AiCopilotMode = 'build'
+  copilotMode: AiCopilotMode = 'build',
+  aiLanguage: string = 'en'
 ) {
   let endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
   // Hanya tambahkan query key jika endpoint menuju Google Generative Language API
@@ -948,7 +989,7 @@ async function streamOpenAiCompatible(
     endpoint = `${endpoint}${sep}key=${encodeURIComponent(apiKey)}`;
   }
 
-  const formattedMessages = sanitizeMessagesForOpenAi(messages, systemPrompt);
+  const formattedMessages = sanitizeMessagesForOpenAi(messages, systemPrompt, aiLanguage);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -964,10 +1005,12 @@ async function streamOpenAiCompatible(
     tool_choice: 'auto',
     parallel_tool_calls: false, // Mutlak false agar AI hanya mengajukan 1 perintah per giliran
     stream: true,
+    stream_options: { include_usage: true },
   });
 
   let buffer = '';
   let accumulatedText = '';
+  const usageHolder: { usage: AiTokenUsage | null } = { usage: null };
   const accumulatedToolCalls: Record<number, { id: string; name: string; argsStr: string }> = {};
 
   const handleChunk = (chunkText: string) => {
@@ -983,6 +1026,16 @@ async function streamOpenAiCompatible(
       if (trimmed.startsWith('data: ')) {
         try {
           const json = JSON.parse(trimmed.substring(6));
+
+          // Tangkap usage jika dikirim oleh OpenAI/OpenRouter/DeepSeek
+          if (json.usage) {
+            usageHolder.usage = {
+              promptTokens: json.usage.prompt_tokens,
+              completionTokens: json.usage.completion_tokens,
+              totalTokens: json.usage.total_tokens,
+            };
+          }
+
           const choice = json.choices?.[0];
           if (!choice) continue;
 
@@ -1068,10 +1121,22 @@ async function streamOpenAiCompatible(
       }
     }
 
-    callbacks.onFinish();
+    let finalUsage = usageHolder.usage;
+    if (!finalUsage || !finalUsage.totalTokens) {
+      const promptLen = formattedMessages.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0), 0);
+      const estPrompt = Math.ceil(promptLen / 4);
+      const estComp = Math.ceil((accumulatedText.length || 0) / 4);
+      finalUsage = {
+        promptTokens: estPrompt,
+        completionTokens: estComp,
+        totalTokens: estPrompt + estComp,
+      };
+    }
+
+    callbacks.onFinish(finalUsage);
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      callbacks.onFinish();
+      callbacks.onFinish(usageHolder.usage || undefined);
       return;
     }
     callbacks.onError(err);
@@ -1089,7 +1154,8 @@ async function streamAnthropic(
   systemPrompt: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
-  copilotMode: AiCopilotMode = 'build'
+  copilotMode: AiCopilotMode = 'build',
+  aiLanguage: string = 'en'
 ) {
   const endpoint = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`;
 
@@ -1161,16 +1227,27 @@ async function streamAnthropic(
     'anthropic-dangerous-direct-browser-access': 'true',
   };
 
+  let effectiveSystemPrompt = systemPrompt;
+  if (aiLanguage === 'id') {
+    const lastMsg = validMessages[validMessages.length - 1];
+    if (lastMsg && lastMsg.role === 'tool') {
+      effectiveSystemPrompt += '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
+    }
+  }
+
   const reqBody = JSON.stringify({
     model,
     max_tokens: 4096,
-    system: systemPrompt,
+    system: effectiveSystemPrompt,
     messages: formattedMessages,
     tools: anthropicTools,
     stream: true,
   });
 
   let buffer = '';
+  let accumulatedText = '';
+  let anthropicInputTokens = 0;
+  let anthropicOutputTokens = 0;
   const accumulatedTools: Record<number, { id: string; name: string; jsonStr: string }> = {};
   let currentToolIndex = -1;
 
@@ -1188,6 +1265,12 @@ async function streamAnthropic(
       try {
         const event = JSON.parse(dataStr);
 
+        if (event.type === 'message_start' && event.message?.usage) {
+          anthropicInputTokens = Number(event.message.usage.input_tokens) || 0;
+        } else if (event.type === 'message_delta' && event.usage) {
+          anthropicOutputTokens = Number(event.usage.output_tokens) || 0;
+        }
+
         if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
           currentToolIndex = event.index;
           accumulatedTools[currentToolIndex] = {
@@ -1197,6 +1280,7 @@ async function streamAnthropic(
           };
         } else if (event.type === 'content_block_delta') {
           if (event.delta?.type === 'text_delta') {
+            accumulatedText += event.delta.text;
             callbacks.onToken(event.delta.text);
           } else if (event.delta?.type === 'input_json_delta' && currentToolIndex >= 0) {
             const currentTool = accumulatedTools[currentToolIndex];
@@ -1239,7 +1323,25 @@ async function streamAnthropic(
       callbacks.onToolCalls(finalToolCalls);
     }
 
-    callbacks.onFinish();
+    let tokenUsage: AiTokenUsage | undefined = undefined;
+    if (anthropicInputTokens > 0 || anthropicOutputTokens > 0) {
+      tokenUsage = {
+        promptTokens: anthropicInputTokens,
+        completionTokens: anthropicOutputTokens,
+        totalTokens: anthropicInputTokens + anthropicOutputTokens,
+      };
+    } else {
+      const promptLen = formattedMessages.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0), 0);
+      const estPrompt = Math.ceil(promptLen / 4);
+      const estComp = Math.ceil((accumulatedText.length || 0) / 4);
+      tokenUsage = {
+        promptTokens: estPrompt,
+        completionTokens: estComp,
+        totalTokens: estPrompt + estComp,
+      };
+    }
+
+    callbacks.onFinish(tokenUsage);
   } catch (err: any) {
     if (err.name === 'AbortError') {
       callbacks.onFinish();
@@ -1260,7 +1362,8 @@ async function streamGemini(
   systemPrompt: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
-  copilotMode: AiCopilotMode = 'build'
+  copilotMode: AiCopilotMode = 'build',
+  aiLanguage: string = 'en'
 ) {
   const root = baseUrl || 'https://generativelanguage.googleapis.com';
   const cleanModel = model.replace(/^models\//, '');
@@ -1277,7 +1380,15 @@ async function streamGemini(
     },
   ];
 
-  const sanitized = sanitizeMessagesForOpenAi(messages, '');
+  let effectiveSystemPrompt = systemPrompt;
+  if (aiLanguage === 'id') {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'tool') {
+      effectiveSystemPrompt += '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
+    }
+  }
+
+  const sanitized = sanitizeMessagesForOpenAi(messages, '', aiLanguage);
   const rawContents: any[] = [];
   for (const m of sanitized) {
     if (m.role === 'system') continue;
@@ -1335,12 +1446,14 @@ async function streamGemini(
 
   const headers = { 'Content-Type': 'application/json' };
   const reqBody = JSON.stringify({
-    systemInstruction: { parts: [{ text: systemPrompt }] },
+    systemInstruction: { parts: [{ text: effectiveSystemPrompt }] },
     contents,
     tools: geminiTools,
   });
 
   let buffer = '';
+  let accumulatedText = '';
+  const geminiUsageHolder: { usage: AiTokenUsage | null } = { usage: null };
   const finalToolCalls: AiToolCall[] = [];
 
   const handleChunk = (chunkText: string) => {
@@ -1353,11 +1466,24 @@ async function streamGemini(
       if (!trimmed.startsWith('data: ')) continue;
       try {
         const json = JSON.parse(trimmed.substring(6));
+
+        if (json.usageMetadata) {
+          const inp = Number(json.usageMetadata.promptTokenCount) || 0;
+          const out = Number(json.usageMetadata.candidatesTokenCount) || 0;
+          const tot = Number(json.usageMetadata.totalTokenCount) || (inp + out);
+          geminiUsageHolder.usage = {
+            promptTokens: inp,
+            completionTokens: out,
+            totalTokens: tot,
+          };
+        }
+
         const candidate = json.candidates?.[0];
         if (!candidate) continue;
 
         for (const part of candidate.content?.parts || []) {
           if (part.text) {
+            accumulatedText += part.text;
             callbacks.onToken(part.text);
           }
           if (part.functionCall) {
@@ -1387,10 +1513,25 @@ async function streamGemini(
     if (finalToolCalls.length > 0) {
       callbacks.onToolCalls(finalToolCalls);
     }
-    callbacks.onFinish();
+
+    let finalGeminiUsage = geminiUsageHolder.usage;
+    if (!finalGeminiUsage || !finalGeminiUsage.totalTokens) {
+      const promptLen = rawContents.reduce((acc, turn) => {
+        return acc + (turn.parts || []).reduce((pAcc: number, p: any) => pAcc + (p.text ? p.text.length : 0), 0);
+      }, 0);
+      const estPrompt = Math.ceil(promptLen / 4);
+      const estComp = Math.ceil((accumulatedText.length || 0) / 4);
+      finalGeminiUsage = {
+        promptTokens: estPrompt,
+        completionTokens: estComp,
+        totalTokens: estPrompt + estComp,
+      };
+    }
+
+    callbacks.onFinish(finalGeminiUsage);
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      callbacks.onFinish();
+      callbacks.onFinish(geminiUsageHolder.usage || undefined);
       return;
     }
     callbacks.onError(err);

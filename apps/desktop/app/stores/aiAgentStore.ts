@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
-import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode, AiTokenUsage } from '../types/index.js';
 import { streamChat, maskSensitiveData, stripToolCallsFromText } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { inspectCommandRisk, isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../services/commandExplainer.js';
@@ -484,6 +484,21 @@ ${langPrompt}
     return threads.value
       .filter(t => t.sessionId === sid)
       .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+  });
+
+  const currentThreadTokens = computed(() => {
+    const list = activeThread.value?.messages || [];
+    let prompt = 0;
+    let completion = 0;
+    let total = 0;
+    for (const m of list) {
+      if (m.tokens) {
+        prompt += m.tokens.promptTokens || 0;
+        completion += m.tokens.completionTokens || 0;
+        total += m.tokens.totalTokens || ((m.tokens.promptTokens || 0) + (m.tokens.completionTokens || 0));
+      }
+    }
+    return { prompt, completion, total };
   });
 
   function createNewThread(sessionId?: string): string {
@@ -1022,10 +1037,15 @@ Saat ini kamu berada dalam Mode BUILD.
 - Perintah non-berbahaya dapat dieksekusi secara otomatis dan berurutan.`;
 
     const langCode = aiLanguage.value || 'en';
-    const langDirective = langCode === 'id'
-      ? `### ATURAN BAHASA: BAHASA INDONESIA (MUTLAK)
-- Anda WAJIB merespon, memberikan analisis, dan menyajikan kesimpulan dalam Bahasa Indonesia yang ramah dan jelas.
-- Tetap pertahankan istilah teknis, nama paket/software, sintaks perintah, dan kode dalam bahasa Inggris.`
+    const isId = langCode === 'id';
+    const langDirective = isId
+      ? `### ATURAN BAHASA: BAHASA INDONESIA (MUTLAK & MENYELURUH)
+- Pengguna memilih Bahasa Indonesia. Seluruh respon Anda WAJIB 100% menggunakan BAHASA INDONESIA:
+  1. Kalimat pembuka, penalaran, dan penjelasan rencana sebelum pemanggilan perintah HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat pembuka berbahasa Inggris seperti "CPU usage is at 100%, therefore examining...", dsb).
+  2. Kalimat pengantar observasi dan uraian temuan setelah eksekusi perintah terminal HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat berbahasa Inggris seperti "High CPU and memory usage is concentrated within several active processes...", dsb).
+  3. Seluruh ringkasan temuan teknis, langkah perbaikan, dan kesimpulan akhir HARUS Bahasa Indonesia.
+- DILARANG mencampurkan kalimat pengantar atau paragraf berbahasa Inggris. Semua narasi wajib Bahasa Indonesia.
+- Tetap pertahankan HANYA sintaks perintah bash, nama service/paket, kode, dan istilah teknis standar (CPU, RAM, swap, PID, load average, disk) apa adanya.`
       : (langCode === 'es'
         ? `### LANGUAGE DIRECTIVE: SPANISH (MANDATORY)
 - You MUST respond, provide analyses, and present all conclusions in Spanish.
@@ -1042,7 +1062,11 @@ Saat ini kamu berada dalam Mode BUILD.
 - You MUST respond, explain, analyze, and present all conclusions in English.
 - Keep technical terms, command syntax, and code identifiers exact.`)));
 
-    return `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Database Administrator running the LFG Engine.
+    const rolePersona = isId
+      ? `Anda adalah BOBA AI Server Copilot, Senior DevOps & Database Administrator otonom handal yang mengoperasikan LFG Engine.`
+      : `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Database Administrator running the LFG Engine.`;
+
+    return `${rolePersona}
 Target Server: ${hostInfo}
 Database Context: ${dbInfo}
 
@@ -1114,7 +1138,10 @@ ${executionModeDirective}
 ### KEBIJAKAN PRIVASI & KEAMANAN DATABASE (ZERO DATA LEAK):
 - Kredensial (password, private key) TIDAK PERNAH dikirim ke provider AI.
 - Seluruh isi baris data (records) dalam database dilindungi secara lokal dan TIDAK PERNAH dikirim ke AI Provider. Kamu hanya menerima metadata eksekusi (nama kolom, jumlah baris, status sukses, dan affected rows).
-- Token dan password otomatis disamarkan (masked) di seluruh log dan output.`;
+- Token dan password otomatis disamarkan (masked) di seluruh log dan output.
+
+### PENEGASAN AKHIR (FINAL LANGUAGE ENFORCEMENT):
+${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Seluruh kalimat pembuka, uraian analisis hasil perintah, dan kesimpulan WAJIB ditulis dalam Bahasa Indonesia. DILARANG menggunakan kalimat pembuka atau narasi berbahasa Inggris.' : 'REMEMBER: All responses must adhere strictly to the selected language preference.'}`;
   }
 
   async function sendMessage(promptText: string) {
@@ -1225,9 +1252,13 @@ ${executionModeDirective}
             thread.updatedAt = Date.now();
             saveState();
           },
-          onFinish: async () => {
+          onFinish: async (tokens?: AiTokenUsage) => {
             isThinking.value = false;
             activeAbortController = null;
+
+            if (tokens) {
+              assistantMsg.tokens = tokens;
+            }
 
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
               assistantMsg.content = stripToolCallsFromText(assistantMsg.content);
@@ -1346,6 +1377,7 @@ ${executionModeDirective}
     activeThreadId,
     activeThread,
     currentSessionThreads,
+    currentThreadTokens,
     messages,
     isThinking,
     toggleDrawer,
