@@ -644,28 +644,32 @@
         <!-- Multi-Query Result Set Switcher Bar -->
         <div
           v-if="hasTabularResults && queryResults.length > 1 && activeViewTab === 'data'"
-          class="px-3 py-1.5 bg-[#141a29] border-b border-boba-800 flex items-center space-x-2 text-xs font-mono select-none overflow-x-auto shrink-0 shadow-inner"
+          class="px-3 py-1.5 bg-[#141a29] border-b border-boba-800 flex items-center space-x-2.5 text-xs font-mono select-none shrink-0 shadow-inner"
         >
-          <span class="text-[11px] text-slate-400 font-sans font-bold shrink-0">Hasil Query ({{ queryResults.length }} Query):</span>
-          <button
-            v-for="(res, rIdx) in queryResults"
-            :key="rIdx"
-            @click="activeResultIndex = rIdx"
-            :class="[
-              'px-2.5 py-1 rounded text-xs transition flex items-center space-x-1.5 shrink-0 border font-mono',
-              activeResultIndex === rIdx
-                ? 'bg-sky-600 text-white font-bold border-sky-400 shadow-md ring-1 ring-sky-300/50'
-                : 'bg-boba-950 text-slate-400 hover:text-slate-200 border-boba-800 hover:bg-boba-850'
-            ]"
-          >
-            <span>Result {{ rIdx + 1 }}</span>
-            <span class="text-[10px] text-sky-200 font-sans" v-if="res?.rows && res.rows.length > 0">
-              ({{ res.rows.length }} baris)
-            </span>
-            <span class="text-[10px] text-emerald-200 font-sans" v-else-if="res && res.affected_rows > 0">
-              ({{ res.affected_rows }} affected)
-            </span>
-          </button>
+          <label for="query-result-select" class="text-[11px] text-slate-400 font-sans font-bold shrink-0">Hasil Query ({{ queryResults.length }} Query):</label>
+          <div class="relative inline-flex items-center">
+            <select
+              id="query-result-select"
+              v-model.number="activeResultIndex"
+              class="bg-boba-950 text-sky-300 font-mono text-xs border border-boba-700 hover:border-slate-500 rounded px-2.5 py-1 pr-7 focus:outline-none focus:border-sky-500 cursor-pointer shadow-sm appearance-none"
+            >
+              <option
+                v-for="(res, rIdx) in queryResults"
+                :key="rIdx"
+                :value="rIdx"
+              >
+                Result {{ rIdx + 1 }} {{ (res?.rows && res.rows.length > 0) ? `(${res.rows.length} baris)` : (res && res.affected_rows > 0 ? `(${res.affected_rows} affected)` : '') }}
+              </option>
+            </select>
+            <div class="pointer-events-none absolute right-2 flex items-center text-slate-400">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+          <span class="text-[10px] text-slate-500 font-sans">
+            Menampilkan Result {{ activeResultIndex + 1 }} dari {{ queryResults.length }}
+          </span>
         </div>
 
         <!-- Fitur 1: Visual Multi-Filter Bar with Per-Condition AND / OR -->
@@ -4817,13 +4821,8 @@ async function executeQuery(customQuery?: string) {
       q
     );
     queryResults.value = resList;
-    // Auto pilih result terakhir atau result yang menghasilkan dataset tabular
-    const firstTabularIdx = resList.findIndex(r => r.rows && r.rows.length > 0);
-    if (firstTabularIdx >= 0) {
-      activeResultIndex.value = firstTabularIdx;
-    } else {
-      activeResultIndex.value = Math.max(0, resList.length - 1);
-    }
+    // Auto pilih result query terakhir
+    activeResultIndex.value = Math.max(0, resList.length - 1);
     if (resList.length > 0) {
       const totalTime = resList.reduce((acc, r) => acc + (r.execution_time_ms || 0), 0);
       lastExecutionTime.value = totalTime;

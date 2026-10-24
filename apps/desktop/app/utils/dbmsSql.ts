@@ -108,23 +108,38 @@ const SQL_KEYWORDS_SET = new Set([
   'schema', 'view', 'index', 'alter', 'create', 'drop', 'modify', 'add', 'column',
   'set', 'into', 'values', 'truncate', 'use', 'show', 'describe', 'desc', 'asc',
   'explain', 'primary', 'foreign', 'key', 'unique', 'default', 'prepare', 'execute',
-  'deallocate', 'begin', 'end', 'commit', 'rollback', 'transaction', 'if', 'else',
+  'deallocate', 'begin', 'end', 'commit', 'rollback', 'transaction', 'else',
   'then', 'case', 'when', 'union', 'all', 'distinct', 'constraint', 'references',
-  'cascade', 'restrict', 'between', 'exists', 'count', 'sum', 'avg', 'min', 'max'
+  'cascade', 'restrict', 'between', 'exists', 'true', 'false'
+]);
+
+const SQL_FUNCTIONS_SET = new Set([
+  'count', 'sum', 'avg', 'min', 'max', 'round', 'if', 'coalesce', 'ifnull', 'nullif',
+  'concat', 'now', 'curdate', 'curtime', 'date', 'datediff', 'date_add', 'date_sub',
+  'date_format', 'substr', 'substring', 'trim', 'lower', 'upper', 'replace',
+  'cast', 'convert', 'abs', 'ceil', 'ceiling', 'floor', 'length', 'char_length',
+  'group_concat', 'greatest', 'least', 'uuid', 'md5', 'sha1', 'sha2'
 ]);
 
 export function highlightSql(sql: string): string {
   if (!sql) return '';
+  if (sql.length > 150_000) {
+    return escapeHtml(sql);
+  }
 
-  const regex = /(--[^\r\n]*|#[^\r\n]*|\/\*[\s\S]*?(?:\*\/|$)|'(?:''|[^'\\]|\\.)*(?:'|$)|"(?:""|[^"\\]|\\.)*(?:"|$)|`[^`]*`|@[a-zA-Z0-9_]+|\b\d+(?:\.\d+)?\b|[a-zA-Z_][a-zA-Z0-9_]*|[^\s\w]+|\s+)/g;
+  const regex = /(--[^\r\n]*|#[^\r\n]*|\/\*[\s\S]*?(?:\*\/|$)|'(?:''|[^'\\]|\\.)*(?:'|$)|"(?:""|[^"\\]|\\.)*(?:"|$)|`(?:``|[^`\\]|\\.)*(?:`|$)|@[a-zA-Z0-9_]+|\b\d+(?:\.\d+)?\b|[a-zA-Z_][a-zA-Z0-9_]*|:=|<=|>=|!=|<>|<=>|->>|->|[+\-*/%<>=&|^~;,().[\]{}]|[^\s\w]|\s+)/g;
 
   let result = '';
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(sql)) !== null) {
     const token = match[0];
+    if (!token) {
+      regex.lastIndex++;
+      continue;
+    }
     if (token.startsWith('--') || token.startsWith('#') || token.startsWith('/*')) {
-      result += `<span class="text-slate-500 italic">${escapeHtml(token)}</span>`;
+      result += `<span class="text-slate-400 italic">${escapeHtml(token)}</span>`;
     } else if (token.startsWith("'") || token.startsWith('"')) {
       result += `<span class="text-emerald-400">${escapeHtml(token)}</span>`;
     } else if (token.startsWith('`')) {
@@ -133,6 +148,8 @@ export function highlightSql(sql: string): string {
       result += `<span class="text-purple-400 font-mono">${escapeHtml(token)}</span>`;
     } else if (/^\d+(?:\.\d+)?$/.test(token)) {
       result += `<span class="text-amber-300">${escapeHtml(token)}</span>`;
+    } else if (SQL_FUNCTIONS_SET.has(token.toLowerCase())) {
+      result += `<span class="text-amber-200 font-medium">${escapeHtml(token)}</span>`;
     } else if (SQL_KEYWORDS_SET.has(token.toLowerCase())) {
       result += `<span class="text-sky-400 font-semibold">${escapeHtml(token)}</span>`;
     } else {
@@ -151,22 +168,33 @@ export function formatSql(sql: string): string {
   if (!sql || !sql.trim()) return '';
 
   const keywordsToNewline = [
-    'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'LEFT JOIN', 'RIGHT JOIN',
-    'INNER JOIN', 'OUTER JOIN', 'CROSS JOIN', 'JOIN', 'ON', 'ORDER BY',
-    'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'VALUES', 'SET'
+    'LEFT OUTER JOIN', 'RIGHT OUTER JOIN', 'FULL OUTER JOIN',
+    'INNER JOIN', 'CROSS JOIN', 'LEFT JOIN', 'RIGHT JOIN',
+    'ORDER BY', 'GROUP BY', 'SELECT', 'FROM', 'WHERE',
+    'AND', 'OR', 'HAVING', 'LIMIT', 'OFFSET', 'UNION ALL',
+    'UNION', 'VALUES', 'SET'
   ];
 
-  let cleaned = sql.replace(/\s+/g, ' ').trim();
+  const lines = sql.split(/\r?\n/);
+  const formattedLines: string[] = [];
 
-  for (const kw of keywordsToNewline) {
-    const reg = new RegExp(`\\b${kw.replace(/ /g, '\\s+')}\\b`, 'gi');
-    cleaned = cleaned.replace(reg, `\n${kw}`);
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('--') || trimmed.startsWith('#') || trimmed.startsWith('/*')) {
+      formattedLines.push(trimmed);
+      continue;
+    }
+
+    let processed = trimmed;
+    for (const kw of keywordsToNewline) {
+      const reg = new RegExp(`(?<=^|\\s)${kw.replace(/ /g, '\\s+')}(?=\\s|$)`, 'gi');
+      processed = processed.replace(reg, `\n${kw}`);
+    }
+
+    formattedLines.push(...processed.split('\n').map(l => l.trim()).filter(Boolean));
   }
 
-  return cleaned
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .join('\n');
+  return formattedLines.join('\n');
 }
 

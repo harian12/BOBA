@@ -870,6 +870,8 @@ pub async fn open_monitoring_window(
     .inner_size(1000.0, 720.0)
     .min_inner_size(800.0, 550.0)
     .resizable(true)
+    .decorations(false)
+    .shadow(true)
     .build()
     .map_err(|e| format!("Failed to create monitoring window: {}", e))?;
 

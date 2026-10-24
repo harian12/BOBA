@@ -83,13 +83,27 @@ test('supportsTruncate is true only where TRUNCATE exists', () => {
 test('highlightSql formats comments, keywords, and strings with distinct classes', () => {
   assert.equal(highlightSql(''), '');
   const out1 = highlightSql('-- ini komentar\nSELECT * FROM users;');
-  assert.match(out1, /<span class="text-slate-500 italic">-- ini komentar<\/span>/);
+  assert.match(out1, /<span class="text-slate-400 italic">-- ini komentar<\/span>/);
   assert.match(out1, /<span class="text-sky-400 font-semibold">SELECT<\/span>/);
   assert.match(out1, /<span class="text-sky-400 font-semibold">FROM<\/span>/);
 
   const out2 = highlightSql('/* blok komentar */ WHERE name = \'boba\'');
-  assert.match(out2, /<span class="text-slate-500 italic">\/\* blok komentar \*\/<\/span>/);
+  assert.match(out2, /<span class="text-slate-400 italic">\/\* blok komentar \*\/<\/span>/);
   assert.match(out2, /<span class="text-emerald-400">&#39;boba&#39;<\/span>/);
+
+  // Operator directly adjacent to string must not swallow quotes or bleed into subsequent queries
+  const out3 = highlightSql("WHERE email='kharisnah20@gmail.com';\nSELECT ROUND(amount) FROM deposits;");
+  assert.match(out3, /<span class="text-emerald-400">&#39;kharisnah20@gmail.com&#39;<\/span>/);
+  assert.match(out3, /<span class="text-sky-400 font-semibold">SELECT<\/span>/);
+  assert.match(out3, /<span class="text-amber-200 font-medium">ROUND<\/span>/);
+
+  // Safety test: Huge text must not crash or hang, returns escaped text safely
+  const hugeText = 'SELECT 1; '.repeat(20_000); // 200,000 characters
+  const start = Date.now();
+  const outHuge = highlightSql(hugeText);
+  const elapsed = Date.now() - start;
+  assert.ok(elapsed < 100, `Execution too slow: ${elapsed}ms`);
+  assert.equal(outHuge.includes('SELECT 1;'), true);
 });
 
 test('buildSelectTableQuery builds queries with order, pagination, and where clauses', () => {
