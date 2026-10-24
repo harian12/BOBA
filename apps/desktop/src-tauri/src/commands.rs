@@ -965,23 +965,21 @@ pub async fn fetch_ai_models(endpoint: String, api_key: Option<String>) -> Resul
                 .filter_map(|m| {
                     let p_id = m.get("providerID").and_then(|p| p.as_str()).unwrap_or("");
                     let m_id = m.get("id").and_then(|id| id.as_str()).unwrap_or("");
-                    let is_free = m_id.contains("free")
-                        || m.get("cost")
-                            .and_then(|c| c.as_array())
-                            .and_then(|a| a.first())
-                            .and_then(|t| t.get("input"))
-                            .and_then(|i| i.as_f64())
-                            .map(|v| v == 0.0)
-                            .unwrap_or(false);
+                    if m_id.is_empty() {
+                        return None;
+                    }
 
-                    if p_id == "opencode" && is_free {
+                    if p_id == "opencode" {
                         Some(m_id.to_string())
+                    } else if !p_id.is_empty() {
+                        Some(format!("{}/{}", p_id, m_id))
                     } else {
-                        None
+                        Some(m_id.to_string())
                     }
                 })
                 .collect();
             models.sort();
+            models.dedup();
             return Ok(models);
         }
     }
@@ -1100,6 +1098,24 @@ pub async fn ai_http_stream(
     Ok(())
 }
 
+fn extract_opencode_error(data_val: Option<&serde_json::Value>) -> String {
+    let err_val = data_val.and_then(|d| d.get("error"));
+    if let Some(e) = err_val {
+        if let Some(s) = e.as_str() {
+            return s.to_string();
+        }
+        if let Some(msg) = e.get("message").and_then(|m| m.as_str()) {
+            let status_suffix = e.get("status")
+                .and_then(|s| s.as_i64())
+                .map(|st| format!(" (Status {})", st))
+                .unwrap_or_default();
+            return format!("{}{}", msg, status_suffix);
+        }
+        return e.to_string();
+    }
+    "OpenCode execution failed".to_string()
+}
+
 #[tauri::command]
 pub async fn ai_opencode_stream(
     app: AppHandle,
@@ -1124,11 +1140,17 @@ pub async fn ai_opencode_stream(
     );
 
     // 1. Create session on local OpenCode service
+    let (provider_id, model_id) = if let Some((p, m)) = model.split_once('/') {
+        (p, m)
+    } else {
+        ("opencode", model.as_str())
+    };
+
     let session_url = format!("{}/api/session", clean_url);
     let session_body = serde_json::json!({
         "model": {
-            "providerID": "opencode",
-            "id": model
+            "providerID": provider_id,
+            "id": model_id
         }
     });
 
@@ -1234,9 +1256,7 @@ pub async fn ai_opencode_stream(
                                         error: None,
                                     });
                                 }
-                            } else if evt_type == "session.execution.succeeded"
-                                || evt_type == "session.idle"
-                            {
+                            } else if evt_type == "session.execution.succeeded" {
                                 let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
                                     stream_id: stream_id.clone(),
                                     chunk: None,
@@ -1244,13 +1264,33 @@ pub async fn ai_opencode_stream(
                                     error: None,
                                 });
                                 return Ok(());
-                            } else if evt_type == "session.execution.failed" {
-                                let err_msg = evt
-                                    .get("data")
-                                    .and_then(|d| d.get("error"))
-                                    .and_then(|e| e.as_str())
-                                    .unwrap_or("OpenCode execution failed")
-                                    .to_string();
+                            } else if evt_type == "session.idle" {
+                                let data_val = evt.get("data");
+                                let is_failed = data_val
+                                    .and_then(|d| d.get("outcome"))
+                                    .and_then(|o| o.as_str())
+                                    == Some("failed");
+                                if is_failed {
+                                    let err_msg = extract_opencode_error(data_val);
+                                    let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                                        stream_id: stream_id.clone(),
+                                        chunk: None,
+                                        done: true,
+                                        error: Some(err_msg.clone()),
+                                    });
+                                    return Err(err_msg);
+                                }
+                                let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                                    stream_id: stream_id.clone(),
+                                    chunk: None,
+                                    done: true,
+                                    error: None,
+                                });
+                                return Ok(());
+                            } else if evt_type == "session.execution.failed"
+                                || evt_type == "session.step.failed"
+                            {
+                                let err_msg = extract_opencode_error(evt.get("data"));
                                 let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
                                     stream_id: stream_id.clone(),
                                     chunk: None,

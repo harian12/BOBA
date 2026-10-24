@@ -1,15 +1,15 @@
 ﻿{
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBkS25uQ0Z2MWJYMk50Mis5dGhlUENjSDFFYVdwWlV2Yms4R3NTOUF1TmU3VUNKQW5kOWVQNjFrSlVoMFp3L2Y2Ly9DL0xNUkhnVU5MTnI2akJNYXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU4NDgxCWZpbGU6Qk9CQV8wLjIuMTlfeDY0LXNldHVwLmV4ZQpENDdJb1hScXJxRExrYkNtWmNHdHVsTWhMYWdJZVN0eE52R1NMUnI5OWdPN3FtRFRXVE90bHEyb2tJSHdJTERVd0JWTEYvK05yVDFjUDlIRlhrSXBCQT09Cg==",
-                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.19/BOBA_0.2.19_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBJbEhtV3RpYUtCZjAzY3FQK2VOTDM5TExYQ3VYWXRpeGpnK0pJOEZmNmtxNVVsM2U1Wm1IVGJ4ckY2VzE5a3NKQnVmT0VybW83N1lKRVRSK3Jkb3dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU5NjQ5CWZpbGU6Qk9CQV8wLjIuMjBfeDY0LXNldHVwLmV4ZQphMDNQY25HcTI5M2wwMHRvMEttQUZNeEdkekZHUk1NTk51SFE0T2IzSWlBUWYvV0c1MEZKUGtCT3ZWcS8vYUV5K1l1ck1uT3UyUXdGWGNWT3JZMjVBUT09Cg==",
+                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.20/BOBA_0.2.20_x64-setup.exe"
                                          },
                       "windows-x86_64-nsis":  {
-                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBkS25uQ0Z2MWJYMk50Mis5dGhlUENjSDFFYVdwWlV2Yms4R3NTOUF1TmU3VUNKQW5kOWVQNjFrSlVoMFp3L2Y2Ly9DL0xNUkhnVU5MTnI2akJNYXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU4NDgxCWZpbGU6Qk9CQV8wLjIuMTlfeDY0LXNldHVwLmV4ZQpENDdJb1hScXJxRExrYkNtWmNHdHVsTWhMYWdJZVN0eE52R1NMUnI5OWdPN3FtRFRXVE90bHEyb2tJSHdJTERVd0JWTEYvK05yVDFjUDlIRlhrSXBCQT09Cg==",
-                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.19/BOBA_0.2.19_x64-setup.exe"
+                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBJbEhtV3RpYUtCZjAzY3FQK2VOTDM5TExYQ3VYWXRpeGpnK0pJOEZmNmtxNVVsM2U1Wm1IVGJ4ckY2VzE5a3NKQnVmT0VybW83N1lKRVRSK3Jkb3dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU5NjQ5CWZpbGU6Qk9CQV8wLjIuMjBfeDY0LXNldHVwLmV4ZQphMDNQY25HcTI5M2wwMHRvMEttQUZNeEdkekZHUk1NTk51SFE0T2IzSWlBUWYvV0c1MEZKUGtCT3ZWcS8vYUV5K1l1ck1uT3UyUXdGWGNWT3JZMjVBUT09Cg==",
+                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.20/BOBA_0.2.20_x64-setup.exe"
                                               }
                   },
-    "pub_date":  "2026-10-24T16:14:49Z",
-    "version":  "0.2.19",
-    "notes":  "Release v0.2.19 - Perbaikan stream SSE respons akhir/kesimpulan, penghilangan teks blok JSON ganda di atas kartu eksekusi, serta penambahan pengaturan bahasa AI (default English, opsi Bahasa Indonesia)."
+    "pub_date":  "2026-10-24T16:34:16Z",
+    "version":  "0.2.20",
+    "notes":  "Release v0.2.20 - Perbaikan error parsing OpenCode (menampilkan pesan asli kuota/rate limit 429), dukungan multi-provider OpenCode (termasuk 9router dan model kustom), serta penegasan prompt inferensi AI BOBA agar model tidak menolak perintah server remote."
 }

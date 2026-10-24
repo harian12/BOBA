@@ -117,6 +117,7 @@ test('opencode provider accepts dynamically discovered free models without hardc
     'nemotron-3.5-lightning-free',
     'nemotron-3-ultra-free',
     'big-pickle',
+    '9router/ag/gemini-3.8-flash-high',
   ];
 
   const opencodeProvider: AiProviderConfig = {
@@ -131,9 +132,10 @@ test('opencode provider accepts dynamically discovered free models without hardc
   };
 
   assert.equal(opencodeProvider.type, 'opencode');
-  assert.equal(opencodeProvider.availableModels?.length, 9);
+  assert.equal(opencodeProvider.availableModels?.length, 10);
   assert.equal(opencodeProvider.availableModels?.includes('big-pickle'), true);
   assert.equal(opencodeProvider.availableModels?.includes('flint-40b-free'), true);
+  assert.equal(opencodeProvider.availableModels?.includes('9router/ag/gemini-3.8-flash-high'), true);
 });
 
 test('parses text tool call JSON blocks from assistant markdown responses', () => {
