@@ -1,5 +1,5 @@
-import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode } from '../types/index.js';
-import { tauriBridge } from './tauriBridge.js';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode } from '../types/index.ts';
+import { tauriBridge } from './tauriBridge.ts';
 
 export const AGENT_TOOLS = [
   {
@@ -276,6 +276,106 @@ export function maskSensitiveData(text: string): string {
     .replace(/(Authorization:\s*Bearer\s+)[a-zA-Z0-9\-_.]{16,}/gi, (_, prefix) => `${prefix}***`);
 }
 
+export function extractToolCallsFromText(accumulatedText: string): AiToolCall[] {
+  if (!accumulatedText || typeof accumulatedText !== 'string') return [];
+
+  const parsedToolCalls: AiToolCall[] = [];
+  const knownTools = [
+    'exec_command',
+    'read_file',
+    'write_file',
+    'get_system_metrics',
+    'list_dir',
+    'inspect_service',
+    'run_security_audit',
+    'check_auth_failures',
+    'db_list_databases',
+    'db_get_schema',
+    'db_execute_query',
+    'db_query',
+    'db_schema',
+  ];
+
+  // 1. Ekstrak dari blok markdown ```json { ... } ``` atau ``` { ... } ```
+  const codeBlockRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/g;
+  let match: RegExpExecArray | null;
+  while ((match = codeBlockRegex.exec(accumulatedText)) !== null) {
+    const jsonStr = match[1];
+    if (!jsonStr) continue;
+    try {
+      const parsed = JSON.parse(jsonStr);
+      const rawTool = parsed.name || parsed.tool || parsed.function || parsed.action;
+      if (rawTool && typeof rawTool === 'string') {
+        const normalizedName = knownTools.find(k => rawTool.startsWith(k)) || rawTool;
+        let args = parsed.args || parsed.parameters || parsed.arguments;
+        if (!args || typeof args !== 'object') {
+          if (parsed.command || parsed.cmd) {
+            args = {
+              command: parsed.command || parsed.cmd,
+              description: parsed.description || 'Jalankan perintah server',
+              impact: parsed.impact || 'Periksa sebelum menyetujui',
+            };
+          } else if (parsed.path) {
+            args = { path: parsed.path, content: parsed.content };
+          } else {
+            args = {};
+          }
+        }
+        parsedToolCalls.push({
+          id: `tc_${Date.now()}_${parsedToolCalls.length}`,
+          name: normalizedName,
+          args,
+          status: 'pending_approval',
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 2. Jika belum ada, cari objek JSON mentah di dalam teks
+  if (parsedToolCalls.length === 0) {
+    const rawJsonRegex = /\{\s*"(?:name|tool|function|action)"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|list_dir|inspect_service|run_security_audit|check_auth_failures|db_list_databases|db_get_schema|db_execute_query)"[\s\S]*?\}/g;
+    while ((match = rawJsonRegex.exec(accumulatedText)) !== null) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        const rawTool = parsed.name || parsed.tool || parsed.function || parsed.action;
+        if (rawTool && typeof rawTool === 'string') {
+          const normalizedName = knownTools.find(k => rawTool.startsWith(k)) || rawTool;
+          const args = parsed.args || parsed.parameters || (parsed.command ? { command: parsed.command, description: parsed.description, impact: parsed.impact } : {});
+          parsedToolCalls.push({
+            id: `tc_${Date.now()}_${parsedToolCalls.length}`,
+            name: normalizedName,
+            args: args || {},
+            status: 'pending_approval',
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 3. Fallback: Jika model mengeluarkan blok kode bash tanpa wrapper JSON: ```bash ... ```
+  if (parsedToolCalls.length === 0) {
+    const bashBlockRegex = /```(?:bash|sh|shell)\s*\n([\s\S]*?)\n```/g;
+    while ((match = bashBlockRegex.exec(accumulatedText)) !== null) {
+      const script = (match[1] || '').trim();
+      if (script && !script.startsWith('#') && script.length < 500) {
+        parsedToolCalls.push({
+          id: `tc_${Date.now()}_${parsedToolCalls.length}`,
+          name: 'exec_command',
+          args: {
+            command: script,
+            description: 'Perintah shell yang disarankan AI',
+            impact: 'Periksa efek samping sebelum menyetujui',
+          },
+          status: 'pending_approval',
+        });
+        break;
+      }
+    }
+  }
+
+  return parsedToolCalls;
+}
+
 export async function fetchAvailableModels(provider: Partial<AiProviderConfig>): Promise<string[]> {
   const type = provider.type || 'openai';
   const rawBaseUrl = (provider.baseUrl || '').trim().replace(/\/+$/, '');
@@ -437,18 +537,32 @@ async function streamOpencode(
   systemPrompt: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
-  copilotMode: AiCopilotMode = 'build'
+  _copilotMode: AiCopilotMode = 'build'
 ): Promise<void> {
   const streamId = `opencode_stream_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   let accumulatedText = '';
 
   let prompt = '';
   if (systemPrompt) {
-    prompt += `[System]\n${systemPrompt}\n\n`;
+    prompt += `[System Instructions]\n${systemPrompt}\n\n`;
   }
-  if (copilotMode === 'build') {
-    prompt += `[Instruksi Server Tool]\nJika Anda menyarankan untuk menjalankan perintah server, periksa file, atau ambil metrik, cantumkan perintah bash dalam blok JSON berikut:\n\`\`\`json\n{"name": "exec_command", "args": {"command": "perintah bash", "description": "tujuan perintah", "impact": "dampak perintah"}}\n\`\`\`\n\n`;
+  prompt += `[Instruksi Format Eksekusi Tool - WAJIB]:
+Anda SUDAH terhubung ke server target melalui runtime BOBA.
+DILARANG KERAS mencoba koneksi SSH sendiri (jangan memanggil 'ssh ...').
+DILARANG KERAS mengakses atau membaca SSH keys / public key / authorized_keys.
+Jika ada tindakan atau pemeriksaan server (misal: cek status Nginx, baca log, cek metrik), Anda WAJIB langsung menyertakan blok kode JSON berikut:
+\`\`\`json
+{
+  "name": "exec_command",
+  "args": {
+    "command": "systemctl status nginx",
+    "description": "Periksa status Nginx",
+    "impact": "Aman (read-only)"
   }
+}
+\`\`\`
+DILARANG merespon hanya dengan kalimat janji ("Saya akan memeriksa...") tanpa menyertakan blok JSON di atas!\n\n`;
+
   for (const m of messages) {
     if (m.role === 'user') {
       prompt += `User: ${m.content}\n\n`;
@@ -458,6 +572,8 @@ async function streamOpencode(
       prompt += `Tool Result (${m.toolCallId || 'output'}): ${m.content}\n\n`;
     }
   }
+
+  prompt += `Assistant: `;
 
   return new Promise<void>(async (resolve, reject) => {
     let unlisten: (() => void) | null = null;
@@ -515,24 +631,7 @@ async function streamOpencode(
             cleanup();
 
             // Extract any tool calls from text
-            const jsonBlockRegex = /```(?:json)?\s*(\{\s*"name"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|inspect_service|run_security_audit|check_auth_failures|inspect_docker|manage_cron|manage_systemd|manage_network_firewall|db_query|db_schema)"[\s\S]*?\})\s*```/g;
-            let match;
-            const parsedToolCalls: AiToolCall[] = [];
-            while ((match = jsonBlockRegex.exec(accumulatedText)) !== null) {
-              const matchedJson = match[1];
-              if (!matchedJson) continue;
-              try {
-                const parsed = JSON.parse(matchedJson);
-                if (parsed.name && parsed.args) {
-                  parsedToolCalls.push({
-                    id: `tc_${Date.now()}_${parsedToolCalls.length}`,
-                    name: parsed.name,
-                    args: parsed.args,
-                    status: 'pending_approval',
-                  });
-                }
-              } catch (_) {}
-            }
+            const parsedToolCalls = extractToolCallsFromText(accumulatedText);
             const [firstTool] = parsedToolCalls;
             if (firstTool) {
               callbacks.onToolCalls([firstTool]);
@@ -816,6 +915,7 @@ async function streamOpenAiCompatible(
   });
 
   let buffer = '';
+  let accumulatedText = '';
   const accumulatedToolCalls: Record<number, { id: string; name: string; argsStr: string }> = {};
 
   const handleChunk = (chunkText: string) => {
@@ -837,8 +937,10 @@ async function streamOpenAiCompatible(
           // Content delta (termasuk text delta & reasoning_content untuk DeepSeek R1 / Qwen)
           const token = choice.delta?.content ?? choice.delta?.text ?? choice.text;
           if (token) {
+            accumulatedText += token;
             callbacks.onToken(token);
           } else if (choice.delta?.reasoning_content) {
+            accumulatedText += choice.delta.reasoning_content;
             callbacks.onToken(choice.delta.reasoning_content);
           }
 
@@ -905,6 +1007,13 @@ async function streamOpenAiCompatible(
         finalToolCalls.length = 1;
       }
       callbacks.onToolCalls(finalToolCalls);
+    } else {
+      // Fallback: Jika model mengeluarkan tool call berbasis teks/markdown (misal model lokal atau open-source)
+      const textTools = extractToolCallsFromText(accumulatedText);
+      const [firstTextTool] = textTools;
+      if (firstTextTool) {
+        callbacks.onToolCalls([firstTextTool]);
+      }
     }
 
     callbacks.onFinish();

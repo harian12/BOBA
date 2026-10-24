@@ -62,11 +62,34 @@ const READONLY_PATTERNS = [
   /\b(sudo\s+)?git\s+(remote|status|log|diff|branch|show)\b/i,
 ];
 
+export function isBlockedSshOrKeyCommand(cmd: string): boolean {
+  const lower = (cmd || '').trim().toLowerCase();
+  if (!lower) return false;
+
+  // 1. Direct SSH / SCP / SFTP invocation
+  if (/(?:^|[;&|`$()\s])(ssh|scp|sftp)(?:\s+|$)/i.test(lower)) {
+    return true;
+  }
+
+  // 2. Reading, inspecting, copying, or exfiltrating SSH keys & public keys
+  if (/(authorized_keys|\.pub\b|id_rsa|id_ed25519|id_ecdsa|id_dsa|\.ssh[\/\\])/i.test(lower)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isBlockedKeyPath(filePath: string): boolean {
+  const lower = (filePath || '').trim().toLowerCase();
+  if (!lower) return false;
+  return /(authorized_keys|\.pub$|id_rsa|id_ed25519|id_ecdsa|id_dsa|\.ssh([\/\\]|$))/i.test(lower);
+}
+
 export function inspectCommandRisk(cmd: string): CommandRiskLevel {
   const lower = (cmd || '').trim().toLowerCase();
   if (!lower) return 'safe';
 
-  if (DANGEROUS_PATTERNS.some(p => p.test(lower))) {
+  if (isBlockedSshOrKeyCommand(cmd) || DANGEROUS_PATTERNS.some(p => p.test(lower))) {
     return 'danger';
   }
   if (MODERATE_PATTERNS.some(p => p.test(lower))) {

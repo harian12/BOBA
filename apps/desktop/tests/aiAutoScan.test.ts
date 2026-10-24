@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AiProviderConfig } from '../app/types/index.ts';
+import { extractToolCallsFromText } from '../app/services/aiAdapters.ts';
+import { isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../app/services/commandExplainer.ts';
 
 test('detected provider contains source metadata and model lists', () => {
   const detected: AiProviderConfig = {
@@ -147,10 +149,45 @@ test('parses text tool call JSON blocks from assistant markdown responses', () =
 \`\`\`
 Silakan konfirmasi untuk menjalankan.`;
 
-  const jsonBlockRegex = /```(?:json)?\s*(\{\s*"name"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|inspect_service)"[\s\S]*?\})\s*```/;
-  const match = markdownResponse.match(jsonBlockRegex);
-  assert.ok(match && match[1]);
-  const parsed = JSON.parse(match[1]);
-  assert.equal(parsed.name, 'exec_command');
-  assert.equal(parsed.args.command, 'uptime');
+  const extracted = extractToolCallsFromText(markdownResponse);
+  assert.equal(extracted.length, 1);
+  assert.equal(extracted[0]?.name, 'exec_command');
+  assert.equal(extracted[0]?.args?.command, 'uptime');
+});
+
+test('extractToolCallsFromText extracts flattened JSON and pure bash fallback blocks', () => {
+  const flattenedText = `Berikut perintah cek status:\n\`\`\`json\n{\n  "name": "exec_command",\n  "command": "systemctl status nginx",\n  "description": "Cek nginx"\n}\n\`\`\``;
+  const extractedFlat = extractToolCallsFromText(flattenedText);
+  assert.equal(extractedFlat.length, 1);
+  assert.equal(extractedFlat[0]?.name, 'exec_command');
+  assert.equal(extractedFlat[0]?.args?.command, 'systemctl status nginx');
+
+  const pureBashText = `Saya akan memeriksa log Nginx:\n\`\`\`bash\njournalctl -u nginx -n 30 --no-pager\n\`\`\``;
+  const extractedBash = extractToolCallsFromText(pureBashText);
+  assert.equal(extractedBash.length, 1);
+  assert.equal(extractedBash[0]?.name, 'exec_command');
+  assert.equal(extractedBash[0]?.args?.command, 'journalctl -u nginx -n 30 --no-pager');
+});
+
+test('security guard blocks direct SSH access and public/private key reading', () => {
+  // Prohibited SSH & key commands
+  assert.equal(isBlockedSshOrKeyCommand('ssh anaverse@103.150.227.17'), true);
+  assert.equal(isBlockedSshOrKeyCommand('cat ~/.ssh/id_rsa'), true);
+  assert.equal(isBlockedSshOrKeyCommand('cat ~/.ssh/authorized_keys'), true);
+  assert.equal(isBlockedSshOrKeyCommand('cat /home/user/.ssh/id_ed25519.pub'), true);
+  assert.equal(isBlockedSshOrKeyCommand('scp id_rsa.pub root@1.2.3.4:/tmp'), true);
+  assert.equal(isBlockedSshOrKeyCommand('grep -i key ~/.ssh/known_hosts'), true);
+
+  // Allowed commands
+  assert.equal(isBlockedSshOrKeyCommand('systemctl status nginx'), false);
+  assert.equal(isBlockedSshOrKeyCommand('cat /etc/nginx/nginx.conf'), false);
+  assert.equal(isBlockedSshOrKeyCommand('journalctl -u nginx -n 50 --no-pager'), false);
+  assert.equal(isBlockedSshOrKeyCommand('df -h && free -m'), false);
+
+  // File paths
+  assert.equal(isBlockedKeyPath('~/.ssh/authorized_keys'), true);
+  assert.equal(isBlockedKeyPath('/root/.ssh/id_rsa'), true);
+  assert.equal(isBlockedKeyPath('/home/dev/.ssh/id_ed25519.pub'), true);
+  assert.equal(isBlockedKeyPath('/var/www/html/index.php'), false);
+  assert.equal(isBlockedKeyPath('/etc/nginx/sites-available/default'), false);
 });

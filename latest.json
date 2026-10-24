@@ -1,15 +1,15 @@
 ﻿{
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBReHZkUXlJSWFFb0JLdlIrSUZNU1ZmNDFEaGQzUEozTmo5R0xLcVh1d2RUS0JsbUIyMUpxZGtTcjhORTdHYXhjZmMxNTFxeXhKNVU0bVREejFPckFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU0NDY3CWZpbGU6Qk9CQV8wLjIuMTdfeDY0LXNldHVwLmV4ZQoweE1pUGNPWEt3TnJmYnJhd1BmSjJhTXJ4bzBwUE1KVzJiUlF4bldDV3J0Q0l4S3JEMllWMnAyYjlIcVI1RWsyam95WG50M2JTVW1NU1U5QjFzcHhEUT09Cg==",
-                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.17/BOBA_0.2.17_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYi9GY3lHcWJmTkIyRlhnSTdWRXNSanVDcFlnZzQrSzJZd0wzWWR2NXl3OWFoY2FWWThtTDBEZ3dVNnEyWk5pM1ZnYk9IelRZR2ExNjN4RmhpWXVId3dJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU2NDI2CWZpbGU6Qk9CQV8wLjIuMThfeDY0LXNldHVwLmV4ZQpJRXNuRHpicG1nR2xJY1FldHAybmRlQVBObUtyY2ZLd2p4amlFOHJQME8zZm5XQktDalpJcVVwMGpwL3ByTkhWQXlIdU1jQW1lcHdEQ3JKS082anBCZz09Cg==",
+                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.18/BOBA_0.2.18_x64-setup.exe"
                                          },
                       "windows-x86_64-nsis":  {
-                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBReHZkUXlJSWFFb0JLdlIrSUZNU1ZmNDFEaGQzUEozTmo5R0xLcVh1d2RUS0JsbUIyMUpxZGtTcjhORTdHYXhjZmMxNTFxeXhKNVU0bVREejFPckFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU0NDY3CWZpbGU6Qk9CQV8wLjIuMTdfeDY0LXNldHVwLmV4ZQoweE1pUGNPWEt3TnJmYnJhd1BmSjJhTXJ4bzBwUE1KVzJiUlF4bldDV3J0Q0l4S3JEMllWMnAyYjlIcVI1RWsyam95WG50M2JTVW1NU1U5QjFzcHhEUT09Cg==",
-                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.17/BOBA_0.2.17_x64-setup.exe"
+                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYi9GY3lHcWJmTkIyRlhnSTdWRXNSanVDcFlnZzQrSzJZd0wzWWR2NXl3OWFoY2FWWThtTDBEZ3dVNnEyWk5pM1ZnYk9IelRZR2ExNjN4RmhpWXVId3dJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU2NDI2CWZpbGU6Qk9CQV8wLjIuMThfeDY0LXNldHVwLmV4ZQpJRXNuRHpicG1nR2xJY1FldHAybmRlQVBObUtyY2ZLd2p4amlFOHJQME8zZm5XQktDalpJcVVwMGpwL3ByTkhWQXlIdU1jQW1lcHdEQ3JKS082anBCZz09Cg==",
+                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.18/BOBA_0.2.18_x64-setup.exe"
                                               }
                   },
-    "pub_date":  "2026-10-24T15:08:00Z",
-    "version":  "0.2.17",
-    "notes":  "Release v0.2.17 - Dukungan dinamis lokal model gratis OpenCode (Flint 40B, Nemotron 3.5, Big Pickle, Beam, dll.) tanpa hardcoding, timeout protection 180s, auto-cleanup session, dan async port discovery."
+    "pub_date":  "2026-10-24T15:40:33Z",
+    "version":  "0.2.18",
+    "notes":  "Release v0.2.18 - Penegakan kepatuhan format tool AI Copilot, larangan akses SSH mandiri, proteksi pemblokiran akses/pembacaan SSH keys dan public key, serta parser fallback cerdas untuk OpenCode \u0026 model teks."
 }

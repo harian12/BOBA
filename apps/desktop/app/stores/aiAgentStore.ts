@@ -3,7 +3,7 @@ import { ref, computed, reactive } from 'vue';
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
 import { streamChat, maskSensitiveData } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
-import { inspectCommandRisk } from '../services/commandExplainer.js';
+import { inspectCommandRisk, isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
 import { useVaultStore } from './vaultStore.js';
 import { useDialogStore } from './dialogStore.js';
@@ -617,6 +617,9 @@ Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan ya
       if (toolCall.name === 'exec_command') {
         const cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
         if (!cmd) throw new Error('Perintah (command) kosong');
+        if (isBlockedSshOrKeyCommand(cmd)) {
+          throw new Error('Aksi diblokir oleh BOBA Security Policy: Akses SSH langsung dan pembacaan SSH keys / public key dilarang demi keamanan.');
+        }
         toolCall.args.command = cmd;
         const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
         const finalResult = output && output.trim().length > 0 ? output : '(Perintah selesai dieksekusi tanpa output / kosong)';
@@ -626,8 +629,11 @@ Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan ya
         toolCall.executedAt = Date.now();
         return sanitizedResult;
       } else if (toolCall.name === 'read_file') {
-        const path = toolCall.args.path;
+        const path = (toolCall.args?.path || '').trim();
         if (!path) throw new Error('Path file kosong');
+        if (isBlockedKeyPath(path)) {
+          throw new Error('Aksi diblokir oleh BOBA Security Policy: Pembacaan file SSH keys / public key dilarang demi keamanan.');
+        }
         const content = await tauriBridge.sftpReadText(realSessionId, path);
         const sanitizedContent = maskSensitiveData(content);
         toolCall.result = sanitizedContent;
@@ -637,6 +643,9 @@ Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan ya
       } else if (toolCall.name === 'write_file') {
         const { path, content } = toolCall.args;
         if (!path) throw new Error('Path file kosong');
+        if (isBlockedKeyPath(path)) {
+          throw new Error('Aksi diblokir oleh BOBA Security Policy: Modifikasi file SSH keys / public key dilarang demi keamanan.');
+        }
         // Buat backup file lama jika ada
         try {
           const oldContent = await tauriBridge.sftpReadText(realSessionId, path);
@@ -999,6 +1008,35 @@ Saat ini kamu berada dalam Mode BUILD.
 Target Server: ${hostInfo}
 Database Context: ${dbInfo}
 
+### ENVIRONMENT RUNTIME & KONEKSI SERVER (WAJIB DIPATUHI):
+1. ANDA SUDAH TERHUBUNG KE SERVER:
+   - Sesi shell terminal ke target server [${hostInfo}] SUDAH AKTIF dan dikelola internal oleh BOBA.
+   - SEMUA perintah bash yang Anda kirim via tool 'exec_command' otomatis dieksekusi langsung di dalam server target tersebut.
+2. DILARANG KERAS AKSES SSH LANGSUNG:
+   - DILARANG mencoba membuat koneksi SSH manual (DILARANG memanggil 'ssh ...', 'scp ...', 'sftp ...').
+   - JANGAN PERNAH berkata "Saya akan mengakses server melalui SSH". Anda SUDAH berada di dalam server!
+3. DILARANG MENGAKSES / MEMBACA KUNCI SSH & PUBLIC KEY:
+   - DILARANG KERAS mencoba mengakses, membaca, mencari, atau meminta SSH keys: 'id_rsa', 'id_ed25519', 'authorized_keys', file '*.pub' (public key), file '.pem', '.key', atau password server.
+   - Semua autentikasi server sudah ditangani BOBA. Pembacaan file-file tersebut akan langsung DIBLOKIR otomatis oleh sistem keamanan BOBA.
+4. DILARANG JANJI PALSU / BASA-BASI (ANTI-HALUSINASI):
+   - JANGAN PERNAH merespon hanya dengan kalimat janji seperti "Saya akan memeriksa status...", "Saya akan mengecek..." tanpa menyertakan perintah/tool call nyata!
+   - Jika pengguna meminta memeriksa status, membaca log, atau menjalankan aksi: Anda WAJIB langsung memanggil tool 'exec_command' pada respon yang sama!
+5. DISIPLIN FORMAT TOOL (ANTI-NGARANG):
+   - Gunakan HANYA tool resmi yang terdaftar:
+     * exec_command: menjalankan perintah bash di server remote.
+       Parameter: command (string, wajib), description (string, wajib), impact (string, wajib).
+     * read_file: membaca isi file teks konfigurasi/log remote via SFTP.
+       Parameter: path (string, wajib).
+     * write_file: menulis/memperbarui file teks (hanya Mode BUILD).
+       Parameter: path (string, wajib), content (string, wajib).
+     * get_system_metrics: memeriksa CPU, RAM, Disk, dan uptime.
+     * inspect_service: status systemd service dan log journalctl.
+       Parameter: service_name (string, wajib), lines (number).
+     * list_dir: melihat isi direktori server remote.
+       Parameter: path (string, wajib).
+     * db_list_databases / db_get_schema / db_execute_query: untuk database.
+   - DILARANG mengarang nama tool sendiri atau membuat format di luar spesifikasi ini!
+
 ${modeDirective}
 
 ${executionModeDirective}
@@ -1021,16 +1059,7 @@ ${executionModeDirective}
 ### DISIPLIN MERESPON HASIL EKSEKUSI TOOL (SANGAT PENTING):
 - Jika perintah menghasilkan ERROR, Access Denied, Permission Denied, atau sintaks salah: JANGAN PERNAH BERHENTI atau menganggap tugas selesai!
 - Analisis error tersebut dan ambil langkah pemulihan (Self-Healing).
-- Selalu berikan penjelasan teks analisis yang informatif sebelum memanggil perintah berikutnya. DILARANG menghasilkan pesan kosong!
-
-You have access to tools to inspect and configure the server and database:
-- exec_command: execute bash commands to inspect status, logs, packages, services, network, or perform configuration.
-- read_file: read full text of configuration files or logs.
-- write_file: update or create configuration files (a backup will be made automatically, only in BUILD mode).
-- get_system_metrics: check current CPU, RAM, Disk, and load average.
-- db_list_databases: list database connections in vault.
-- db_get_schema: inspect tables and columns.
-- db_execute_query: execute SQL queries.
+- Jangan tinggalkan respon kosong, selalu sertakan analisis dan langkah selanjutnya.
 
 ### LFG DevOps Engine (Autonomous Execution Pipeline)
 1. STAGE 1 - PLAN FIRST: Rumuskan rencana singkat sebelum memodifikasi konfigurasi atau database.
