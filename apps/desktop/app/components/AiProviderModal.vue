@@ -385,7 +385,7 @@
               <input
                 v-model="form.baseUrl"
                 type="text"
-                placeholder="https://api.openai.com/v1"
+                :placeholder="form.type === 'opencode' ? 'http://127.0.0.1:28894' : 'https://api.openai.com/v1'"
                 class="w-full bg-boba-900 border border-boba-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-boba-accent focus:ring-1 focus:ring-boba-accent/30 font-mono transition"
               />
             </div>
@@ -405,7 +405,7 @@
               <input
                 v-model="form.apiKey"
                 :type="showKey ? 'text' : 'password'"
-                :placeholder="form.type === 'ollama' ? 'Opsional untuk Ollama' : 'sk-...'"
+                :placeholder="form.type === 'ollama' ? 'Opsional untuk Ollama' : (form.type === 'opencode' ? 'Password dari service.json (otomatis terisi saat Auto-Scan)' : 'sk-...')"
                 class="w-full bg-boba-900 border border-boba-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-boba-accent focus:ring-1 focus:ring-boba-accent/30 font-mono transition"
               />
             </div>
@@ -495,6 +495,7 @@ const aiStore = useAiAgentStore();
 const dialogStore = useDialogStore();
 
 const providerTypes = [
+  { value: 'opencode', label: 'OpenCode Free' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Claude' },
   { value: 'gemini', label: 'Gemini' },
@@ -601,7 +602,11 @@ async function handleImportDetected() {
 function changeType(type: AiProviderType) {
   form.value.type = type;
   availableModels.value = [];
-  if (type === 'openai') {
+  if (type === 'opencode') {
+    form.value.baseUrl = 'http://127.0.0.1:28894';
+    form.value.model = '';
+    void handleFetchModels();
+  } else if (type === 'openai') {
     form.value.baseUrl = 'https://api.openai.com/v1';
     form.value.model = 'gpt-4o';
   } else if (type === 'anthropic') {

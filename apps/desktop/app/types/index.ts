@@ -227,7 +227,7 @@ export interface VaultSnapshot {
 }
 
 // AI Copilot & Server Agent Types
-export type AiProviderType = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'custom';
+export type AiProviderType = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'custom' | 'opencode';
 
 export interface AiProviderConfig {
   id: string;

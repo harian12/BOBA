@@ -209,6 +209,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     if (!provider) return null;
     if (provider.apiKey) return provider;
     if (provider.type === 'ollama') return { ...provider, apiKey: '' };
+    if (provider.type === 'opencode') return { ...provider, apiKey: provider.apiKey || '' };
     try {
       const apiKey = await tauriBridge.aiGetProviderSecret(provider.id);
       if (apiKey) provider.apiKey = apiKey;
@@ -313,7 +314,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   async function runEphemeralAnalysis(promptText: string, sessionId: string): Promise<string> {
     const provider = await getProviderWithSecret(activeProvider.value);
     if (!provider) throw new Error('NO_PROVIDER');
-    if (!provider.apiKey && provider.type !== 'ollama') throw new Error('NO_API_KEY');
+    if (!provider.apiKey && provider.type !== 'ollama' && provider.type !== 'opencode') throw new Error('NO_API_KEY');
     if (isThinking.value) throw new Error('BUSY');
 
     const abort = new AbortController();
@@ -1061,7 +1062,7 @@ You have access to tools to inspect and configure the server and database:
       return;
     }
 
-    if (!provider.apiKey && provider.type !== 'ollama') {
+    if (!provider.apiKey && provider.type !== 'ollama' && provider.type !== 'opencode') {
       dialogStore.alert({
         title: 'API Key Belum Diisi',
         description: `Silakan isi API Key untuk provider ${provider.name} di pengaturan.`,

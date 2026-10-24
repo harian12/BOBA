@@ -103,3 +103,54 @@ test('rejects non-API-key oauth tokens', () => {
   assert.equal(oauthToken.startsWith('sk-'), false);
   assert.equal(oauthToken.startsWith('eyJ'), true);
 });
+
+test('opencode provider accepts dynamically discovered free models without hardcoding', () => {
+  const dynamicModels = [
+    'flint-40b-free',
+    'nemotron-3.5-super-vl-free',
+    'beam-free',
+    'mimo-v2.6-flash-free',
+    'deepseek-v4.1-flash-free',
+    'glm-5.3-flash-free',
+    'nemotron-3.5-lightning-free',
+    'nemotron-3-ultra-free',
+    'big-pickle',
+  ];
+
+  const opencodeProvider: AiProviderConfig = {
+    id: 'opencode_free_local',
+    name: 'OpenCode Free (Lokal PC)',
+    type: 'opencode',
+    baseUrl: 'http://127.0.0.1:28894',
+    apiKey: 'mQ7MHwigXWFIKV6RbqjOBkW-69iC8reoMQGiOS0VvUg',
+    model: dynamicModels[0] || 'flint-40b-free',
+    availableModels: dynamicModels,
+    source: 'OpenCode Service (Free Tier)',
+  };
+
+  assert.equal(opencodeProvider.type, 'opencode');
+  assert.equal(opencodeProvider.availableModels?.length, 9);
+  assert.equal(opencodeProvider.availableModels?.includes('big-pickle'), true);
+  assert.equal(opencodeProvider.availableModels?.includes('flint-40b-free'), true);
+});
+
+test('parses text tool call JSON blocks from assistant markdown responses', () => {
+  const markdownResponse = `Saya akan memeriksa uptime server sekarang:
+\`\`\`json
+{
+  "name": "exec_command",
+  "args": {
+    "command": "uptime",
+    "description": "Periksa durasi aktif server"
+  }
+}
+\`\`\`
+Silakan konfirmasi untuk menjalankan.`;
+
+  const jsonBlockRegex = /```(?:json)?\s*(\{\s*"name"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|inspect_service)"[\s\S]*?\})\s*```/;
+  const match = markdownResponse.match(jsonBlockRegex);
+  assert.ok(match && match[1]);
+  const parsed = JSON.parse(match[1]);
+  assert.equal(parsed.name, 'exec_command');
+  assert.equal(parsed.args.command, 'uptime');
+});

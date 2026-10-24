@@ -926,6 +926,8 @@ pub fn read_recent_logs() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn fetch_ai_models(endpoint: String, api_key: Option<String>) -> Result<Vec<String>, String> {
+    use base64::Engine;
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -935,7 +937,15 @@ pub async fn fetch_ai_models(endpoint: String, api_key: Option<String>) -> Resul
     if let Some(ref key) = api_key {
         let trimmed = key.trim();
         if !trimmed.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", trimmed));
+            if endpoint.contains("/api/model") {
+                let auth_val = format!(
+                    "Basic {}",
+                    base64::engine::general_purpose::STANDARD.encode(format!("opencode:{}", trimmed))
+                );
+                req = req.header("Authorization", auth_val);
+            } else {
+                req = req.header("Authorization", format!("Bearer {}", trimmed));
+            }
         }
     }
 
@@ -947,6 +957,35 @@ pub async fn fetch_ai_models(endpoint: String, api_key: Option<String>) -> Resul
     }
 
     let json: serde_json::Value = res.json().await.map_err(|e| format!("Invalid JSON response: {}", e))?;
+
+    if endpoint.contains("/api/model") {
+        if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+            let mut models: Vec<String> = data
+                .iter()
+                .filter_map(|m| {
+                    let p_id = m.get("providerID").and_then(|p| p.as_str()).unwrap_or("");
+                    let m_id = m.get("id").and_then(|id| id.as_str()).unwrap_or("");
+                    let is_free = m_id.contains("free")
+                        || m.get("cost")
+                            .and_then(|c| c.as_array())
+                            .and_then(|a| a.first())
+                            .and_then(|t| t.get("input"))
+                            .and_then(|i| i.as_f64())
+                            .map(|v| v == 0.0)
+                            .unwrap_or(false);
+
+                    if p_id == "opencode" && is_free {
+                        Some(m_id.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            models.sort();
+            return Ok(models);
+        }
+    }
+
     if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
         let mut models: Vec<String> = data
             .iter()
@@ -1059,6 +1098,202 @@ pub async fn ai_http_stream(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn ai_opencode_stream(
+    app: AppHandle,
+    stream_id: String,
+    base_url: String,
+    password: String,
+    model: String,
+    prompt: String,
+) -> Result<(), String> {
+    use base64::Engine;
+    use tauri::Emitter;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let clean_url = base_url.trim().trim_end_matches('/');
+    let auth_val = format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("opencode:{}", password.trim()))
+    );
+
+    // 1. Create session on local OpenCode service
+    let session_url = format!("{}/api/session", clean_url);
+    let session_body = serde_json::json!({
+        "model": {
+            "providerID": "opencode",
+            "id": model
+        }
+    });
+
+    let sess_res = client
+        .post(&session_url)
+        .header("Authorization", &auth_val)
+        .header("Content-Type", "application/json")
+        .json(&session_body)
+        .send()
+        .await
+        .map_err(|e| format!("Gagal menghubungi OpenCode service di {}: {}", clean_url, e))?;
+
+    if !sess_res.status().is_success() {
+        let status = sess_res.status();
+        let err = sess_res.text().await.unwrap_or_default();
+        let err_msg = format!("OpenCode session error [{}]: {}", status, err);
+        let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+            stream_id: stream_id.clone(),
+            chunk: None,
+            done: true,
+            error: Some(err_msg.clone()),
+        });
+        return Err(err_msg);
+    }
+
+    let sess_json: serde_json::Value = sess_res.json().await.map_err(|e| e.to_string())?;
+    let session_id = sess_json
+        .get("data")
+        .and_then(|d| d.get("id"))
+        .and_then(|id| id.as_str())
+        .ok_or_else(|| "Gagal mendapatkan sessionID dari OpenCode".to_string())?
+        .to_string();
+
+    // 2. Connect to SSE event stream
+    let event_url = format!("{}/api/event", clean_url);
+    let mut event_res = client
+        .get(&event_url)
+        .header("Authorization", &auth_val)
+        .send()
+        .await
+        .map_err(|e| format!("Gagal subscribe ke OpenCode events: {}", e))?;
+
+    // 3. Send prompt
+    let prompt_url = format!("{}/api/session/{}/prompt", clean_url, session_id);
+    let prompt_body = serde_json::json!({
+        "text": prompt
+    });
+
+    let prompt_res = client
+        .post(&prompt_url)
+        .header("Authorization", &auth_val)
+        .header("Content-Type", "application/json")
+        .json(&prompt_body)
+        .send()
+        .await
+        .map_err(|e| format!("Gagal mengirim prompt ke OpenCode: {}", e))?;
+
+    if !prompt_res.status().is_success() {
+        let status = prompt_res.status();
+        let err = prompt_res.text().await.unwrap_or_default();
+        let err_msg = format!("OpenCode prompt error [{}]: {}", status, err);
+        let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+            stream_id: stream_id.clone(),
+            chunk: None,
+            done: true,
+            error: Some(err_msg.clone()),
+        });
+        return Err(err_msg);
+    }
+
+    // 4. Read SSE event stream chunk by chunk with an overall 180s safety timeout
+    let stream_future = async {
+        let mut buffer = String::new();
+        while let Ok(Some(chunk)) = event_res.chunk().await {
+            let text = String::from_utf8_lossy(&chunk);
+            buffer.push_str(&text);
+
+            while let Some(pos) = buffer.find('\n') {
+                let line = buffer[..pos].trim().to_string();
+                buffer = buffer[pos + 1..].to_string();
+
+                if line.starts_with("data: ") {
+                    let json_str = &line[6..];
+                    if let Ok(evt) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        let evt_type = evt.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                        let evt_sess = evt
+                            .get("data")
+                            .and_then(|d| d.get("sessionID"))
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("");
+
+                        if evt_sess == session_id {
+                            if evt_type == "session.text.delta" {
+                                if let Some(delta) = evt
+                                    .get("data")
+                                    .and_then(|d| d.get("delta"))
+                                    .and_then(|s| s.as_str())
+                                {
+                                    let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                                        stream_id: stream_id.clone(),
+                                        chunk: Some(delta.to_string()),
+                                        done: false,
+                                        error: None,
+                                    });
+                                }
+                            } else if evt_type == "session.execution.succeeded"
+                                || evt_type == "session.step.ended"
+                                || evt_type == "session.idle"
+                            {
+                                let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                                    stream_id: stream_id.clone(),
+                                    chunk: None,
+                                    done: true,
+                                    error: None,
+                                });
+                                return Ok(());
+                            } else if evt_type == "session.execution.failed" {
+                                let err_msg = evt
+                                    .get("data")
+                                    .and_then(|d| d.get("error"))
+                                    .and_then(|e| e.as_str())
+                                    .unwrap_or("OpenCode execution failed")
+                                    .to_string();
+                                let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                                    stream_id: stream_id.clone(),
+                                    chunk: None,
+                                    done: true,
+                                    error: Some(err_msg.clone()),
+                                });
+                                return Err(err_msg);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+            stream_id: stream_id.clone(),
+            chunk: None,
+            done: true,
+            error: None,
+        });
+        Ok(())
+    };
+
+    let stream_result = match tokio::time::timeout(std::time::Duration::from_secs(180), stream_future).await {
+        Ok(res) => res,
+        Err(_) => {
+            let err_msg = "OpenCode stream timeout setelah 180 detik".to_string();
+            let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
+                stream_id,
+                chunk: None,
+                done: true,
+                error: Some(err_msg.clone()),
+            });
+            Err(err_msg)
+        }
+    };
+
+    // Clean up ephemeral session from OpenCode service database in background
+    let cleanup_url = format!("{}/api/session/{}", clean_url, session_id);
+    let _ = client.delete(&cleanup_url).header("Authorization", &auth_val).send().await;
+
+    stream_result
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -1440,6 +1675,126 @@ pub async fn detect_local_ai_providers() -> Result<Vec<DetectedAiProvider>, Stri
         .map(std::path::PathBuf::from);
 
     if let Some(ref home) = home_opt {
+        // 0. OpenCode Local Service (Free Tier Models)
+        let service_json_path = home.join(".config").join("opencode").join("service.json");
+        let mut service_password = String::new();
+        if service_json_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&service_json_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    service_password = json
+                        .get("password")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                }
+            }
+        }
+
+        let mut opencode_url = String::new();
+        let status_future = async {
+            let direct = tokio::process::Command::new("opencode")
+                .args(["service", "status"])
+                .output()
+                .await;
+
+            match direct {
+                Ok(o) => Ok(o),
+                Err(_) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        tokio::process::Command::new("cmd")
+                            .args(["/c", "opencode service status"])
+                            .output()
+                            .await
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        tokio::process::Command::new("sh")
+                            .args(["-c", "opencode service status"])
+                            .output()
+                            .await
+                    }
+                }
+            }
+        };
+
+        if let Ok(Ok(out)) = tokio::time::timeout(std::time::Duration::from_millis(1500), status_future).await {
+            if out.status.success() {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if stdout.starts_with("http://") || stdout.starts_with("https://") {
+                    opencode_url = stdout;
+                }
+            }
+        }
+
+        if opencode_url.is_empty() && !service_password.is_empty() {
+            opencode_url = "http://127.0.0.1:28894".to_string();
+        }
+
+        if !opencode_url.is_empty() && !service_password.is_empty() {
+            use base64::Engine;
+            let auth_header = format!(
+                "Basic {}",
+                base64::engine::general_purpose::STANDARD.encode(format!("opencode:{}", service_password))
+            );
+            let check_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_millis(1500))
+                .build();
+
+            if let Ok(http) = check_client {
+                let model_api_url = format!("{}/api/model", opencode_url.trim_end_matches('/'));
+                if let Ok(resp) = http.get(&model_api_url).header("Authorization", &auth_header).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(json) = resp.json::<serde_json::Value>().await {
+                            if let Some(arr) = json.get("data").and_then(|d| d.as_array()) {
+                                let free_models: Vec<String> = arr
+                                    .iter()
+                                    .filter_map(|m| {
+                                        let p_id = m.get("providerID").and_then(|p| p.as_str()).unwrap_or("");
+                                        let m_id = m.get("id").and_then(|id| id.as_str()).unwrap_or("");
+                                        let is_free = m_id.contains("free")
+                                            || m.get("cost")
+                                                .and_then(|c| c.as_array())
+                                                .and_then(|a| a.first())
+                                                .and_then(|t| t.get("input"))
+                                                .and_then(|i| i.as_f64())
+                                                .map(|v| v == 0.0)
+                                                .unwrap_or(false);
+
+                                        if p_id == "opencode" && is_free {
+                                            Some(m_id.to_string())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+
+                                if !free_models.is_empty() {
+                                    let default_model = if free_models.contains(&"flint-40b-free".to_string()) {
+                                        "flint-40b-free".to_string()
+                                    } else {
+                                        free_models.first().cloned().unwrap_or_default()
+                                    };
+
+                                    results.push(DetectedAiProvider {
+                                        id: "opencode_free_local".to_string(),
+                                        name: "OpenCode Free (Lokal PC)".to_string(),
+                                        provider_type: "opencode".to_string(),
+                                        base_url: opencode_url,
+                                        api_key: service_password,
+                                        model: default_model,
+                                        available_models: free_models,
+                                        source: "OpenCode Service (Free Tier)".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 1. OpenCode auth.json (~/.local/share/opencode/auth.json)
         let opencode_auth_path = home.join(".local").join("share").join("opencode").join("auth.json");
         if opencode_auth_path.exists() {
@@ -1819,6 +2174,18 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&cleaned).expect("must parse");
         assert_eq!(parsed["provider"]["name"], "test");
         assert_eq!(parsed["provider"]["baseURL"], "https://example.com/api");
+    }
+
+    #[tokio::test]
+    async fn tests_opencode_dynamic_detection() {
+        let providers = super::detect_local_ai_providers().await.unwrap();
+        if let Some(opencode_p) = providers.iter().find(|p| p.provider_type == "opencode") {
+            assert!(!opencode_p.available_models.is_empty());
+            assert!(
+                opencode_p.available_models.contains(&"flint-40b-free".to_string())
+                    || opencode_p.available_models.contains(&"big-pickle".to_string())
+            );
+        }
     }
 
     #[test]

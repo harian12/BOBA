@@ -366,6 +366,16 @@ export const tauriBridge = {
     return await invoke('ai_http_stream', { streamId, url, headers, body });
   },
 
+  async aiOpencodeStream(
+    streamId: string,
+    baseUrl: string,
+    password: string,
+    model: string,
+    prompt: string
+  ): Promise<void> {
+    return await invoke('ai_opencode_stream', { streamId, baseUrl, password, model, prompt });
+  },
+
   onAiStreamEvent(callback: (payload: { stream_id: string; chunk?: string; done: boolean; error?: string }) => void): Promise<UnlistenFn> {
     return listen('ai-stream-event', (event) => {
       callback(event.payload as any);

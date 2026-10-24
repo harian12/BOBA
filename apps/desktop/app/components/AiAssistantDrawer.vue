@@ -876,7 +876,7 @@ onMounted(() => {
 const hasConfiguredProvider = computed(() => {
   const p = aiStore.activeProvider;
   if (!p) return false;
-  if (p.type === 'ollama') return true;
+  if (p.type === 'ollama' || p.type === 'opencode') return true;
   return Boolean(p.apiKey && p.apiKey.trim().length > 0);
 });
 

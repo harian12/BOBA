@@ -282,6 +282,17 @@ export async function fetchAvailableModels(provider: Partial<AiProviderConfig>):
   const apiKey = (provider.apiKey || '').trim();
 
   try {
+    // 0. OPENCODE LOCAL SERVICE (Ditarik dinamis langsung dari OpenCode service aktif)
+    if (type === 'opencode') {
+      const url = rawBaseUrl || 'http://127.0.0.1:28894';
+      const endpoint = `${url}/api/model`;
+      const nativeModels = await tauriBridge.fetchAiModels(endpoint, apiKey);
+      if (Array.isArray(nativeModels) && nativeModels.length > 0) {
+        return nativeModels;
+      }
+      return [];
+    }
+
     // 1. OLLAMA
     if (type === 'ollama') {
       const url = rawBaseUrl || 'http://localhost:11434';
@@ -403,7 +414,9 @@ export async function streamChat(
   const type = provider.type;
   const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
 
-  if (type === 'anthropic') {
+  if (type === 'opencode') {
+    await streamOpencode(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
+  } else if (type === 'anthropic') {
     await streamAnthropic(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
   } else if (type === 'gemini') {
     await streamGemini(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
@@ -411,6 +424,136 @@ export async function streamChat(
     // OpenAI, Ollama, DeepSeek, OpenRouter, Custom
     await streamOpenAiCompatible(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
   }
+}
+
+// -------------------------------------------------------------
+// Adapter: OpenCode Local Service (/api/session + SSE /api/event)
+// -------------------------------------------------------------
+async function streamOpencode(
+  baseUrl: string,
+  password: string,
+  model: string,
+  messages: AiChatMessage[],
+  systemPrompt: string,
+  callbacks: StreamCallbacks,
+  signal?: AbortSignal,
+  copilotMode: AiCopilotMode = 'build'
+): Promise<void> {
+  const streamId = `opencode_stream_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  let accumulatedText = '';
+
+  let prompt = '';
+  if (systemPrompt) {
+    prompt += `[System]\n${systemPrompt}\n\n`;
+  }
+  if (copilotMode === 'build') {
+    prompt += `[Instruksi Server Tool]\nJika Anda menyarankan untuk menjalankan perintah server, periksa file, atau ambil metrik, cantumkan perintah bash dalam blok JSON berikut:\n\`\`\`json\n{"name": "exec_command", "args": {"command": "perintah bash", "description": "tujuan perintah", "impact": "dampak perintah"}}\n\`\`\`\n\n`;
+  }
+  for (const m of messages) {
+    if (m.role === 'user') {
+      prompt += `User: ${m.content}\n\n`;
+    } else if (m.role === 'assistant') {
+      prompt += `Assistant: ${m.content}\n\n`;
+    } else if (m.role === 'tool') {
+      prompt += `Tool Result (${m.toolCallId || 'output'}): ${m.content}\n\n`;
+    }
+  }
+
+  return new Promise<void>(async (resolve, reject) => {
+    let unlisten: (() => void) | null = null;
+    let finished = false;
+
+    const cleanup = () => {
+      if (unlisten) {
+        unlisten();
+        unlisten = null;
+      }
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
+    };
+
+    const onAbort = () => {
+      if (!finished) {
+        finished = true;
+        cleanup();
+        callbacks.onFinish();
+        resolve();
+      }
+    };
+
+    if (signal) {
+      if (signal.aborted) {
+        callbacks.onFinish();
+        return resolve();
+      }
+      signal.addEventListener('abort', onAbort);
+    }
+
+    try {
+      unlisten = await tauriBridge.onAiStreamEvent((payload) => {
+        if (payload.stream_id !== streamId) return;
+
+        if (payload.error) {
+          if (!finished) {
+            finished = true;
+            cleanup();
+            callbacks.onError(new Error(payload.error));
+            reject(new Error(payload.error));
+          }
+          return;
+        }
+
+        if (payload.chunk) {
+          accumulatedText += payload.chunk;
+          callbacks.onToken(payload.chunk);
+        }
+
+        if (payload.done) {
+          if (!finished) {
+            finished = true;
+            cleanup();
+
+            // Extract any tool calls from text
+            const jsonBlockRegex = /```(?:json)?\s*(\{\s*"name"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|inspect_service|run_security_audit|check_auth_failures|inspect_docker|manage_cron|manage_systemd|manage_network_firewall|db_query|db_schema)"[\s\S]*?\})\s*```/g;
+            let match;
+            const parsedToolCalls: AiToolCall[] = [];
+            while ((match = jsonBlockRegex.exec(accumulatedText)) !== null) {
+              const matchedJson = match[1];
+              if (!matchedJson) continue;
+              try {
+                const parsed = JSON.parse(matchedJson);
+                if (parsed.name && parsed.args) {
+                  parsedToolCalls.push({
+                    id: `tc_${Date.now()}_${parsedToolCalls.length}`,
+                    name: parsed.name,
+                    args: parsed.args,
+                    status: 'pending_approval',
+                  });
+                }
+              } catch (_) {}
+            }
+            const [firstTool] = parsedToolCalls;
+            if (firstTool) {
+              callbacks.onToolCalls([firstTool]);
+            }
+
+            callbacks.onFinish();
+            resolve();
+          }
+        }
+      });
+
+      await tauriBridge.aiOpencodeStream(streamId, baseUrl, password, model, prompt.trim());
+    } catch (err: any) {
+      if (!finished) {
+        finished = true;
+        cleanup();
+        callbacks.onError(err);
+        reject(err);
+      }
+    }
+  });
 }
 
 // -------------------------------------------------------------

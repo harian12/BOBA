@@ -1,15 +1,15 @@
 ﻿{
-    "platforms": {
-        "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjhTRkVxcDdHQ0pJaGZ5bXlWU1ZjSG9DMzVUSEZ3dTVJMHNGRGpKV2o4SXhjaStYclY1VGgyRUxGL1Zxbk81d0t2YmNHMHZWSWlHVURGSDBKTGNmbHdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODE2NDMxCWZpbGU6Qk9CQV8wLjIuMTZfeDY0LXNldHVwLmV4ZQoyZ1pucklsd3loR0E1bkw5RURRT2crcFFMRW4vVjdzT3lYeDExWmcyQktYcnN5WW5mNUZnTnJIclpCWitieGRnWUZXVlVMZjltTDlNRm1Jc3RJcEVEUT09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.16/BOBA_0.2.16_x64-setup.exe"
-        },
-        "windows-x86_64-nsis": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjhTRkVxcDdHQ0pJaGZ5bXlWU1ZjSG9DMzVUSEZ3dTVJMHNGRGpKV2o4SXhjaStYclY1VGgyRUxGL1Zxbk81d0t2YmNHMHZWSWlHVURGSDBKTGNmbHdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODE2NDMxCWZpbGU6Qk9CQV8wLjIuMTZfeDY0LXNldHVwLmV4ZQoyZ1pucklsd3loR0E1bkw5RURRT2crcFFMRW4vVjdzT3lYeDExWmcyQktYcnN5WW5mNUZnTnJIclpCWitieGRnWUZXVlVMZjltTDlNRm1Jc3RJcEVEUT09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.16/BOBA_0.2.16_x64-setup.exe"
-        }
-    },
-    "pub_date": "2026-10-24T05:40:00Z",
-    "version": "0.2.16",
-    "notes": "Release v0.2.16 - Perbaikan syntax highlight SQL & komentar, dropdown switcher hasil query DBMS, dan window decorations monitoring."
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBReHZkUXlJSWFFb0JLdlIrSUZNU1ZmNDFEaGQzUEozTmo5R0xLcVh1d2RUS0JsbUIyMUpxZGtTcjhORTdHYXhjZmMxNTFxeXhKNVU0bVREejFPckFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU0NDY3CWZpbGU6Qk9CQV8wLjIuMTdfeDY0LXNldHVwLmV4ZQoweE1pUGNPWEt3TnJmYnJhd1BmSjJhTXJ4bzBwUE1KVzJiUlF4bldDV3J0Q0l4S3JEMllWMnAyYjlIcVI1RWsyam95WG50M2JTVW1NU1U5QjFzcHhEUT09Cg==",
+                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.17/BOBA_0.2.17_x64-setup.exe"
+                                         },
+                      "windows-x86_64-nsis":  {
+                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjBReHZkUXlJSWFFb0JLdlIrSUZNU1ZmNDFEaGQzUEozTmo5R0xLcVh1d2RUS0JsbUIyMUpxZGtTcjhORTdHYXhjZmMxNTFxeXhKNVU0bVREejFPckFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODU0NDY3CWZpbGU6Qk9CQV8wLjIuMTdfeDY0LXNldHVwLmV4ZQoweE1pUGNPWEt3TnJmYnJhd1BmSjJhTXJ4bzBwUE1KVzJiUlF4bldDV3J0Q0l4S3JEMllWMnAyYjlIcVI1RWsyam95WG50M2JTVW1NU1U5QjFzcHhEUT09Cg==",
+                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.17/BOBA_0.2.17_x64-setup.exe"
+                                              }
+                  },
+    "pub_date":  "2026-10-24T15:08:00Z",
+    "version":  "0.2.17",
+    "notes":  "Release v0.2.17 - Dukungan dinamis lokal model gratis OpenCode (Flint 40B, Nemotron 3.5, Big Pickle, Beam, dll.) tanpa hardcoding, timeout protection 180s, auto-cleanup session, dan async port discovery."
 }
