@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AiProviderConfig } from '../app/types/index.ts';
-import { extractToolCallsFromText } from '../app/services/aiAdapters.ts';
+import { extractToolCallsFromText, stripToolCallsFromText } from '../app/services/aiAdapters.ts';
 import { isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../app/services/commandExplainer.ts';
 
 test('detected provider contains source metadata and model lists', () => {
@@ -153,6 +153,17 @@ Silakan konfirmasi untuk menjalankan.`;
   assert.equal(extracted.length, 1);
   assert.equal(extracted[0]?.name, 'exec_command');
   assert.equal(extracted[0]?.args?.command, 'uptime');
+
+  // Strip should clean out the raw json block, leaving only the surrounding text
+  const stripped = stripToolCallsFromText(markdownResponse);
+  assert.ok(!stripped.includes('```json'));
+  assert.ok(!stripped.includes('"exec_command"'));
+  assert.ok(stripped.includes('Saya akan memeriksa uptime server sekarang:'));
+  assert.ok(stripped.includes('Silakan konfirmasi untuk menjalankan.'));
+
+  // Test screenshot case: only JSON code block with nested args
+  const nestedBlock = "```json\n{\n  \"name\": \"exec_command\",\n  \"args\": {\n    \"command\": \"docker ps --format 'table'\",\n    \"description\": \"Cek docker\",\n    \"impact\": \"Aman\"\n  }\n}\n```";
+  assert.equal(stripToolCallsFromText(nestedBlock), '');
 });
 
 test('extractToolCallsFromText extracts flattened JSON and pure bash fallback blocks', () => {

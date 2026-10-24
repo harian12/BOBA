@@ -376,6 +376,17 @@ export function extractToolCallsFromText(accumulatedText: string): AiToolCall[] 
   return parsedToolCalls;
 }
 
+export function stripToolCallsFromText(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+
+  return text
+    // 1. Bersihkan blok markdown ```json ... ``` atau ``` ... ``` yang berisi tool JSON
+    .replace(/```(?:json)?\s*\{[\s\S]*?"(?:name|tool|function|action)"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|list_dir|inspect_service|run_security_audit|check_auth_failures|db_list_databases|db_get_schema|db_execute_query|db_query|db_schema)"[\s\S]*?\}\s*```/gi, '')
+    // 2. Bersihkan objek JSON mentah jika tidak dalam blok fence
+    .replace(/\{\s*"(?:name|tool|function|action)"\s*:\s*"(?:exec_command|read_file|write_file|get_system_metrics|list_dir|inspect_service|run_security_audit|check_auth_failures|db_list_databases|db_get_schema|db_execute_query|db_query|db_schema)"[\s\S]*?\}/gi, '')
+    .trim();
+}
+
 export async function fetchAvailableModels(provider: Partial<AiProviderConfig>): Promise<string[]> {
   const type = provider.type || 'openai';
   const rawBaseUrl = (provider.baseUrl || '').trim().replace(/\/+$/, '');
@@ -509,13 +520,14 @@ export async function streamChat(
   systemPrompt: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
-  copilotMode: AiCopilotMode = 'build'
+  copilotMode: AiCopilotMode = 'build',
+  aiLanguage: string = 'en'
 ): Promise<void> {
   const type = provider.type;
   const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
 
   if (type === 'opencode') {
-    await streamOpencode(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
+    await streamOpencode(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode, aiLanguage);
   } else if (type === 'anthropic') {
     await streamAnthropic(baseUrl, provider.apiKey, provider.model, messages, systemPrompt, callbacks, signal, copilotMode);
   } else if (type === 'gemini') {
@@ -537,7 +549,8 @@ async function streamOpencode(
   systemPrompt: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
-  _copilotMode: AiCopilotMode = 'build'
+  _copilotMode: AiCopilotMode = 'build',
+  aiLanguage: string = 'en'
 ): Promise<void> {
   const streamId = `opencode_stream_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   let accumulatedText = '';
@@ -546,7 +559,9 @@ async function streamOpencode(
   if (systemPrompt) {
     prompt += `[System Instructions]\n${systemPrompt}\n\n`;
   }
-  prompt += `[Instruksi Format Eksekusi Tool - WAJIB]:
+  const isId = aiLanguage === 'id';
+  if (isId) {
+    prompt += `[Instruksi Format Eksekusi Tool - WAJIB]:
 Anda SUDAH terhubung ke server target melalui runtime BOBA.
 DILARANG KERAS mencoba koneksi SSH sendiri (jangan memanggil 'ssh ...').
 DILARANG KERAS mengakses atau membaca SSH keys / public key / authorized_keys.
@@ -562,6 +577,24 @@ Jika ada tindakan atau pemeriksaan server (misal: cek status Nginx, baca log, ce
 }
 \`\`\`
 DILARANG merespon hanya dengan kalimat janji ("Saya akan memeriksa...") tanpa menyertakan blok JSON di atas!\n\n`;
+  } else {
+    prompt += `[Tool Execution Format Instructions - MANDATORY]:
+You are ALREADY connected to the target server via BOBA runtime.
+DO NOT attempt direct SSH connections (do not call 'ssh ...').
+DO NOT access or read SSH private/public keys or authorized_keys.
+When suggesting an inspection or action on the server, you MUST directly include the following JSON block:
+\`\`\`json
+{
+  "name": "exec_command",
+  "args": {
+    "command": "systemctl status nginx",
+    "description": "Check Nginx status",
+    "impact": "Safe (read-only)"
+  }
+}
+\`\`\`
+DO NOT respond with empty promises without including the JSON block above!\n\n`;
+  }
 
   for (const m of messages) {
     if (m.role === 'user') {
@@ -570,6 +603,23 @@ DILARANG merespon hanya dengan kalimat janji ("Saya akan memeriksa...") tanpa me
       prompt += `Assistant: ${m.content}\n\n`;
     } else if (m.role === 'tool') {
       prompt += `Tool Result (${m.toolCallId || 'output'}): ${m.content}\n\n`;
+    }
+  }
+
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg && lastMsg.role === 'tool') {
+    if (isId) {
+      prompt += `[Instruksi Analisis Output & Kesimpulan]:
+Perintah terminal di atas telah selesai dieksekusi.
+Anda WAJIB membaca dan menganalisis output tersebut secara mendalam.
+Sajikan ringkasan temuan penting, kesehatan sistem, dan KESIMPULAN LENGKAP kepada pengguna dalam Bahasa Indonesia.
+JANGAN berhenti dengan pesan kosong!\n\n`;
+    } else {
+      prompt += `[Output Analysis & Conclusion Instructions]:
+The terminal command above has completed execution.
+You MUST thoroughly inspect and analyze the output.
+Provide a clear breakdown of key findings, system status, and a comprehensive CONCLUSION to the user in English.
+DO NOT return an empty response!\n\n`;
     }
   }
 

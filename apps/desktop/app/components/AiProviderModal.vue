@@ -93,8 +93,32 @@
             </div>
           </div>
 
+          <!-- AI Language Preference in Sidebar -->
+          <div class="p-2.5 rounded-lg bg-boba-900/90 border border-boba-800 space-y-1.5 select-none mt-auto">
+            <div class="flex items-center justify-between text-[11px] font-semibold text-slate-300">
+              <span class="flex items-center space-x-1.5">
+                <Icon icon="lucide:languages" class="w-3.5 h-3.5 text-sky-400" />
+                <span>Bahasa Respon AI</span>
+              </span>
+            </div>
+            <select
+              :value="aiStore.aiLanguage || 'en'"
+              @change="handleLanguageChange(($event.target as HTMLSelectElement).value)"
+              class="w-full bg-boba-950 border border-boba-800 text-sky-300 rounded px-2 py-1 text-[11px] focus:outline-none focus:border-boba-accent font-sans cursor-pointer transition"
+            >
+              <option value="en">English (Default)</option>
+              <option value="id">Bahasa Indonesia</option>
+              <option value="es">Español</option>
+              <option value="zh">中文 (Chinese)</option>
+              <option value="ja">日本語 (Japanese)</option>
+            </select>
+            <div class="text-[9.5px] text-slate-400 leading-tight">
+              Bahasa yang digunakan AI saat menganalisis & membuat kesimpulan.
+            </div>
+          </div>
+
           <!-- Bottom: Panduan Penggunaan Button -->
-          <div class="pt-2 border-t border-boba-800 mt-auto">
+          <div class="pt-2 border-t border-boba-800">
             <button
               @click="openGuide"
               :class="[
@@ -530,6 +554,15 @@ function openGuide() {
   isGuideActive.value = true;
   isScanResultActive.value = false;
   selectedId.value = '';
+}
+
+function handleLanguageChange(lang: string) {
+  aiStore.setAiLanguage(lang);
+  dialogStore.showToast(
+    lang === 'id' ? 'Bahasa Respon AI diubah ke Bahasa Indonesia' : `AI Response Language set to ${lang.toUpperCase()}`,
+    'info',
+    2000
+  );
 }
 
 async function handleScanLocal() {

@@ -302,7 +302,7 @@
             ]"
           >
             <!-- Markdown / Pre-formatted Text -->
-            <div v-if="msg.content" class="whitespace-pre-wrap font-sans">{{ formatMessageText(msg.content) }}</div>
+            <div v-if="formatMessageText(msg.content)" class="whitespace-pre-wrap font-sans">{{ formatMessageText(msg.content) }}</div>
 
             <!-- Connection Error Retry Button -->
             <div
@@ -716,6 +716,17 @@
               <Icon :icon="aiStore.executionMode === 'auto' ? 'lucide:zap' : 'lucide:shield-alert'" class="w-3 h-3" />
               <span>{{ aiStore.executionMode === 'auto' ? 'Auto' : 'Confirm' }}</span>
             </button>
+
+            <!-- Language Switch (EN vs ID) -->
+            <button
+              @click="toggleLanguage"
+              type="button"
+              class="px-2 py-1 rounded-md text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0 bg-boba-850 border-boba-700 text-sky-300 hover:border-boba-600 hover:text-white shadow-sm"
+              :title="aiStore.aiLanguage === 'id' ? 'Bahasa Respon AI: Bahasa Indonesia (Klik untuk ganti ke English)' : 'AI Response Language: English (Click to switch to Bahasa Indonesia)'"
+            >
+              <Icon icon="lucide:languages" class="w-3 h-3 text-sky-400" />
+              <span>{{ (aiStore.aiLanguage || 'en').toUpperCase() }}</span>
+            </button>
           </div>
 
           <!-- Right Controls: Clear & Send / Stop Button -->
@@ -764,6 +775,7 @@ import { useSessionStore } from '../stores/sessionStore.js';
 import { useVaultStore } from '../stores/vaultStore.js';
 import { useDialogStore } from '../stores/dialogStore.js';
 import { explainBashCommand } from '../services/commandExplainer.js';
+import { stripToolCallsFromText } from '../services/aiAdapters.js';
 import { safeSetItem } from '../utils/safeStorage';
 
 const aiStore = useAiAgentStore();
@@ -863,6 +875,16 @@ function toggleExecutionMode() {
   aiStore.setExecutionMode(next);
   dialogStore.showToast(
     next === 'auto' ? 'Mode Otomatis Aktif (Auto-Execution)' : 'Mode Konfirmasi Aktif (Manual Approval)',
+    'info',
+    2000
+  );
+}
+
+function toggleLanguage() {
+  const next = aiStore.aiLanguage === 'id' ? 'en' : 'id';
+  aiStore.setAiLanguage(next);
+  dialogStore.showToast(
+    next === 'id' ? 'Bahasa Respon AI: Bahasa Indonesia' : 'AI Response Language: English',
     'info',
     2000
   );
@@ -998,7 +1020,8 @@ const currentMessages = computed(() => {
 
 function formatMessageText(text: string): string {
   if (!text) return '';
-  return text
+  const stripped = stripToolCallsFromText(text);
+  return stripped
     .replace(/^[\s\S]*?<\/think>\s*/i, '') // Bersihkan blok reasoning DeepSeek jika ada di awal
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
     .replace(/<\/think>/gi, '')
@@ -1017,7 +1040,10 @@ const canContinueAnalysis = computed(() => {
 
   // Hanya tampilkan jika perintah sebelumnya gagal/error ATAU asisten sama sekali belum memberikan respon teks
   const hasFailedTool = Boolean(last.toolCalls?.some(tc => tc.status === 'failed'));
-  const hasWarningNotice = Boolean(last.content?.includes('⚠️ Perintah terminal sebelumnya menghasilkan kendala'));
+  const hasWarningNotice = Boolean(
+    last.content?.includes('⚠️ Perintah terminal sebelumnya menghasilkan kendala') ||
+    last.content?.includes('⚠️ The previous terminal command encountered an issue')
+  );
   const hasNoContent = !last.content || last.content.trim().length === 0;
 
   return hasFailedTool || hasWarningNotice || hasNoContent;
@@ -1025,7 +1051,10 @@ const canContinueAnalysis = computed(() => {
 
 function handleContinueAnalysis() {
   if (aiStore.isThinking || !aiStore.selectedSessionId) return;
-  aiStore.sendMessage('Lanjutkan analisis kendala di atas, cari akar penyebab dari output perintah tadi dan temukan solusi perbaikan di server.');
+  const prompt = aiStore.aiLanguage === 'id'
+    ? 'Lanjutkan analisis kendala di atas, cari akar penyebab dari output perintah tadi dan temukan solusi perbaikan di server.'
+    : 'Continue the analysis above, find the root cause from the previous command output, and recommend a clear solution.';
+  aiStore.sendMessage(prompt);
 }
 
 function handleNewChat() {

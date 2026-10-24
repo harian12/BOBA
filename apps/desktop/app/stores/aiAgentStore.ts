@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
-import { streamChat, maskSensitiveData } from '../services/aiAdapters.js';
+import { streamChat, maskSensitiveData, stripToolCallsFromText } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { inspectCommandRisk, isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
@@ -22,6 +22,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   const isProviderModalOpen = ref<boolean>(false);
   const executionMode = ref<'confirm' | 'auto'>('confirm');
   const copilotMode = ref<AiCopilotMode>('build');
+  const aiLanguage = ref<string>('en');
 
   function openProviderModal() {
     isProviderModalOpen.value = true;
@@ -29,6 +30,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
   function closeProviderModal() {
     isProviderModalOpen.value = false;
+  }
+
+  function setAiLanguage(lang: string) {
+    aiLanguage.value = lang || 'en';
+    saveState();
   }
   const selectedSessionId = ref<string>('');
   const threads = ref<AiChatThread[]>([]);
@@ -109,6 +115,11 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         copilotMode.value = savedCopilotMode;
       }
 
+      const savedLang = localStorage.getItem('boba_ai_language');
+      if (savedLang) {
+        aiLanguage.value = savedLang;
+      }
+
       // Thread history lives in its own file under the app data dir, not in
       // localStorage: it used to share the 5 MB origin quota with the encrypted
       // vault, and long tool output filled it. The read is async, so anything
@@ -184,6 +195,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
     safeSetItem('boba_ai_active_provider', activeProviderId.value);
     safeSetItem('boba_ai_exec_mode', executionMode.value);
     safeSetItem('boba_ai_copilot_mode', copilotMode.value);
+    safeSetItem('boba_ai_language', aiLanguage.value);
 
     // History is stored as-is with no size or count limit: the user deletes what
     // they no longer want, rather than having whole conversations silently
@@ -328,11 +340,15 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       createdAt: Date.now(),
     };
 
+    const langPrompt = aiLanguage.value === 'id'
+      ? '- Jawab LANGSUNG dalam Bahasa Indonesia, ringkas dan terstruktur.'
+      : '- Answer DIRECTLY in English, concise and structured.';
+
     const systemPrompt = `${buildSystemPrompt(sessionId)}
 
 ### KONTEKS KANAL INI: MONITORING DASHBOARD
 Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan yang diberikan sudah berisi seluruh data yang dibutuhkan.
-- Jawab LANGSUNG dalam Bahasa Indonesia, ringkas dan terstruktur.
+${langPrompt}
 - DILARANG memanggil tool apa pun. Semua data sudah tersedia di pesan pengguna.`;
 
     let answer = '';
@@ -348,7 +364,8 @@ Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan ya
           onFinish: () => {},
         },
         abort.signal,
-        'plan'
+        'plan',
+        aiLanguage.value
       );
     } catch (err: any) {
       const text = err?.message || String(err);
@@ -1004,9 +1021,32 @@ Saat ini kamu berada dalam Mode BUILD.
       : `### MODE OTOMATIS (AUTONOMOUS EXECUTION):
 - Perintah non-berbahaya dapat dieksekusi secara otomatis dan berurutan.`;
 
+    const langCode = aiLanguage.value || 'en';
+    const langDirective = langCode === 'id'
+      ? `### ATURAN BAHASA: BAHASA INDONESIA (MUTLAK)
+- Anda WAJIB merespon, memberikan analisis, dan menyajikan kesimpulan dalam Bahasa Indonesia yang ramah dan jelas.
+- Tetap pertahankan istilah teknis, nama paket/software, sintaks perintah, dan kode dalam bahasa Inggris.`
+      : (langCode === 'es'
+        ? `### LANGUAGE DIRECTIVE: SPANISH (MANDATORY)
+- You MUST respond, provide analyses, and present all conclusions in Spanish.
+- Keep technical terms, command syntax, and code identifiers exact.`
+        : (langCode === 'zh'
+          ? `### LANGUAGE DIRECTIVE: CHINESE (MANDATORY)
+- You MUST respond, provide analyses, and present all conclusions in Simplified Chinese.
+- Keep technical terms, command syntax, and code identifiers exact.`
+          : (langCode === 'ja'
+            ? `### LANGUAGE DIRECTIVE: JAPANESE (MANDATORY)
+- You MUST respond, provide analyses, and present all conclusions in Japanese.
+- Keep technical terms, command syntax, and code identifiers exact.`
+            : `### LANGUAGE DIRECTIVE: ENGLISH (MANDATORY - DEFAULT)
+- You MUST respond, explain, analyze, and present all conclusions in English.
+- Keep technical terms, command syntax, and code identifiers exact.`)));
+
     return `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Database Administrator running the LFG Engine.
 Target Server: ${hostInfo}
 Database Context: ${dbInfo}
+
+${langDirective}
 
 ### ENVIRONMENT RUNTIME & KONEKSI SERVER (WAJIB DIPATUHI):
 1. ANDA SUDAH TERHUBUNG KE SERVER:
@@ -1056,7 +1096,10 @@ ${executionModeDirective}
 - JIKA kamu belum mengetahui skema tabel, panggil 'db_get_schema' terlebih dahulu untuk memeriksa kolom yang tepat sebelum menyusun query!
 - Query perubahan atau penghapusan data (UPDATE, DELETE, DROP, TRUNCATE, INSERT, ALTER) WAJIB meminta persetujuan manual pengguna. Berikan 'description' dan 'impact' yang sangat jelas.
 
-### DISIPLIN MERESPON HASIL EKSEKUSI TOOL (SANGAT PENTING):
+### DISIPLIN MERESPON HASIL EKSEKUSI TOOL & KESIMPULAN (SANGAT PENTING):
+- KETIKA PERINTAH SELESAI DIEKSEKUSI (TERDAPAT 'Tool Result'):
+  * Anda WAJIB menganalisis output tersebut secara mendalam, jelaskan temuan teknis utama, dan sajikan KESIMPULAN LENGKAP (Conclusion & Summary) kepada pengguna.
+  * JANGAN PERNAH berhenti atau meninggalkan respon kosong setelah tool selesai dieksekusi!
 - Jika perintah menghasilkan ERROR, Access Denied, Permission Denied, atau sintaks salah: JANGAN PERNAH BERHENTI atau menganggap tugas selesai!
 - Analisis error tersebut dan ambil langkah pemulihan (Self-Healing).
 - Jangan tinggalkan respon kosong, selalu sertakan analisis dan langkah selanjutnya.
@@ -1171,6 +1214,9 @@ ${executionModeDirective}
           onToolCalls: (tcs: AiToolCall[]) => {
             // Ambil hanya 1 perintah pertama untuk sequential discipline
             assistantMsg.toolCalls = tcs.slice(0, 1);
+            if (assistantMsg.toolCalls.length > 0) {
+              assistantMsg.content = stripToolCallsFromText(assistantMsg.content);
+            }
             thread.updatedAt = Date.now();
             saveState();
           },
@@ -1182,6 +1228,10 @@ ${executionModeDirective}
           onFinish: async () => {
             isThinking.value = false;
             activeAbortController = null;
+
+            if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
+              assistantMsg.content = stripToolCallsFromText(assistantMsg.content);
+            }
 
             // A finished turn is the natural commit point. The debounce alone
             // would leave the last of the answer unwritten if the window closed
@@ -1248,12 +1298,16 @@ ${executionModeDirective}
                   const hasError = /\b(error|failed|fatal|denied|cannot|not found|refused|rejected)\b/i.test(contentStr);
 
                   if (hasError) {
-                    assistantMsg.content = `⚠️ Perintah terminal sebelumnya menghasilkan kendala atau error:\n\`\`\`\n${contentStr.slice(0, 400)}\n\`\`\`\nAI belum melanjutkan eksekusi. Silakan klik tombol **✨ Lanjutkan Analisis Masalah** di bawah atau berikan instruksi tambahan.`;
+                    assistantMsg.content = aiLanguage.value === 'id'
+                      ? `⚠️ Perintah terminal sebelumnya menghasilkan kendala atau error:\n\`\`\`\n${contentStr.slice(0, 400)}\n\`\`\`\nAI belum melanjutkan eksekusi. Silakan klik tombol **✨ Lanjutkan Analisis Masalah** di bawah atau berikan instruksi tambahan.`
+                      : `⚠️ The previous terminal command encountered an issue or error:\n\`\`\`\n${contentStr.slice(0, 400)}\n\`\`\`\nPlease click **✨ Continue Analysis** or provide further instructions.`;
                   } else {
-                    assistantMsg.content = '✅ Perintah di server telah selesai dieksekusi.';
+                    assistantMsg.content = aiLanguage.value === 'id'
+                      ? '✅ Perintah di server telah selesai dieksekusi.'
+                      : '✅ Server command execution finished.';
                   }
                 }
-                dialogStore.showToast('Respon AI Copilot selesai', 'info', 2000);
+                dialogStore.showToast(aiLanguage.value === 'id' ? 'Respon AI Copilot selesai' : 'AI Copilot response completed', 'info', 2000);
               }
             }
 
@@ -1262,7 +1316,8 @@ ${executionModeDirective}
           },
         },
         activeAbortController.signal,
-        copilotMode.value
+        copilotMode.value,
+        aiLanguage.value
       );
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -1285,6 +1340,7 @@ ${executionModeDirective}
     closeProviderModal,
     executionMode,
     copilotMode,
+    aiLanguage,
     selectedSessionId,
     threads,
     activeThreadId,
@@ -1302,6 +1358,7 @@ ${executionModeDirective}
     setActiveModel,
     setExecutionMode,
     setCopilotMode,
+    setAiLanguage,
     saveState,
     createNewThread,
     switchThread,

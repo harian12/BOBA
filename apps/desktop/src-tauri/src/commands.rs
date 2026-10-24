@@ -1235,7 +1235,6 @@ pub async fn ai_opencode_stream(
                                     });
                                 }
                             } else if evt_type == "session.execution.succeeded"
-                                || evt_type == "session.step.ended"
                                 || evt_type == "session.idle"
                             {
                                 let _ = app.emit("ai-stream-event", AiStreamChunkEvent {
