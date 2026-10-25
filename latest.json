@@ -1,15 +1,15 @@
 ﻿{
     "platforms": {
         "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVVSWFNNHF3Sm4yRnhDUTZPeFlSM2Z4enlqa0pWQUNxQmxzTE9CVkhSeURiNG5OSTRkSHBZdmxhTUljbUlpcGhCVnUxWUlRNDVyZUlkTURpeDJhRVFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ0NTI2CWZpbGU6Qk9CQV8wLjIuMjJfeDY0LXNldHVwLmV4ZQpjRUtJNXQ4cVR5anRyRHYzVmlOcUZzZG41alZGWkZVcFZhTUprYVhOaGNzaktGcHd3TU9obUdwRndtUSt1Vnk1dmgvSnpBdmdNSHFHWkVkSDVTOGFBZz09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.22/BOBA_0.2.22_x64-setup.exe"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYitWMkJvL2N5cXdSR0lWRjNjRm8vbWJQTWJFV2tvNVNSMjA5bjdOQ1dQR3ZJQkhrb3V6SVVBVmRmY2NYTWxrZ1R6SnpGc0pJZ01iYnlMU2tGbm51c1FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ3NjM1CWZpbGU6Qk9CQV8wLjIuMjNfeDY0LXNldHVwLmV4ZQpNY3ZQR0xZZEVOZjR0RFNQR0xUTGtRYlJ3SUpkWDl3VTlrMTdjMjcrV0FmRUN5UFRQL1gxZjlVL0tRaEJqMkMyNjZuRTNmOEpRVXUrMUNEcTFkbmdBQT09Cg==",
+            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.23/BOBA_0.2.23_x64-setup.exe"
         },
         "windows-x86_64-nsis": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVVSWFNNHF3Sm4yRnhDUTZPeFlSM2Z4enlqa0pWQUNxQmxzTE9CVkhSeURiNG5OSTRkSHBZdmxhTUljbUlpcGhCVnUxWUlRNDVyZUlkTURpeDJhRVFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ0NTI2CWZpbGU6Qk9CQV8wLjIuMjJfeDY0LXNldHVwLmV4ZQpjRUtJNXQ4cVR5anRyRHYzVmlOcUZzZG41alZGWkZVcFZhTUprYVhOaGNzaktGcHd3TU9obUdwRndtUSt1Vnk1dmgvSnpBdmdNSHFHWkVkSDVTOGFBZz09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.22/BOBA_0.2.22_x64-setup.exe"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYitWMkJvL2N5cXdSR0lWRjNjRm8vbWJQTWJFV2tvNVNSMjA5bjdOQ1dQR3ZJQkhrb3V6SVVBVmRmY2NYTWxrZ1R6SnpGc0pJZ01iYnlMU2tGbm51c1FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ3NjM1CWZpbGU6Qk9CQV8wLjIuMjNfeDY0LXNldHVwLmV4ZQpNY3ZQR0xZZEVOZjR0RFNQR0xUTGtRYlJ3SUpkWDl3VTlrMTdjMjcrV0FmRUN5UFRQL1gxZjlVL0tRaEJqMkMyNjZuRTNmOEpRVXUrMUNEcTFkbmdBQT09Cg==",
+            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.23/BOBA_0.2.23_x64-setup.exe"
         }
     },
-    "pub_date": "2026-10-25T16:15:00Z",
-    "version": "0.2.22",
-    "notes": "Release v0.2.22 - Fitur Server Setup & App Installer standalone window, multi-distro package management (Debian/Ubuntu, RHEL/CentOS, Alpine, Arch) dengan terminal eksekusi terisolasi dan pembersihan tuntas."
+    "pub_date": "2026-10-26T00:30:00Z",
+    "version": "0.2.23",
+    "notes": "Release v0.2.23 - Fix non-interactive APT/dpkg prompts (MariaDB & Node.js), fix PM2 update daemon hanging with timeout, replay terminal logs on modal restore, and enhance process termination cleanup."
 }

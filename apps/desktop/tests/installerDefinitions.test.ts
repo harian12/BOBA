@@ -165,7 +165,7 @@ test('getPackageUpdateCommand generates correct upgrade commands', () => {
   const go = SOFTWARE_LIST.find((s) => s.id === 'go')!;
 
   assert.equal(getPackageUpdateCommand(bun, debianOs), 'bun upgrade');
-  assert.equal(getPackageUpdateCommand(nginx, debianOs).includes('apt-get install --only-upgrade -y nginx'), true);
+  assert.equal(getPackageUpdateCommand(nginx, debianOs).includes('apt-get install --only-upgrade -y') && getPackageUpdateCommand(nginx, debianOs).includes('nginx'), true);
   assert.equal(getPackageUpdateCommand(nginx, rhelOs).includes('dnf upgrade -y nginx'), true);
   assert.equal(getPackageUpdateCommand(nginx, alpineOs).includes('apk upgrade nginx'), true);
   assert.equal(getPackageUpdateCommand(nginx, archOs).includes('pacman -Sy --noconfirm nginx'), true);

@@ -1374,6 +1374,13 @@ function initExecutionTerminal() {
   try {
     executionFitAddon.fit();
   } catch {}
+
+  // Replay existing output if re-opening terminal
+  if (executionLogs.value.length > 0) {
+    for (const chunk of executionLogs.value) {
+      executionTerm.write(chunk);
+    }
+  }
 }
 
 function handleResize() {

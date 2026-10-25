@@ -132,7 +132,7 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   if (sw.id === 'deno') return 'deno upgrade';
   if (sw.id === 'composer') return 'sudo composer self-update';
   if (sw.id === 'rust') return 'rustup update';
-  if (sw.id === 'pm2') return 'sudo npm install -g pm2@latest && pm2 update';
+  if (sw.id === 'pm2') return 'sudo npm install -g pm2@latest && (command -v timeout >/dev/null 2>&1 && timeout 15 pm2 update </dev/null || pm2 update </dev/null || true) && (pm2 save 2>/dev/null || true)';
   if (sw.id === 'pnpm') return 'pnpm self-update 2>/dev/null || sudo npm install -g pnpm@latest';
   if (sw.id === 'docker') {
     if (os.family === 'alpine') return 'sudo apk update && sudo apk upgrade docker docker-cli-compose && sudo rc-service docker restart 2>/dev/null || true';
@@ -143,7 +143,7 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   // Nginx
   if (sw.id === 'nginx') {
     if (os.family === 'debian') {
-      return 'sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install --only-upgrade -y nginx && sudo systemctl restart nginx';
+      return 'sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install --only-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nginx && sudo systemctl restart nginx';
     }
     if (os.family === 'rhel') {
       return 'sudo dnf upgrade -y nginx && sudo systemctl restart nginx';
@@ -167,16 +167,16 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
     if (os.family === 'arch') {
       return 'sudo pacman -Sy --noconfirm nodejs npm';
     }
-    return 'curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs';
+    return 'curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 bash - && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs';
   }
 
   // PHP upstream (ppa:ondrej/php on Ubuntu / packages.sury.org on Debian)
   if (sw.id === 'php') {
     if (os.id === 'ubuntu') {
-      return 'sudo add-apt-repository -y ppa:ondrej/php && sudo apt-get update -y && sudo apt-get install -y php php-fpm php-cli php-curl php-mbstring php-xml php-zip php-gd php-mysql php-pgsql php-sqlite3 php-bcmath';
+      return 'sudo -E env DEBIAN_FRONTEND=noninteractive add-apt-repository -y ppa:ondrej/php && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" php php-fpm php-cli php-curl php-mbstring php-xml php-zip php-gd php-mysql php-pgsql php-sqlite3 php-bcmath';
     }
     if (os.family === 'debian') {
-      return 'curl -sSL https://packages.sury.org/php/README.txt | sudo bash - 2>/dev/null; sudo apt-get update -y && sudo apt-get install -y php php-fpm';
+      return 'curl -sSL https://packages.sury.org/php/README.txt | sudo -E env DEBIAN_FRONTEND=noninteractive bash - 2>/dev/null; sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" php php-fpm';
     }
     if (os.family === 'rhel') {
       return 'sudo dnf upgrade -y php php-fpm';
@@ -192,7 +192,7 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   // Go
   if (sw.id === 'go') {
     if (os.family === 'debian') {
-      return 'sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get update && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" golang-go';
+      return 'sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" golang-go';
     }
     if (os.family === 'rhel') {
       return 'sudo dnf upgrade -y golang';
@@ -207,8 +207,11 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
 
   // MariaDB upstream (official repo setup)
   if (sw.id === 'mariadb') {
-    if (os.family === 'debian' || os.family === 'rhel') {
-      return 'curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | sudo bash 2>/dev/null; sudo apt-get update -y && sudo apt-get install -y mariadb-server 2>/dev/null || sudo dnf install -y MariaDB-server';
+    if (os.family === 'debian') {
+      return 'curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 bash 2>/dev/null; sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" mariadb-server';
+    }
+    if (os.family === 'rhel') {
+      return 'curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | sudo bash 2>/dev/null; sudo dnf install -y MariaDB-server';
     }
     if (os.family === 'alpine') {
       return 'sudo apk update && sudo apk upgrade mariadb mariadb-client';
@@ -221,7 +224,7 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   // PostgreSQL upstream (official pgdg repository)
   if (sw.id === 'postgres') {
     if (os.family === 'debian') {
-      return 'sudo sh -c "echo \\"deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main\\" > /etc/apt/sources.list.d/pgdg.list" && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg --yes && sudo apt-get update -y && sudo apt-get install -y postgresql postgresql-contrib';
+      return 'sudo sh -c "echo \\"deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main\\" > /etc/apt/sources.list.d/pgdg.list" && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg --yes && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" postgresql postgresql-contrib';
     }
     if (os.family === 'rhel') {
       return 'sudo dnf upgrade -y postgresql-server postgresql-contrib 2>/dev/null || sudo yum upgrade -y postgresql-server';
@@ -237,7 +240,7 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   // Redis upstream (official redis repository)
   if (sw.id === 'redis') {
     if (os.family === 'debian') {
-      return 'curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg --yes 2>/dev/null && echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list 2>/dev/null && sudo apt-get update -y && sudo apt-get install -y redis-server && sudo systemctl restart redis-server';
+      return 'curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg --yes 2>/dev/null && echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list 2>/dev/null && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" redis-server && sudo systemctl restart redis-server';
     }
     if (os.family === 'rhel') {
       return 'sudo dnf upgrade -y redis && sudo systemctl restart redis';
@@ -253,7 +256,7 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   // Git
   if (sw.id === 'git') {
     if (os.family === 'debian') {
-      return 'sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get update && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install --only-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git';
+      return 'sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install --only-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" git';
     }
     if (os.family === 'rhel') {
       return 'sudo dnf upgrade -y git';
@@ -270,14 +273,14 @@ export function getPackageUpdateCommand(sw: SoftwareDefinition, os: OsInfo): str
   if (sw.id === 'caddy') {
     if (os.family === 'alpine') return 'sudo apk update && sudo apk upgrade caddy';
     if (os.family === 'arch') return 'sudo pacman -Sy --noconfirm caddy';
-    return 'sudo caddy upgrade 2>/dev/null || (curl -1sLf "https://dl.cloudsmith.io/public/caddy/stable/gpg.key" | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg --yes 2>/dev/null && sudo apt-get update -y && sudo apt-get install -y caddy)';
+    return 'sudo caddy upgrade 2>/dev/null || (curl -1sLf "https://dl.cloudsmith.io/public/caddy/stable/gpg.key" | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg --yes 2>/dev/null && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" caddy)';
   }
 
   // Certbot upstream
   if (sw.id === 'certbot') {
     if (os.family === 'alpine') return 'sudo apk update && sudo apk upgrade certbot certbot-nginx';
     if (os.family === 'arch') return 'sudo pacman -Sy --noconfirm certbot certbot-nginx';
-    return 'sudo snap refresh certbot 2>/dev/null || (sudo apt-get update -y && sudo apt-get install --only-upgrade -y certbot python3-certbot-nginx)';
+    return 'sudo snap refresh certbot 2>/dev/null || (sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get update -y && sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1 apt-get install --only-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" certbot python3-certbot-nginx)';
   }
 
   let pkgName = sw.checkCmd;
@@ -483,9 +486,30 @@ export function getPackageUninstallCommand(sw: SoftwareDefinition, os: OsInfo): 
 export function buildSingleActionScript(actionTitle: string, cmd: string, options?: { wrapNohup?: boolean }): string {
   const baseScript = [
     '#!/usr/bin/env bash',
+    '# Ensure non-interactive execution and keep existing configurations by default',
+    'export DEBIAN_FRONTEND=noninteractive',
+    'export NEEDRESTART_MODE=a',
+    'export NEEDRESTART_SUSPEND=1',
+    'export UCF_FORCE_CONFFOLD=1',
+    'export APT_LISTCHANGES_FRONTEND=none',
+    '',
+    '# Automatically set non-interactive dpkg force-confdef & force-confold rules for apt',
+    'if command -v apt-get >/dev/null 2>&1 && [ -d /etc/apt/apt.conf.d ]; then',
+    '  sudo -n tee /etc/apt/apt.conf.d/99boba-noninteractive >/dev/null 2>&1 << \'BOBA_APT_EOF\' || true',
+    'Dpkg::Options {',
+    '   "--force-confdef";',
+    '   "--force-confold";',
+    '}',
+    'APT::Get::Assume-Yes "true";',
+    'BOBA_APT_EOF',
+    'fi',
+    '',
     'LOCK_FILE="/tmp/boba-setup.lock"',
     'echo "$$" > "$LOCK_FILE"',
-    'cleanup() { rm -f "$LOCK_FILE"; }',
+    'cleanup() {',
+    '  rm -f "$LOCK_FILE" 2>/dev/null || true',
+    '  sudo -n rm -f /etc/apt/apt.conf.d/99boba-noninteractive 2>/dev/null || true',
+    '}',
     'trap cleanup EXIT INT TERM',
     '',
     'echo ""',
@@ -586,8 +610,12 @@ export function buildKillSetupCommand(): string {
     'sudo -n pkill -9 -f "whiptail" 2>/dev/null || true',
     'pkill -9 -f "needrestart" 2>/dev/null || true',
     'sudo -n pkill -9 -f "needrestart" 2>/dev/null || true',
+    'pkill -9 -f "frontend" 2>/dev/null || true',
+    'sudo -n pkill -9 -f "frontend" 2>/dev/null || true',
+    'pkill -9 -f "pm2 update" 2>/dev/null || true',
+    'sudo -n pkill -9 -f "pm2 update" 2>/dev/null || true',
     'rm -f /tmp/boba-setup.lock /tmp/boba-setup.sh 2>/dev/null || true',
-    'sudo -n rm -f /tmp/boba-setup.lock /tmp/boba-setup.sh 2>/dev/null || true',
+    'sudo -n rm -f /tmp/boba-setup.lock /tmp/boba-setup.sh /etc/apt/apt.conf.d/99boba-noninteractive 2>/dev/null || true',
     'echo "STOPPED"'
   ].join('\n');
 }
@@ -1133,8 +1161,8 @@ export const SOFTWARE_LIST: SoftwareDefinition[] = [
         return [{ stepName: 'Install Node.js & NPM via Pacman', cmd: '$SUDO pacman -Sy --noconfirm nodejs npm' }];
       }
       return [
-        { stepName: 'Setup NodeSource LTS APT Repository', cmd: 'curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO -E bash -' },
-        { stepName: 'Install Node.js & NPM', cmd: '$SUDO apt-get install -y nodejs' }
+        { stepName: 'Setup NodeSource LTS APT Repository', cmd: 'curl -fsSL https://deb.nodesource.com/setup_lts.x | $SUDO -E bash -' },
+        { stepName: 'Install Node.js & NPM', cmd: '$SUDO apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs' }
       ];
     }
   },
@@ -2138,6 +2166,18 @@ export function generateInstallScript(
     'export NEEDRESTART_MODE=a',
     'export NEEDRESTART_SUSPEND=1',
     'export UCF_FORCE_CONFFOLD=1',
+    'export APT_LISTCHANGES_FRONTEND=none',
+    '',
+    '# Automatically set non-interactive dpkg force-confdef & force-confold rules for apt',
+    'if command -v apt-get >/dev/null 2>&1 && [ -d /etc/apt/apt.conf.d ]; then',
+    '  sudo -n tee /etc/apt/apt.conf.d/99boba-noninteractive >/dev/null 2>&1 << \'BOBA_APT_EOF\' || true',
+    'Dpkg::Options {',
+    '   "--force-confdef";',
+    '   "--force-confold";',
+    '}',
+    'APT::Get::Assume-Yes "true";',
+    'BOBA_APT_EOF',
+    'fi',
     '',
     '# Prevent concurrent installer execution lock',
     'LOCK_FILE="/tmp/boba-setup.lock"',
@@ -2155,21 +2195,22 @@ export function generateInstallScript(
     '',
     'echo "$$" > "$LOCK_FILE"',
     'boba_cleanup() {',
-    '  rm -f "$LOCK_FILE"',
+    '  rm -f "$LOCK_FILE" 2>/dev/null || true',
+    '  sudo -n rm -f /etc/apt/apt.conf.d/99boba-noninteractive 2>/dev/null || true',
     '}',
     'trap boba_cleanup EXIT INT TERM',
     '',
     '# Detect sudo privilege',
     'if [ "$(id -u)" -ne 0 ]; then',
     '  if command -v sudo >/dev/null 2>&1; then',
-    '    SUDO="sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1"',
+    '    SUDO="sudo -E env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1"',
     '  else',
     requiresRoot
       ? '    echo -e "\\033[1;31m[ERROR] Script membutuhkan hak akses root atau sudo untuk paket sistem.\\033[0m" >&2\n    exit 1'
       : '    SUDO=""',
     '  fi',
     'else',
-    '  SUDO="env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1"',
+    '  SUDO="env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 UCF_FORCE_CONFFOLD=1"',
     'fi',
     '',
     `TOTAL_STEPS=${totalSteps}`,
