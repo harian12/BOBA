@@ -325,6 +325,14 @@ export const tauriBridge = {
     return await invoke('ssh_start_log_stream', { sessionId, command, label });
   },
 
+  async sshWriteLogStream(streamId: string, data: string): Promise<void> {
+    return await invoke('ssh_write_log_stream', { streamId, data });
+  },
+
+  async sshResizeLogStream(streamId: string, cols: number, rows: number): Promise<void> {
+    return await invoke('ssh_resize_log_stream', { streamId, cols, rows });
+  },
+
   async sshStopLogStream(streamId: string): Promise<void> {
     return await invoke('ssh_stop_log_stream', { streamId });
   },

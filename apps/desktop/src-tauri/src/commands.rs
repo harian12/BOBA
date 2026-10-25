@@ -776,6 +776,25 @@ pub async fn ssh_stop_log_stream(
 }
 
 #[tauri::command]
+pub fn ssh_write_log_stream(
+    state: State<'_, AppState>,
+    stream_id: String,
+    data: String,
+) -> Result<(), String> {
+    state.ssh_manager.write_log_stream(&stream_id, data.into_bytes())
+}
+
+#[tauri::command]
+pub fn ssh_resize_log_stream(
+    state: State<'_, AppState>,
+    stream_id: String,
+    cols: u32,
+    rows: u32,
+) -> Result<(), String> {
+    state.ssh_manager.resize_log_stream(&stream_id, cols, rows)
+}
+
+#[tauri::command]
 pub async fn ssh_list_active_log_streams(
     state: State<'_, AppState>,
     session_id: String,

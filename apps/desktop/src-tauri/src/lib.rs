@@ -94,6 +94,8 @@ pub fn run() {
             commands::ssh_get_server_metrics_full,
             commands::ssh_list_running_apps,
             commands::ssh_start_log_stream,
+            commands::ssh_write_log_stream,
+            commands::ssh_resize_log_stream,
             commands::ssh_stop_log_stream,
             commands::ssh_list_active_log_streams,
             commands::ssh_start_tunnel,

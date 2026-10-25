@@ -961,7 +961,10 @@
         </div>
 
         <!-- Terminal Container Body -->
-        <div class="flex-1 w-full bg-[#080a10] p-3 overflow-hidden relative flex flex-col">
+        <div
+          class="flex-1 w-full bg-[#080a10] p-3 overflow-hidden relative flex flex-col cursor-text"
+          @click="focusExecutionTerminal"
+        >
           <div
             ref="executionTermContainer"
             class="w-full h-full flex-1"
@@ -972,7 +975,10 @@
         <div class="px-5 py-3 bg-[#101420] border-t border-[#1f2638] flex items-center justify-between shrink-0">
           <div class="text-[11px] text-slate-400 flex items-center space-x-2">
             <Icon icon="lucide:terminal" class="w-3.5 h-3.5 text-slate-500" />
-            <span v-if="executionStatus === 'running'">Output dialirkan live langsung dari server...</span>
+            <span v-if="executionStatus === 'running'" class="flex items-center space-x-1.5">
+              <span>Terminal Interaktif:</span>
+              <span class="text-emerald-400 font-medium">Dapat diketik langsung jika butuh input/konfirmasi [Y/n]</span>
+            </span>
             <span v-else-if="executionStatus === 'success'" class="text-emerald-400 font-medium">Proses selesai dengan sukses. Status software telah diperbarui.</span>
             <span v-else class="text-rose-400 font-medium">Proses berhenti atau terjadi kesalahan pada eksekusi.</span>
           </div>
@@ -1338,6 +1344,12 @@ async function copyText(text: string, toastMessage = 'Berhasil disalin') {
   }
 }
 
+function focusExecutionTerminal() {
+  if (executionTerm) {
+    executionTerm.focus();
+  }
+}
+
 function initExecutionTerminal() {
   if (!executionTermContainer.value) return;
   if (executionTerm) {
@@ -1363,9 +1375,16 @@ function initExecutionTerminal() {
     fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, monospace',
     fontSize: 12,
     lineHeight: 1.35,
-    cursorBlink: false,
-    disableStdin: true,
+    cursorBlink: true,
+    disableStdin: false,
     convertEol: true
+  });
+
+  // Enable two-way interactive input forwarding to remote execution process
+  executionTerm.onData((data: string) => {
+    if (executionStreamId.value && executionStatus.value === 'running') {
+      tauriBridge.sshWriteLogStream(executionStreamId.value, data).catch(() => {});
+    }
   });
 
   executionFitAddon = new FitAddon();
@@ -1373,6 +1392,9 @@ function initExecutionTerminal() {
   executionTerm.open(executionTermContainer.value);
   try {
     executionFitAddon.fit();
+    if (executionStreamId.value && executionStatus.value === 'running') {
+      tauriBridge.sshResizeLogStream(executionStreamId.value, executionTerm.cols, executionTerm.rows).catch(() => {});
+    }
   } catch {}
 
   // Replay existing output if re-opening terminal
@@ -1381,12 +1403,18 @@ function initExecutionTerminal() {
       executionTerm.write(chunk);
     }
   }
+
+  // Auto-focus terminal so user can type immediately
+  executionTerm.focus();
 }
 
 function handleResize() {
-  if (isExecutionModalOpen.value && executionFitAddon) {
+  if (isExecutionModalOpen.value && executionFitAddon && executionTerm) {
     try {
       executionFitAddon.fit();
+      if (executionStreamId.value && executionStatus.value === 'running') {
+        tauriBridge.sshResizeLogStream(executionStreamId.value, executionTerm.cols, executionTerm.rows).catch(() => {});
+      }
     } catch {}
   }
 }

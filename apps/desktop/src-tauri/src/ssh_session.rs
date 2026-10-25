@@ -287,6 +287,8 @@ pub struct LogStream {
     pub session_id: String,
     pub label: String,
     pub cancel: Arc<AtomicBool>,
+    pub input_tx: mpsc::UnboundedSender<Vec<u8>>,
+    pub resize_tx: mpsc::UnboundedSender<(u32, u32)>,
 }
 
 #[derive(Clone)]
@@ -943,6 +945,9 @@ echo "---END---"
             }
         };
 
+        let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (resize_tx, mut resize_rx) = mpsc::unbounded_channel::<(u32, u32)>();
+
         let command_str = command.to_string();
         let channel = {
             let handle = handle_arc.lock().await;
@@ -950,6 +955,20 @@ echo "---END---"
                 .channel_open_session()
                 .await
                 .map_err(|e| format!("Gagal membuka channel log: {}", e))?;
+
+            // Allocate PTY so interactive commands and prompts function seamlessly
+            let _ = ch
+                .request_pty(
+                    false,
+                    "xterm-256color",
+                    120,
+                    32,
+                    0,
+                    0,
+                    &[],
+                )
+                .await;
+
             ch.exec(true, command_str)
                 .await
                 .map_err(|e| format!("Gagal menjalankan perintah log: {}", e))?;
@@ -967,6 +986,8 @@ echo "---END---"
                     session_id: session_id.to_string(),
                     label: label.to_string(),
                     cancel: cancel.clone(),
+                    input_tx,
+                    resize_tx,
                 },
             );
         }
@@ -980,29 +1001,42 @@ echo "---END---"
             let log_streams_arc = self.log_streams.clone();
 
             // The task owns the channel: ending the task drops the channel, which
-            // makes the remote `tail` process exit on the server side.
+            // makes the remote process exit on the server side.
             tauri::async_runtime::spawn(async move {
                 let mut channel = channel;
                 loop {
                     if task_cancel.load(Ordering::SeqCst) {
                         break;
                     }
-                    match channel.wait().await {
-                        Some(ChannelMsg::Data { data }) => {
-                            let chunk = String::from_utf8_lossy(&data).to_string();
-                            if !chunk.is_empty() {
-                                let _ = app.emit(&chunk_event, chunk);
+                    tokio::select! {
+                        Some(input) = input_rx.recv() => {
+                            if let Err(_) = channel.data(&input[..]).await {
+                                break;
                             }
                         }
-                        Some(ChannelMsg::ExtendedData { data, .. }) => {
-                            let chunk = String::from_utf8_lossy(&data).to_string();
-                            if !chunk.is_empty() {
-                                let _ = app.emit(&chunk_event, chunk);
+                        Some((cols, rows)) = resize_rx.recv() => {
+                            let safe_cols = cols.max(10);
+                            let safe_rows = rows.max(2);
+                            let _ = channel.window_change(safe_cols, safe_rows, 0, 0).await;
+                        }
+                        msg = channel.wait() => {
+                            match msg {
+                                Some(ChannelMsg::Data { data }) => {
+                                    let chunk = String::from_utf8_lossy(&data).to_string();
+                                    if !chunk.is_empty() {
+                                        let _ = app.emit(&chunk_event, chunk);
+                                    }
+                                }
+                                Some(ChannelMsg::ExtendedData { data, .. }) => {
+                                    let chunk = String::from_utf8_lossy(&data).to_string();
+                                    if !chunk.is_empty() {
+                                        let _ = app.emit(&chunk_event, chunk);
+                                    }
+                                }
+                                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                                Some(_) => continue,
                             }
                         }
-                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => break,
-                        Some(_) => continue,
-                        None => break,
                     }
                 }
                 log_streams_arc.lock().remove(&task_stream_id);
@@ -1016,6 +1050,28 @@ echo "---END---"
         }
 
         Ok(stream_id)
+    }
+
+    /// Forward interactive user input (e.g. [Y/n] or confirmation) to a running log stream channel
+    pub fn write_log_stream(&self, stream_id: &str, data: Vec<u8>) -> Result<(), String> {
+        let streams = self.log_streams.lock();
+        if let Some(stream) = streams.get(stream_id) {
+            stream.input_tx.send(data).map_err(|e| e.to_string())?;
+            Ok(())
+        } else {
+            Err("Log stream not found".into())
+        }
+    }
+
+    /// Resize terminal window dimensions for a running log stream
+    pub fn resize_log_stream(&self, stream_id: &str, cols: u32, rows: u32) -> Result<(), String> {
+        let streams = self.log_streams.lock();
+        if let Some(stream) = streams.get(stream_id) {
+            stream.resize_tx.send((cols, rows)).map_err(|e| e.to_string())?;
+            Ok(())
+        } else {
+            Err("Log stream not found".into())
+        }
     }
 
     /// Signal a live stream to stop. The reader task then drops its channel,
