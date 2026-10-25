@@ -878,6 +878,42 @@ pub async fn open_monitoring_window(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn open_installer_window(
+    app_handle: tauri::AppHandle,
+    session_id: String,
+    title: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let win_label = format!("installer-{}", session_id.replace(|c: char| !c.is_alphanumeric() && c != '_' && c != '-', "_"));
+    
+    if let Some(existing_win) = app_handle.get_webview_window(&win_label) {
+        let _ = existing_win.set_focus();
+        return Ok(());
+    }
+
+    let encoded_sid: String = session_id.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c.to_string() } else { format!("%{:02X}", c as u32) }).collect();
+    let encoded_title: String = title.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c.to_string() } else { format!("%{:02X}", c as u32) }).collect();
+    let url_str = format!("index.html?window=installer&sessionId={}&title={}", encoded_sid, encoded_title);
+    let win_title = format!("App Installer - {}", title);
+
+    tauri::WebviewWindowBuilder::new(
+        &app_handle,
+        &win_label,
+        tauri::WebviewUrl::App(url_str.into()),
+    )
+    .title(win_title)
+    .inner_size(1100.0, 780.0)
+    .min_inner_size(850.0, 550.0)
+    .resizable(true)
+    .decorations(false)
+    .shadow(true)
+    .build()
+    .map_err(|e| format!("Failed to create installer window: {}", e))?;
+
+    Ok(())
+}
+
 pub fn log_msg(msg: &str) {
     let log_path = match std::env::var("APPDATA") {
         Ok(appdata) => std::path::PathBuf::from(appdata).join("boba").join("boba.log"),

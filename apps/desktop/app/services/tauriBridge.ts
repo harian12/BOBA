@@ -312,6 +312,10 @@ export const tauriBridge = {
     return await invoke('open_monitoring_window', { sessionId, title: title || 'Server' });
   },
 
+  async openInstallerWindow(sessionId: string, title?: string): Promise<void> {
+    return await invoke('open_installer_window', { sessionId, title: title || 'Server' });
+  },
+
   // App discovery & log streaming
   async sshListRunningApps(sessionId: string): Promise<string> {
     return await invoke('ssh_list_running_apps', { sessionId });

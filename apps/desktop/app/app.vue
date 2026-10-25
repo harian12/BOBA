@@ -1,10 +1,23 @@
 <template>
+  <!-- Dedicated App Installer Window View (Rendered when url query has window=installer) -->
+  <div v-if="isInstallerWindow" class="h-screen w-screen overflow-hidden">
+    <ServerInstallerModal
+      :is-open="true"
+      :session-id="installerSessionId"
+      :host-title="installerHostTitle"
+      :is-standalone-window="true"
+    />
+    <AppDialog />
+  </div>
+
   <!-- Dedicated Monitoring Window View (Rendered when url query has window=monitoring) -->
-  <ServerMonitoringView
-    v-if="isMonitoringWindow"
-    :session-id="monitoringSessionId"
-    :host-title="monitoringHostTitle"
-  />
+  <div v-else-if="isMonitoringWindow" class="h-screen w-screen overflow-hidden">
+    <ServerMonitoringView
+      :session-id="monitoringSessionId"
+      :host-title="monitoringHostTitle"
+    />
+    <AppDialog />
+  </div>
 
   <div v-else class="h-screen w-screen flex flex-col bg-boba-950 text-slate-100 overflow-hidden select-none">
     <!-- Top Global App Bar -->
@@ -458,15 +471,24 @@ import { ref, onMounted, onUnmounted, onErrorCaptured } from 'vue';
 import { Icon } from '@iconify/vue';
 import ServerMonitoringView from './components/ServerMonitoringView.vue';
 import Sidebar from './components/Sidebar.vue';
+import ServerInstallerModal from './components/ServerInstallerModal.vue';
 
-// Check if this window was opened as dedicated monitoring window
+// Check if this window was opened as dedicated window
 const isMonitoringWindow = ref(false);
 const monitoringSessionId = ref('');
 const monitoringHostTitle = ref('');
 
+const isInstallerWindow = ref(false);
+const installerSessionId = ref('');
+const installerHostTitle = ref('');
+
 if (typeof window !== 'undefined') {
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('window') === 'monitoring' || window.location.hash.includes('monitoring')) {
+  if (urlParams.get('window') === 'installer' || window.location.hash.includes('installer')) {
+    isInstallerWindow.value = true;
+    installerSessionId.value = urlParams.get('sessionId') || '';
+    installerHostTitle.value = urlParams.get('title') || 'App Installer';
+  } else if (urlParams.get('window') === 'monitoring' || window.location.hash.includes('monitoring')) {
     isMonitoringWindow.value = true;
     monitoringSessionId.value = urlParams.get('sessionId') || '';
     monitoringHostTitle.value = urlParams.get('title') || 'Server Monitoring';

@@ -100,6 +100,7 @@ pub fn run() {
             commands::ssh_stop_tunnel,
             commands::ssh_list_active_tunnels,
             commands::open_monitoring_window,
+            commands::open_installer_window,
             commands::ssh_exec_command,
             commands::get_app_log_path,
             commands::open_log_file,

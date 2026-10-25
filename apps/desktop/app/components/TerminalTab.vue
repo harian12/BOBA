@@ -92,6 +92,16 @@
               <span>Monitoring</span>
             </button>
 
+            <!-- Server Setup & App Installer Window Button -->
+            <button
+              @click.stop="openInstallerWindow"
+              class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka Server Setup & App Installer di jendela terpisah"
+            >
+              <Icon icon="lucide:package-plus" class="w-3 h-3 text-emerald-400" />
+              <span>App Installer</span>
+            </button>
+
             <!-- Docker Manager Modal Button -->
             <button
               v-if="hasDocker"
@@ -216,6 +226,13 @@
             >
               <Icon icon="lucide:activity" class="w-3.5 h-3.5 text-emerald-400" />
               <span>Monitoring Server</span>
+            </button>
+            <button
+              @click="openInstallerWindow(); isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-emerald-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:package-plus" class="w-3.5 h-3.5 text-emerald-400" />
+              <span>App Installer & Setup</span>
             </button>
             <button
               @click="isTunnelModalOpen = true; isToolsMenuOpen = false"
@@ -487,6 +504,17 @@
         <div class="flex items-center space-x-2">
           <span class="text-xs">🐳</span>
           <span>Docker Manager</span>
+        </div>
+      </button>
+
+      <!-- Open App Installer Context Menu -->
+      <button
+        @click="closeContextMenu(); openInstallerWindow()"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-emerald-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">📦</span>
+          <span>App Installer & Setup</span>
         </div>
       </button>
 
@@ -788,6 +816,15 @@
         :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
         @close="isSecurityModalOpen = false"
       />
+
+      <!-- Server Setup & App Installer Modal -->
+      <ServerInstallerModal
+        v-if="isInstallerModalOpen"
+        :isOpen="isInstallerModalOpen"
+        :sessionId="tab.id"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isInstallerModalOpen = false"
+      />
     </Teleport>
   </div>
 </template>
@@ -813,6 +850,7 @@ import CronManagerModal from './CronManagerModal.vue';
 import FirewallPortsModal from './FirewallPortsModal.vue';
 import NetworkSslModal from './NetworkSslModal.vue';
 import SecurityAuditorModal from './SecurityAuditorModal.vue';
+import ServerInstallerModal from './ServerInstallerModal.vue';
 
 const props = defineProps<{
   tab: ActiveTab;
@@ -855,6 +893,9 @@ const isNetworkModalOpen = ref(false);
 // Security & Hardening Auditor State
 const isSecurityModalOpen = ref(false);
 
+// Server Setup & App Installer State
+const isInstallerModalOpen = ref(false);
+
 // Responsive Tools Dropdown State
 const isToolsMenuOpen = ref(false);
 
@@ -866,7 +907,8 @@ const isAnyModalOpen = computed(() =>
   isCronModalOpen.value ||
   isFirewallModalOpen.value ||
   isNetworkModalOpen.value ||
-  isSecurityModalOpen.value
+  isSecurityModalOpen.value ||
+  isInstallerModalOpen.value
 );
 
 // Resource Metrics
@@ -928,6 +970,14 @@ function handleCopy() {
 function openMonitoringWindow() {
   const sessionId = props.tab.id;
   tauriBridge.openMonitoringWindow(sessionId, props.tab.title);
+}
+
+function openInstallerWindow() {
+  const sessionId = props.tab.id;
+  tauriBridge.openInstallerWindow(sessionId, props.tab.title).catch(() => {
+    // Fallback to modal if window opening fails
+    isInstallerModalOpen.value = true;
+  });
 }
 
 function handleAskCopilot() {

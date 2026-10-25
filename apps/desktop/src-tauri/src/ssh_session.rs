@@ -922,10 +922,11 @@ echo "---END---"
         command: &str,
         label: &str,
     ) -> Result<String, String> {
-        const MAX_STREAMS: usize = 3;
+        const MAX_STREAMS: usize = 10;
 
         {
-            let streams = self.log_streams.lock();
+            let mut streams = self.log_streams.lock();
+            streams.retain(|_, s| !s.cancel.load(Ordering::SeqCst));
             if streams.len() >= MAX_STREAMS {
                 return Err(format!(
                     "Batas {} log stream aktif tercapai. Hentikan stream yang sedang berjalan sebelum membuka yang baru.",
@@ -976,6 +977,7 @@ echo "---END---"
             let ended_event = format!("log-stream-ended:{}", stream_id);
             let task_cancel = cancel.clone();
             let task_stream_id = stream_id.clone();
+            let log_streams_arc = self.log_streams.clone();
 
             // The task owns the channel: ending the task drops the channel, which
             // makes the remote `tail` process exit on the server side.
@@ -1003,6 +1005,7 @@ echo "---END---"
                         None => break,
                     }
                 }
+                log_streams_arc.lock().remove(&task_stream_id);
                 let _ = app.emit(&ended_event, task_stream_id);
             });
         } else {

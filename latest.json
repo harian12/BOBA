@@ -1,15 +1,15 @@
 ﻿{
-    "platforms":  {
-                      "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYndWRTR1MUZwZWFrKzdtVk9VS01ScWVpL24vTCtJZTBVekFqdlFJcS9od2d4NkZOL091S2VoR2pmcVI0QnpaWWgwVS9NK3dSV2RMTUxtWER2dDJWTlFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODYxOTU4CWZpbGU6Qk9CQV8wLjIuMjFfeDY0LXNldHVwLmV4ZQpMemVXSUpqd2dkeFN2WVBza1lxUEV0c0NPelpKYkFRNjlYbWx3U3NWUVBMSEFXU2N3THMvUWdnMy9sYit2cjFFVVhFUEtqZDkzblFzNC95VkltS1NDQT09Cg==",
-                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.21/BOBA_0.2.21_x64-setup.exe"
-                                         },
-                      "windows-x86_64-nsis":  {
-                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYndWRTR1MUZwZWFrKzdtVk9VS01ScWVpL24vTCtJZTBVekFqdlFJcS9od2d4NkZOL091S2VoR2pmcVI0QnpaWWgwVS9NK3dSV2RMTUxtWER2dDJWTlFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODYxOTU4CWZpbGU6Qk9CQV8wLjIuMjFfeDY0LXNldHVwLmV4ZQpMemVXSUpqd2dkeFN2WVBza1lxUEV0c0NPelpKYkFRNjlYbWx3U3NWUVBMSEFXU2N3THMvUWdnMy9sYit2cjFFVVhFUEtqZDkzblFzNC95VkltS1NDQT09Cg==",
-                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.21/BOBA_0.2.21_x64-setup.exe"
-                                              }
-                  },
-    "pub_date":  "2026-10-24T17:12:46Z",
-    "version":  "0.2.21",
-    "notes":  "Release v0.2.21 - Penegasan aturan Bahasa Indonesia untuk model LLM (mencegah teks pengantar dan analisis berbahasa Inggris), serta penambahan metrik total penggunaan token per pesan dan per sesi percakapan."
+    "platforms": {
+        "windows-x86_64": {
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVVSWFNNHF3Sm4yRnhDUTZPeFlSM2Z4enlqa0pWQUNxQmxzTE9CVkhSeURiNG5OSTRkSHBZdmxhTUljbUlpcGhCVnUxWUlRNDVyZUlkTURpeDJhRVFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ0NTI2CWZpbGU6Qk9CQV8wLjIuMjJfeDY0LXNldHVwLmV4ZQpjRUtJNXQ4cVR5anRyRHYzVmlOcUZzZG41alZGWkZVcFZhTUprYVhOaGNzaktGcHd3TU9obUdwRndtUSt1Vnk1dmgvSnpBdmdNSHFHWkVkSDVTOGFBZz09Cg==",
+            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.22/BOBA_0.2.22_x64-setup.exe"
+        },
+        "windows-x86_64-nsis": {
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVVSWFNNHF3Sm4yRnhDUTZPeFlSM2Z4enlqa0pWQUNxQmxzTE9CVkhSeURiNG5OSTRkSHBZdmxhTUljbUlpcGhCVnUxWUlRNDVyZUlkTURpeDJhRVFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyOTQ0NTI2CWZpbGU6Qk9CQV8wLjIuMjJfeDY0LXNldHVwLmV4ZQpjRUtJNXQ4cVR5anRyRHYzVmlOcUZzZG41alZGWkZVcFZhTUprYVhOaGNzaktGcHd3TU9obUdwRndtUSt1Vnk1dmgvSnpBdmdNSHFHWkVkSDVTOGFBZz09Cg==",
+            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.22/BOBA_0.2.22_x64-setup.exe"
+        }
+    },
+    "pub_date": "2026-10-25T16:15:00Z",
+    "version": "0.2.22",
+    "notes": "Release v0.2.22 - Fitur Server Setup & App Installer standalone window, multi-distro package management (Debian/Ubuntu, RHEL/CentOS, Alpine, Arch) dengan terminal eksekusi terisolasi dan pembersihan tuntas."
 }
