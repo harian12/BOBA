@@ -117,18 +117,8 @@
           <span class="text-[9px] text-slate-400">▼</span>
         </button>
 
-        <span class="text-[10px] text-slate-500 font-mono hidden sm:inline-flex items-center space-x-1">
-          <span>({{ currentMessages.length }} pesan</span>
-          <span
-            v-if="aiStore.currentThreadTokens.total > 0"
-            class="text-amber-400 font-medium flex items-center space-x-0.5 cursor-help"
-            :title="`Total Token Percakapan Ini: ${aiStore.currentThreadTokens.total.toLocaleString()} (Prompt: ${aiStore.currentThreadTokens.prompt.toLocaleString()} • Output: ${aiStore.currentThreadTokens.completion.toLocaleString()})`"
-          >
-            <span>•</span>
-            <Icon icon="lucide:coins" class="w-2.5 h-2.5 ml-0.5 text-amber-400" />
-            <span>{{ formatTokenCount(aiStore.currentThreadTokens.total) }}</span>
-          </span>
-          <span>)</span>
+        <span class="text-[10px] text-slate-500 font-mono hidden sm:inline">
+          ({{ currentMessages.length }} pesan)
         </span>
       </div>
 
@@ -524,6 +514,23 @@
                   <div v-else class="text-slate-400 font-mono">{{ JSON.stringify(tc.args) }}</div>
                 </div>
 
+                <!-- Running Tool Actions: Allow Cancellation -->
+                <div v-if="tc.status === 'running'" class="flex items-center justify-between gap-2 pt-1.5 border-t border-boba-800/60 font-sans">
+                  <div class="flex items-center space-x-1.5 text-[10.5px] text-sky-300 font-medium animate-pulse">
+                    <span>⏳</span>
+                    <span>Sedang dieksekusi di server...</span>
+                  </div>
+                  <button
+                    @click="aiStore.cancelRunningTool(tc.id, aiStore.activeThread?.sessionId)"
+                    type="button"
+                    class="px-2.5 py-1 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/50 hover:border-rose-400 rounded-md text-[10px] font-semibold transition flex items-center space-x-1 shadow-sm"
+                    title="Hentikan eksekusi perintah terminal yang sedang berjalan"
+                  >
+                    <span>⏹</span>
+                    <span>Hentikan Proses</span>
+                  </button>
+                </div>
+
                 <!-- Approval Actions for Pending Tool Calls -->
                 <div v-if="tc.status === 'pending_approval'" class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-boba-800/60 font-sans">
                   <div class="flex items-center space-x-1.5 text-[10.5px] text-amber-300 font-medium">
@@ -613,17 +620,9 @@
             </div>
           </div>
 
-          <div class="flex items-center space-x-2 px-1 text-[9px] text-slate-500 font-mono">
-            <span>{{ formatTime(msg.createdAt) }}</span>
-            <span
-              v-if="msg.tokens && (msg.tokens.totalTokens || msg.tokens.completionTokens)"
-              class="text-amber-400/80 flex items-center space-x-0.5 cursor-help"
-              :title="`Token Pesan: ${(msg.tokens.totalTokens || ((msg.tokens.promptTokens || 0) + (msg.tokens.completionTokens || 0))).toLocaleString()} (Prompt: ${(msg.tokens.promptTokens || 0).toLocaleString()} • Output: ${(msg.tokens.completionTokens || 0).toLocaleString()})`"
-            >
-              <Icon icon="lucide:coins" class="w-2.5 h-2.5 text-amber-400" />
-              <span>{{ formatTokenCount(msg.tokens.totalTokens || ((msg.tokens.promptTokens || 0) + (msg.tokens.completionTokens || 0))) }}</span>
-            </span>
-          </div>
+          <span class="text-[9px] text-slate-500 font-mono px-1">
+            {{ formatTime(msg.createdAt) }}
+          </span>
         </div>
       </template>
 
@@ -654,9 +653,19 @@
       </div>
 
       <!-- Thinking / Token Streaming Indicator -->
-      <div v-if="aiStore.isThinking" class="flex items-center space-x-2 text-sky-400 text-xs p-2.5 bg-boba-900/80 border border-boba-800/80 rounded-xl animate-pulse">
-        <span class="text-sm">✨</span>
-        <span class="font-medium">AI sedang berpikir & menganalisis server...</span>
+      <div v-if="aiStore.isThinking" class="flex items-center justify-between text-xs p-2.5 bg-boba-900/80 border border-boba-800/80 rounded-xl animate-pulse">
+        <div class="flex items-center space-x-2 text-sky-400">
+          <span class="text-sm">✨</span>
+          <span class="font-medium">{{ aiStore.isExecutingTool ? 'Sedang mengeksekusi perintah di server remote...' : 'AI sedang berpikir & menganalisis server...' }}</span>
+        </div>
+        <button
+          @click="aiStore.stopThinking"
+          type="button"
+          class="px-2 py-0.5 bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/50 rounded text-[10px] font-semibold transition"
+          title="Hentikan proses saat ini"
+        >
+          Hentikan
+        </button>
       </div>
     </div>
 
@@ -745,16 +754,6 @@
               <Icon icon="lucide:languages" class="w-3 h-3 text-sky-400" />
               <span>{{ (aiStore.aiLanguage || 'en').toUpperCase() }}</span>
             </button>
-
-            <!-- Total Tokens Badge -->
-            <div
-              v-if="aiStore.currentThreadTokens.total > 0"
-              class="px-2 py-1 rounded-md text-[10px] font-mono font-medium flex items-center space-x-1 border shrink-0 bg-boba-850 border-boba-700 text-amber-300 shadow-sm cursor-help"
-              :title="`Total Token Percakapan Ini: ${aiStore.currentThreadTokens.total.toLocaleString()} (Prompt: ${aiStore.currentThreadTokens.prompt.toLocaleString()} • Output: ${aiStore.currentThreadTokens.completion.toLocaleString()})`"
-            >
-              <Icon icon="lucide:coins" class="w-3 h-3 text-amber-400" />
-              <span>{{ formatTokenCount(aiStore.currentThreadTokens.total) }}</span>
-            </div>
           </div>
 
           <!-- Right Controls: Clear & Send / Stop Button -->
@@ -1202,13 +1201,6 @@ function formatTime(timestamp: number): string {
   if (!timestamp) return '';
   const d = new Date(timestamp);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatTokenCount(num: number): string {
-  if (!num || num <= 0) return '0';
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k`;
-  return num.toLocaleString();
 }
 
 function handleSend() {

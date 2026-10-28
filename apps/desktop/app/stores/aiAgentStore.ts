@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed, reactive } from 'vue';
-import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode, AiTokenUsage } from '../types/index.js';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiChatThread, AiCopilotMode } from '../types/index.js';
 import { streamChat, maskSensitiveData, stripToolCallsFromText } from '../services/aiAdapters.js';
 import { tauriBridge } from '../services/tauriBridge.js';
-import { inspectCommandRisk, isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../services/commandExplainer.js';
+import { inspectCommandRisk, isBlockedSshOrKeyCommand, isBlockedKeyPath, injectNodeModulesExclusion } from '../services/commandExplainer.js';
 import { useSessionStore } from './sessionStore.js';
 import { useVaultStore } from './vaultStore.js';
 import { useDialogStore } from './dialogStore.js';
@@ -42,6 +42,8 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   const activeThreadPerSession = ref<Record<string, string>>({});
   const messages = ref<Record<string, AiChatMessage[]>>({});
   const isThinking = ref<boolean>(false);
+  const isExecutingTool = ref<boolean>(false);
+  const activeToolCancelMap = new Map<string, (err: Error) => void>();
   let activeAbortController: AbortController | null = null;
 
   // Load persisted configuration
@@ -134,6 +136,18 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
         const incoming = archive.threads.filter((t) => t?.id && !known.has(t.id));
         if (incoming.length) {
           threads.value = [...incoming, ...threads.value];
+        }
+
+        // Auto-heal status running yang tertinggal akibat app restart/crash/terputus
+        for (const t of threads.value) {
+          for (const m of t.messages) {
+            for (const tc of m.toolCalls || []) {
+              if (tc.status === 'running') {
+                tc.status = 'failed';
+                tc.error = tc.error || 'Perintah terputus sebelum selesai.';
+              }
+            }
+          }
         }
 
         try {
@@ -486,21 +500,6 @@ ${langPrompt}
       .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
   });
 
-  const currentThreadTokens = computed(() => {
-    const list = activeThread.value?.messages || [];
-    let prompt = 0;
-    let completion = 0;
-    let total = 0;
-    for (const m of list) {
-      if (m.tokens) {
-        prompt += m.tokens.promptTokens || 0;
-        completion += m.tokens.completionTokens || 0;
-        total += m.tokens.totalTokens || ((m.tokens.promptTokens || 0) + (m.tokens.completionTokens || 0));
-      }
-    }
-    return { prompt, completion, total };
-  });
-
   function createNewThread(sessionId?: string): string {
     const sid = sessionId || selectedSessionId.value || 'default';
     const active = activeThread.value;
@@ -527,6 +526,14 @@ ${langPrompt}
   function switchThread(threadId: string) {
     const target = threads.value.find(t => t.id === threadId);
     if (!target) return;
+    for (const m of target.messages) {
+      for (const tc of m.toolCalls || []) {
+        if (tc.status === 'running') {
+          tc.status = 'failed';
+          tc.error = tc.error || 'Perintah terputus sebelum selesai.';
+        }
+      }
+    }
     activeThreadId.value = target.id;
     activeThreadPerSession.value[target.sessionId] = target.id;
     selectedSessionId.value = target.sessionId;
@@ -595,9 +602,41 @@ ${langPrompt}
     return /\b(UPDATE|DELETE|DROP|TRUNCATE|ALTER|INSERT|CREATE|GRANT|REVOKE|REPLACE|RENAME)\b/i.test(sanitized);
   }
 
+  // Menjalankan SSH command dengan safety timeout dan support pembatalan interaktif
+  async function runSshCommandWithTimeout(
+    sessionId: string,
+    cmd: string,
+    toolId: string,
+    timeoutSec: number = 60
+  ): Promise<string> {
+    const cancelPromise = new Promise<never>((_, reject) => {
+      activeToolCancelMap.set(toolId, reject);
+    });
+
+    let timeoutId: any = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Perintah terminal melebihi batas waktu (timeout ${timeoutSec} detik). Perintah mungkin menunggu input interaktif (seperti password sudo) atau memindai direktori yang terlalu besar.`));
+      }, timeoutSec * 1000);
+    });
+
+    try {
+      return await Promise.race([
+        tauriBridge.sshExecCommand(sessionId, cmd),
+        timeoutPromise,
+        cancelPromise,
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      activeToolCancelMap.delete(toolId);
+    }
+  }
+
   // Eksekusi tool call ke server target atau database
   async function executeTool(sessionId: string, toolCall: AiToolCall): Promise<any> {
     toolCall.status = 'running';
+    isExecutingTool.value = true;
+    saveState();
 
     // Normalisasi nama tool jika terduplikasi saat chunk streaming
     const validToolNames = [
@@ -647,13 +686,15 @@ ${langPrompt}
       }
 
       if (toolCall.name === 'exec_command') {
-        const cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
+        let cmd = (toolCall.args?.command || toolCall.args?.cmd || toolCall.args?.bash || '').trim();
         if (!cmd) throw new Error('Perintah (command) kosong');
         if (isBlockedSshOrKeyCommand(cmd)) {
           throw new Error('Aksi diblokir oleh BOBA Security Policy: Akses SSH langsung dan pembacaan SSH keys / public key dilarang demi keamanan.');
         }
+
+        cmd = injectNodeModulesExclusion(cmd);
         toolCall.args.command = cmd;
-        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const output = await runSshCommandWithTimeout(realSessionId, cmd, toolCall.id, 60);
         const finalResult = output && output.trim().length > 0 ? output : '(Perintah selesai dieksekusi tanpa output / kosong)';
         const sanitizedResult = maskSensitiveData(finalResult);
         toolCall.result = sanitizedResult;
@@ -716,7 +757,7 @@ ${langPrompt}
         const lines = Number(toolCall.args?.lines) || 30;
         if (!svc) throw new Error('Nama service kosong');
         const cmd = `systemctl status ${svc} --no-pager -l && echo "--- RECENT LOGS ---" && journalctl -u ${svc} -n ${lines} --no-pager`;
-        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const output = await runSshCommandWithTimeout(realSessionId, cmd, toolCall.id, 60);
         const sanitized = maskSensitiveData(output);
         toolCall.result = sanitized;
         toolCall.status = 'completed';
@@ -736,7 +777,7 @@ ${langPrompt}
         } else {
           cmd = `echo "=== 1. SSH CONFIG ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "Default") && echo "=== 2. OPEN PORTS ===" && (ss -tulpn 2>/dev/null | grep LISTEN || netstat -tulpn 2>/dev/null | grep LISTEN) && echo "=== 3. FIREWALL ===" && (ufw status 2>/dev/null || echo "UFW not active") && echo "=== 4. CRON JOBS ===" && (ls -la /etc/cron* /var/spool/cron/crontabs 2>/dev/null | head -n 15) && echo "=== 5. USERS WITH SHELL ===" && (grep -v "/nologin\\|/false" /etc/passwd | cut -d: -f1,3,7)`;
         }
-        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const output = await runSshCommandWithTimeout(realSessionId, cmd, toolCall.id, 60);
         const sanitized = maskSensitiveData(output);
         toolCall.result = sanitized;
         toolCall.status = 'completed';
@@ -745,7 +786,7 @@ ${langPrompt}
       } else if (toolCall.name === 'check_auth_failures') {
         const limit = Number(toolCall.args?.limit) || 10;
         const cmd = `(grep "Failed password" /var/log/auth.log 2>/dev/null || journalctl -u ssh -u sshd --no-pager 2>/dev/null | grep "Failed password") | awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}' | sort | uniq -c | sort -nr | head -n ${limit}`;
-        const output = await tauriBridge.sshExecCommand(realSessionId, cmd);
+        const output = await runSshCommandWithTimeout(realSessionId, cmd, toolCall.id, 60);
         const formatted = output && output.trim().length > 0
           ? `Top Brute-force Attacker IPs (Attempts Count | IP):\n${output}`
           : 'Tidak ditemukan aktivitas failed login password yang mencurigakan di log.';
@@ -765,7 +806,7 @@ ${langPrompt}
         if (installFail2ban) {
           script += ` && (which fail2ban-client >/dev/null 2>&1 || (apt-get update -y && apt-get install -y fail2ban) || yum install -y fail2ban || true) && systemctl enable --now fail2ban && echo "Fail2ban enabled."`;
         }
-        const output = await tauriBridge.sshExecCommand(realSessionId, script);
+        const output = await runSshCommandWithTimeout(realSessionId, script, toolCall.id, 90);
         const sanitized = maskSensitiveData(output);
         toolCall.result = sanitized;
         toolCall.status = 'completed';
@@ -863,9 +904,11 @@ ${langPrompt}
         throw new Error(`Tool "${toolCall.name}" tidak dikenali`);
       }
     } catch (err: any) {
-      toolCall.error = String(err);
+      toolCall.error = String(err?.message || err);
       toolCall.status = 'failed';
       throw err;
+    } finally {
+      isExecutingTool.value = false;
     }
   }
 
@@ -881,6 +924,7 @@ ${langPrompt}
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
       if (tc && tc.status === 'pending_approval') {
+        isThinking.value = true;
         try {
           const result = await executeTool(sid, tc);
           const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
@@ -905,6 +949,7 @@ ${langPrompt}
           });
           thread.updatedAt = Date.now();
           saveState();
+          isThinking.value = false;
         }
         break;
       }
@@ -937,6 +982,50 @@ ${langPrompt}
     }
   }
 
+  function cancelRunningTool(toolCallId: string, targetSessionId?: string) {
+    const cancelFn = activeToolCancelMap.get(toolCallId);
+    if (cancelFn) {
+      cancelFn(new Error('Perintah dihentikan oleh pengguna.'));
+      activeToolCancelMap.delete(toolCallId);
+    }
+
+    let thread = targetSessionId
+      ? threads.value.find(t => t.sessionId === targetSessionId && t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId)))
+      : null;
+    if (!thread) {
+      thread = threads.value.find(t => t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId))) || activeThread.value;
+    }
+
+    if (thread) {
+      for (const m of thread.messages) {
+        const tc = m.toolCalls?.find(t => t.id === toolCallId);
+        if (tc && tc.status === 'running') {
+          tc.status = 'failed';
+          tc.error = 'Perintah dihentikan oleh pengguna.';
+          const existingToolMsg = thread.messages.find(msg => msg.role === 'tool' && msg.toolCallId === tc.id);
+          if (existingToolMsg) {
+            existingToolMsg.content = 'Perintah terminal dihentikan oleh pengguna.';
+          } else {
+            thread.messages.push({
+              id: `msg_tool_stop_${Date.now()}`,
+              role: 'tool',
+              toolCallId: tc.id,
+              content: 'Perintah terminal dihentikan oleh pengguna.',
+              createdAt: Date.now(),
+            });
+          }
+          break;
+        }
+      }
+      thread.updatedAt = Date.now();
+      saveState();
+    }
+
+    isExecutingTool.value = false;
+    isThinking.value = false;
+    dialogStore.showToast('Perintah terminal berhasil dihentikan.', 'info', 2000);
+  }
+
   async function retryToolCall(toolCallId: string, targetSessionId?: string) {
     let thread = targetSessionId
       ? threads.value.find(t => t.sessionId === targetSessionId && t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId)))
@@ -954,6 +1043,7 @@ ${langPrompt}
         tc.result = undefined;
         thread.updatedAt = Date.now();
         saveState();
+        isThinking.value = true;
 
         try {
           const result = await executeTool(sid, tc);
@@ -990,6 +1080,7 @@ ${langPrompt}
           }
           thread.updatedAt = Date.now();
           saveState();
+          isThinking.value = false;
         }
         break;
       }
@@ -1001,6 +1092,38 @@ ${langPrompt}
       activeAbortController.abort();
       activeAbortController = null;
     }
+    for (const cancelFn of activeToolCancelMap.values()) {
+      try { cancelFn(new Error('Perintah dihentikan oleh pengguna.')); } catch (_) {}
+    }
+    activeToolCancelMap.clear();
+
+    const thread = activeThread.value;
+    if (thread) {
+      for (const m of thread.messages) {
+        for (const tc of m.toolCalls || []) {
+          if (tc.status === 'running') {
+            tc.status = 'failed';
+            tc.error = 'Perintah dihentikan oleh pengguna.';
+            const existingToolMsg = thread.messages.find(msg => msg.role === 'tool' && msg.toolCallId === tc.id);
+            if (existingToolMsg) {
+              existingToolMsg.content = 'Perintah terminal dihentikan oleh pengguna.';
+            } else {
+              thread.messages.push({
+                id: `msg_tool_stop_${Date.now()}`,
+                role: 'tool',
+                toolCallId: tc.id,
+                content: 'Perintah terminal dihentikan oleh pengguna.',
+                createdAt: Date.now(),
+              });
+            }
+          }
+        }
+      }
+      thread.updatedAt = Date.now();
+      saveState();
+    }
+
+    isExecutingTool.value = false;
     isThinking.value = false;
   }
 
@@ -1100,6 +1223,15 @@ ${langDirective}
        Parameter: path (string, wajib).
      * db_list_databases / db_get_schema / db_execute_query: untuk database.
    - DILARANG mengarang nama tool sendiri atau membuat format di luar spesifikasi ini!
+6. ATURAN PEMINDAIAN FOLDER (JANGAN PINDAI node_modules KECUALI DISURUH):
+   - JANGAN PERNAH memindai folder 'node_modules', 'vendor', atau '.git' secara default saat mencari file/kode dengan perintah shell (seperti 'grep', 'find', dsb).
+   - HANYA lakukan pemindaian ke 'node_modules' JIKA dan HANYA JIKA pengguna secara eksplisit menyuruh atau meminta Anda memeriksanya (contoh: "cari package di node_modules", "cek modul di node_modules").
+   - Jika pengguna TIDAK menyuruh mencari di node_modules, Anda WAJIB mengecualikannya!
+   - Saat menjalankan 'grep -r' atau 'grep -rn', SELALU sertakan '--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor'.
+   - Saat menggunakan 'find', SELALU sertakan '-not -path "*/node_modules/*" -not -path "*/.git/*"'.
+7. ATURAN SHELL NON-INTERAKTIF & PENCEGAHAN PROSES GANTUNG:
+   - Shell dieksekusi secara non-interaktif tanpa TTY. DILARANG menjalankan perintah yang menunggu input interaktif pengguna (seperti 'read', konfirmasi tanpa flag -y, dsb).
+   - HINDARI 'sudo' jika tidak butuh root (misal grep/find/cat di direktori aplikasi normal).
 
 ${modeDirective}
 
@@ -1252,13 +1384,9 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
             thread.updatedAt = Date.now();
             saveState();
           },
-          onFinish: async (tokens?: AiTokenUsage) => {
+          onFinish: async () => {
             isThinking.value = false;
             activeAbortController = null;
-
-            if (tokens) {
-              assistantMsg.tokens = tokens;
-            }
 
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {
               assistantMsg.content = stripToolCallsFromText(assistantMsg.content);
@@ -1291,6 +1419,7 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
                     dialogStore.showToast('Modifikasi dicegah dalam Mode Plan (Read-Only)', 'warning', 3000);
                   } else {
                     let executed = false;
+                    isThinking.value = true;
                     try {
                       const result = await executeTool(sid, pendingCall);
                       const toolContent = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
@@ -1316,6 +1445,8 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
                       thread.updatedAt = Date.now();
                       saveState();
                       await continueAgentLoop(sid);
+                    } else {
+                      isThinking.value = false;
                     }
                   }
                 }
@@ -1377,9 +1508,9 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
     activeThreadId,
     activeThread,
     currentSessionThreads,
-    currentThreadTokens,
     messages,
     isThinking,
+    isExecutingTool,
     toggleDrawer,
     openDrawer,
     closeDrawer,
@@ -1405,6 +1536,7 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
     ensureSessionConnected,
     approveToolCall,
     rejectToolCall,
+    cancelRunningTool,
     retryToolCall,
     stopThinking,
     flushState,

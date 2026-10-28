@@ -1070,7 +1070,6 @@ pub struct AiStreamChunkEvent {
     pub chunk: Option<String>,
     pub done: bool,
     pub error: Option<String>,
-    pub tokens: Option<serde_json::Value>,
 }
 
 #[tauri::command]
@@ -1102,7 +1101,6 @@ pub async fn ai_http_stream(
                 chunk: None,
                 done: true,
                 error: Some(err_msg.clone()),
-                tokens: None,
             });
             return Err(err_msg);
         }
@@ -1117,7 +1115,6 @@ pub async fn ai_http_stream(
             chunk: None,
             done: true,
             error: Some(err_msg.clone()),
-            tokens: None,
         });
         return Err(err_msg);
     }
@@ -1136,7 +1133,6 @@ pub async fn ai_http_stream(
             chunk: Some(text),
             done: is_done_signal,
             error: None,
-            tokens: None,
         });
 
         if is_done_signal {
@@ -1151,7 +1147,6 @@ pub async fn ai_http_stream(
             chunk: None,
             done: true,
             error: None,
-            tokens: None,
         });
     }
 
@@ -1232,7 +1227,6 @@ pub async fn ai_opencode_stream(
             chunk: None,
             done: true,
             error: Some(err_msg.clone()),
-            tokens: None,
         });
         return Err(err_msg);
     }
@@ -1278,7 +1272,6 @@ pub async fn ai_opencode_stream(
             chunk: None,
             done: true,
             error: Some(err_msg.clone()),
-            tokens: None,
         });
         return Err(err_msg);
     }
@@ -1286,7 +1279,6 @@ pub async fn ai_opencode_stream(
     // 4. Read SSE event stream chunk by chunk with an overall 180s safety timeout
     let stream_future = async {
         let mut buffer = String::new();
-        let mut session_tokens: Option<serde_json::Value> = None;
 
         while let Ok(Some(chunk)) = event_res.chunk().await {
             let text = String::from_utf8_lossy(&chunk);
@@ -1307,11 +1299,7 @@ pub async fn ai_opencode_stream(
                             .unwrap_or("");
 
                         if evt_sess == session_id {
-                            if evt_type == "session.step.ended" || evt_type == "session.usage.updated" {
-                                if let Some(toks) = evt.get("data").and_then(|d| d.get("tokens")) {
-                                    session_tokens = Some(toks.clone());
-                                }
-                            } else if evt_type == "session.text.delta" {
+                            if evt_type == "session.text.delta" {
                                 if let Some(delta) = evt
                                     .get("data")
                                     .and_then(|d| d.get("delta"))
@@ -1322,7 +1310,6 @@ pub async fn ai_opencode_stream(
                                         chunk: Some(delta.to_string()),
                                         done: false,
                                         error: None,
-                                        tokens: None,
                                     });
                                 }
                             } else if evt_type == "session.execution.succeeded" {
@@ -1331,7 +1318,6 @@ pub async fn ai_opencode_stream(
                                     chunk: None,
                                     done: true,
                                     error: None,
-                                    tokens: session_tokens.clone(),
                                 });
                                 return Ok(());
                             } else if evt_type == "session.idle" {
@@ -1347,7 +1333,6 @@ pub async fn ai_opencode_stream(
                                         chunk: None,
                                         done: true,
                                         error: Some(err_msg.clone()),
-                                        tokens: session_tokens.clone(),
                                     });
                                     return Err(err_msg);
                                 }
@@ -1356,7 +1341,6 @@ pub async fn ai_opencode_stream(
                                     chunk: None,
                                     done: true,
                                     error: None,
-                                    tokens: session_tokens.clone(),
                                 });
                                 return Ok(());
                             } else if evt_type == "session.execution.failed"
@@ -1368,7 +1352,6 @@ pub async fn ai_opencode_stream(
                                     chunk: None,
                                     done: true,
                                     error: Some(err_msg.clone()),
-                                    tokens: session_tokens.clone(),
                                 });
                                 return Err(err_msg);
                             }
@@ -1383,7 +1366,6 @@ pub async fn ai_opencode_stream(
             chunk: None,
             done: true,
             error: None,
-            tokens: session_tokens.clone(),
         });
         Ok(())
     };
@@ -1397,7 +1379,6 @@ pub async fn ai_opencode_stream(
                 chunk: None,
                 done: true,
                 error: Some(err_msg.clone()),
-                tokens: None,
             });
             Err(err_msg)
         }

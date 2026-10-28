@@ -1,4 +1,4 @@
-import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode, AiTokenUsage } from '../types/index.ts';
+import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode } from '../types/index.ts';
 import { tauriBridge } from './tauriBridge.ts';
 
 export const AGENT_TOOLS = [
@@ -12,7 +12,7 @@ export const AGENT_TOOLS = [
         properties: {
           command: {
             type: 'string',
-            description: 'The exact bash command to execute (e.g. "systemctl status nginx", "cat /etc/hosts", "df -h")',
+            description: 'The exact bash command to execute (e.g. "systemctl status nginx", "cat /etc/hosts", "df -h"). PENTING: Dilarang memindai folder node_modules/vendor/.git kecuali pengguna secara eksplisit memintanya; selalu sertakan --exclude-dir=node_modules pada grep.',
           },
           description: {
             type: 'string',
@@ -511,7 +511,7 @@ export interface StreamCallbacks {
   onToken: (text: string) => void;
   onToolCalls: (toolCalls: AiToolCall[]) => void;
   onError: (err: any) => void;
-  onFinish: (tokens?: AiTokenUsage) => void;
+  onFinish: () => void;
 }
 
 export async function streamChat(
@@ -570,6 +570,7 @@ ATURAN BAHASA MUTLAK:
 Anda SUDAH terhubung ke server target melalui runtime BOBA.
 DILARANG KERAS mencoba koneksi SSH sendiri (jangan memanggil 'ssh ...').
 DILARANG KERAS mengakses atau membaca SSH keys / public key / authorized_keys.
+DILARANG memindai direktori 'node_modules', 'vendor', atau '.git' (saat grep/find) KECUALI jika pengguna secara eksplisit meminta memeriksa folder tersebut. Selalu tambahkan '--exclude-dir=node_modules' pada perintah grep.
 Jika ada tindakan atau pemeriksaan server (misal: cek status Nginx, baca log, cek metrik), Anda WAJIB langsung menyertakan blok kode JSON berikut:
 \`\`\`json
 {
@@ -699,28 +700,7 @@ DO NOT return an empty response!\n\n`;
               callbacks.onToolCalls([firstTool]);
             }
 
-            let tokens: AiTokenUsage | undefined = undefined;
-            if (payload.tokens && typeof payload.tokens === 'object') {
-              const inp = Number(payload.tokens.input) || 0;
-              const out = Number(payload.tokens.output) || 0;
-              const reas = Number(payload.tokens.reasoning) || 0;
-              tokens = {
-                promptTokens: inp,
-                completionTokens: out + reas,
-                totalTokens: inp + out + reas,
-              };
-            }
-            if (!tokens || (tokens.totalTokens || 0) <= 0) {
-              const estPrompt = Math.ceil((prompt.length || 0) / 4);
-              const estComp = Math.ceil((accumulatedText.length || 0) / 4);
-              tokens = {
-                promptTokens: estPrompt,
-                completionTokens: estComp,
-                totalTokens: estPrompt + estComp,
-              };
-            }
-
-            callbacks.onFinish(tokens);
+            callbacks.onFinish();
             resolve();
           }
         }
@@ -936,7 +916,7 @@ export function sanitizeMessagesForOpenAi(
           prev.content = `${prev.content || ''}\n${item.content || ''}`.trim();
         }
       } else {
-        // Jika asisten memiliki tool_calls yang tidak pernah dijawab di pesan berikutnya (misal in-flight/cancelled)
+        // Jika asisten memiliki tool_calls yang tidak pernah dijawab di pesan berikutnya (misal in-flight/cancelled/terputus)
         if (item.tool_calls && item.tool_calls.length > 0) {
           const nextItem = rawFormatted[i + 1];
           const hasImmediateAnswer =
@@ -944,10 +924,13 @@ export function sanitizeMessagesForOpenAi(
             nextItem.role === 'tool' &&
             item.tool_calls.some((tc: any) => tc.id === nextItem.tool_call_id);
 
-          if (!hasImmediateAnswer && i === rawFormatted.length - 1) {
-            // Hapus tool_calls pada pesan asisten paling akhir agar LLM tidak menolak payload
+          if (!hasImmediateAnswer) {
+            // Hapus tool_calls agar LLM API tidak menolak payload (error 400 Bad Request jika tool_calls tidak langsung diikuti tool result)
+            const toolNames = item.tool_calls.map((tc: any) => tc.function?.name || 'perintah').join(', ');
             item.tool_calls = undefined;
-            if (!item.content) item.content = 'Sedang menganalisis status server...';
+            if (!item.content || item.content.trim().length === 0) {
+              item.content = `(Perintah ${toolNames} sempat diajukan tetapi proses terputus atau digantikan)`;
+            }
           }
         }
         normalized.push(item);
@@ -1005,12 +988,10 @@ async function streamOpenAiCompatible(
     tool_choice: 'auto',
     parallel_tool_calls: false, // Mutlak false agar AI hanya mengajukan 1 perintah per giliran
     stream: true,
-    stream_options: { include_usage: true },
   });
 
   let buffer = '';
   let accumulatedText = '';
-  const usageHolder: { usage: AiTokenUsage | null } = { usage: null };
   const accumulatedToolCalls: Record<number, { id: string; name: string; argsStr: string }> = {};
 
   const handleChunk = (chunkText: string) => {
@@ -1026,16 +1007,6 @@ async function streamOpenAiCompatible(
       if (trimmed.startsWith('data: ')) {
         try {
           const json = JSON.parse(trimmed.substring(6));
-
-          // Tangkap usage jika dikirim oleh OpenAI/OpenRouter/DeepSeek
-          if (json.usage) {
-            usageHolder.usage = {
-              promptTokens: json.usage.prompt_tokens,
-              completionTokens: json.usage.completion_tokens,
-              totalTokens: json.usage.total_tokens,
-            };
-          }
-
           const choice = json.choices?.[0];
           if (!choice) continue;
 
@@ -1121,22 +1092,10 @@ async function streamOpenAiCompatible(
       }
     }
 
-    let finalUsage = usageHolder.usage;
-    if (!finalUsage || !finalUsage.totalTokens) {
-      const promptLen = formattedMessages.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0), 0);
-      const estPrompt = Math.ceil(promptLen / 4);
-      const estComp = Math.ceil((accumulatedText.length || 0) / 4);
-      finalUsage = {
-        promptTokens: estPrompt,
-        completionTokens: estComp,
-        totalTokens: estPrompt + estComp,
-      };
-    }
-
-    callbacks.onFinish(finalUsage);
+    callbacks.onFinish();
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      callbacks.onFinish(usageHolder.usage || undefined);
+      callbacks.onFinish();
       return;
     }
     callbacks.onError(err);
@@ -1189,29 +1148,42 @@ async function streamAnthropic(
         ],
       });
     } else if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
-      const contentList: any[] = [];
-      if (m.content) contentList.push({ type: 'text', text: maskSensitiveData(m.content) });
-      for (const tc of m.toolCalls.slice(0, 1)) {
-        let cleanInput: any = tc.args;
-        if (typeof cleanInput === 'string') {
-          try {
-            cleanInput = JSON.parse(maskSensitiveData(cleanInput));
-          } catch (_) {
-            cleanInput = { raw: maskSensitiveData(cleanInput) };
+      // Pastikan ada respon tool langsung berikutnya agar Anthropic tidak menolak payload dengan 400 Bad Request
+      const idx = validMessages.indexOf(m);
+      const nextMsg = validMessages[idx + 1];
+      const hasImmediateAnswer = nextMsg && nextMsg.role === 'tool' && m.toolCalls.some(tc => tc.id === nextMsg.toolCallId);
+
+      if (hasImmediateAnswer) {
+        const contentList: any[] = [];
+        if (m.content) contentList.push({ type: 'text', text: maskSensitiveData(m.content) });
+        for (const tc of m.toolCalls.slice(0, 1)) {
+          let cleanInput: any = tc.args;
+          if (typeof cleanInput === 'string') {
+            try {
+              cleanInput = JSON.parse(maskSensitiveData(cleanInput));
+            } catch (_) {
+              cleanInput = { raw: maskSensitiveData(cleanInput) };
+            }
+          } else if (cleanInput && typeof cleanInput === 'object') {
+            try {
+              cleanInput = JSON.parse(maskSensitiveData(JSON.stringify(cleanInput)));
+            } catch (_) {}
           }
-        } else if (cleanInput && typeof cleanInput === 'object') {
-          try {
-            cleanInput = JSON.parse(maskSensitiveData(JSON.stringify(cleanInput)));
-          } catch (_) {}
+          contentList.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.name,
+            input: cleanInput,
+          });
         }
-        contentList.push({
-          type: 'tool_use',
-          id: tc.id,
-          name: tc.name,
-          input: cleanInput,
+        formattedMessages.push({ role: 'assistant', content: contentList });
+      } else {
+        const toolNames = m.toolCalls.map(tc => tc.name).join(', ');
+        formattedMessages.push({
+          role: 'assistant',
+          content: maskSensitiveData(m.content || `(Memanggil ${toolNames})`),
         });
       }
-      formattedMessages.push({ role: 'assistant', content: contentList });
     } else {
       formattedMessages.push({
         role: m.role === 'assistant' ? 'assistant' : 'user',
@@ -1245,9 +1217,6 @@ async function streamAnthropic(
   });
 
   let buffer = '';
-  let accumulatedText = '';
-  let anthropicInputTokens = 0;
-  let anthropicOutputTokens = 0;
   const accumulatedTools: Record<number, { id: string; name: string; jsonStr: string }> = {};
   let currentToolIndex = -1;
 
@@ -1265,12 +1234,6 @@ async function streamAnthropic(
       try {
         const event = JSON.parse(dataStr);
 
-        if (event.type === 'message_start' && event.message?.usage) {
-          anthropicInputTokens = Number(event.message.usage.input_tokens) || 0;
-        } else if (event.type === 'message_delta' && event.usage) {
-          anthropicOutputTokens = Number(event.usage.output_tokens) || 0;
-        }
-
         if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
           currentToolIndex = event.index;
           accumulatedTools[currentToolIndex] = {
@@ -1280,7 +1243,6 @@ async function streamAnthropic(
           };
         } else if (event.type === 'content_block_delta') {
           if (event.delta?.type === 'text_delta') {
-            accumulatedText += event.delta.text;
             callbacks.onToken(event.delta.text);
           } else if (event.delta?.type === 'input_json_delta' && currentToolIndex >= 0) {
             const currentTool = accumulatedTools[currentToolIndex];
@@ -1323,25 +1285,7 @@ async function streamAnthropic(
       callbacks.onToolCalls(finalToolCalls);
     }
 
-    let tokenUsage: AiTokenUsage | undefined = undefined;
-    if (anthropicInputTokens > 0 || anthropicOutputTokens > 0) {
-      tokenUsage = {
-        promptTokens: anthropicInputTokens,
-        completionTokens: anthropicOutputTokens,
-        totalTokens: anthropicInputTokens + anthropicOutputTokens,
-      };
-    } else {
-      const promptLen = formattedMessages.reduce((acc, m) => acc + (typeof m.content === 'string' ? m.content.length : 0), 0);
-      const estPrompt = Math.ceil(promptLen / 4);
-      const estComp = Math.ceil((accumulatedText.length || 0) / 4);
-      tokenUsage = {
-        promptTokens: estPrompt,
-        completionTokens: estComp,
-        totalTokens: estPrompt + estComp,
-      };
-    }
-
-    callbacks.onFinish(tokenUsage);
+    callbacks.onFinish();
   } catch (err: any) {
     if (err.name === 'AbortError') {
       callbacks.onFinish();
@@ -1452,8 +1396,6 @@ async function streamGemini(
   });
 
   let buffer = '';
-  let accumulatedText = '';
-  const geminiUsageHolder: { usage: AiTokenUsage | null } = { usage: null };
   const finalToolCalls: AiToolCall[] = [];
 
   const handleChunk = (chunkText: string) => {
@@ -1466,24 +1408,11 @@ async function streamGemini(
       if (!trimmed.startsWith('data: ')) continue;
       try {
         const json = JSON.parse(trimmed.substring(6));
-
-        if (json.usageMetadata) {
-          const inp = Number(json.usageMetadata.promptTokenCount) || 0;
-          const out = Number(json.usageMetadata.candidatesTokenCount) || 0;
-          const tot = Number(json.usageMetadata.totalTokenCount) || (inp + out);
-          geminiUsageHolder.usage = {
-            promptTokens: inp,
-            completionTokens: out,
-            totalTokens: tot,
-          };
-        }
-
         const candidate = json.candidates?.[0];
         if (!candidate) continue;
 
         for (const part of candidate.content?.parts || []) {
           if (part.text) {
-            accumulatedText += part.text;
             callbacks.onToken(part.text);
           }
           if (part.functionCall) {
@@ -1514,24 +1443,10 @@ async function streamGemini(
       callbacks.onToolCalls(finalToolCalls);
     }
 
-    let finalGeminiUsage = geminiUsageHolder.usage;
-    if (!finalGeminiUsage || !finalGeminiUsage.totalTokens) {
-      const promptLen = rawContents.reduce((acc, turn) => {
-        return acc + (turn.parts || []).reduce((pAcc: number, p: any) => pAcc + (p.text ? p.text.length : 0), 0);
-      }, 0);
-      const estPrompt = Math.ceil(promptLen / 4);
-      const estComp = Math.ceil((accumulatedText.length || 0) / 4);
-      finalGeminiUsage = {
-        promptTokens: estPrompt,
-        completionTokens: estComp,
-        totalTokens: estPrompt + estComp,
-      };
-    }
-
-    callbacks.onFinish(finalGeminiUsage);
+    callbacks.onFinish();
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      callbacks.onFinish(geminiUsageHolder.usage || undefined);
+      callbacks.onFinish();
       return;
     }
     callbacks.onError(err);

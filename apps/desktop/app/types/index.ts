@@ -252,12 +252,6 @@ export interface AiToolCall {
 
 export type AiCopilotMode = 'plan' | 'build';
 
-export interface AiTokenUsage {
-  promptTokens?: number;
-  completionTokens?: number;
-  totalTokens?: number;
-}
-
 export interface AiChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -265,7 +259,6 @@ export interface AiChatMessage {
   toolCalls?: AiToolCall[];
   toolCallId?: string;
   createdAt: number;
-  tokens?: AiTokenUsage;
 }
 
 export interface AiChatThread {

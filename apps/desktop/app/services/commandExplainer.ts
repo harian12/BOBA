@@ -85,6 +85,21 @@ export function isBlockedKeyPath(filePath: string): boolean {
   return /(authorized_keys|\.pub$|id_rsa|id_ed25519|id_ecdsa|id_dsa|\.ssh([\/\\]|$))/i.test(lower);
 }
 
+/**
+ * Otomatis menambahkan flag pengecualian untuk node_modules, .git, dan vendor
+ * pada perintah grep rekursif (-r/-rn) kecuali jika perintah secara eksplisit menargetkan node_modules.
+ */
+export function injectNodeModulesExclusion(cmd: string): string {
+  const trimmed = (cmd || '').trim();
+  if (!trimmed) return trimmed;
+
+  if (/\bgrep\b.*?\s-[a-zA-Z]*r/i.test(trimmed) && !trimmed.includes('--exclude-dir') && !trimmed.includes('node_modules')) {
+    return trimmed.replace(/(\bgrep\s+-[a-zA-Z]+)/i, '$1 --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor');
+  }
+
+  return trimmed;
+}
+
 export function inspectCommandRisk(cmd: string): CommandRiskLevel {
   const lower = (cmd || '').trim().toLowerCase();
   if (!lower) return 'safe';

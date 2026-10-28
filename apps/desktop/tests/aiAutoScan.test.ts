@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AiProviderConfig } from '../app/types/index.ts';
 import { extractToolCallsFromText, stripToolCallsFromText } from '../app/services/aiAdapters.ts';
-import { isBlockedSshOrKeyCommand, isBlockedKeyPath } from '../app/services/commandExplainer.ts';
+import { isBlockedSshOrKeyCommand, isBlockedKeyPath, injectNodeModulesExclusion } from '../app/services/commandExplainer.ts';
 
 test('detected provider contains source metadata and model lists', () => {
   const detected: AiProviderConfig = {
@@ -203,4 +203,26 @@ test('security guard blocks direct SSH access and public/private key reading', (
   assert.equal(isBlockedKeyPath('/home/dev/.ssh/id_ed25519.pub'), true);
   assert.equal(isBlockedKeyPath('/var/www/html/index.php'), false);
   assert.equal(isBlockedKeyPath('/etc/nginx/sites-available/default'), false);
+});
+
+test('injectNodeModulesExclusion excludes node_modules by default but respects explicit requests', () => {
+  // Default recursive grep without exclusion -> gets auto-excluded
+  const rawGrep = 'sudo grep -rn "ZENZIVA BALANCE CHECK" /home/api/santara-service-api/ 2>/dev/null';
+  const injected = injectNodeModulesExclusion(rawGrep);
+  assert.equal(
+    injected,
+    'sudo grep -rn --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor "ZENZIVA BALANCE CHECK" /home/api/santara-service-api/ 2>/dev/null'
+  );
+
+  // If already excluded, do not duplicate
+  const alreadyExcluded = 'grep -r --exclude-dir=node_modules "test" .';
+  assert.equal(injectNodeModulesExclusion(alreadyExcluded), alreadyExcluded);
+
+  // If user/command explicitly targets node_modules, do NOT exclude it
+  const explicitNodeModules = 'grep -rn "zenziva" /home/api/node_modules/package';
+  assert.equal(injectNodeModulesExclusion(explicitNodeModules), explicitNodeModules);
+
+  // Non-recursive grep stays untouched
+  const simpleGrep = 'grep "error" /var/log/syslog';
+  assert.equal(injectNodeModulesExclusion(simpleGrep), simpleGrep);
 });
