@@ -307,37 +307,62 @@
             </div>
 
             <!-- SSH Key & Self-Healing Section -->
-            <div class="bg-[#0d1017] border border-[#262c3d] rounded-lg p-3.5 space-y-2.5 text-xs">
+            <div class="bg-[#0d1017] border border-[#262c3d] rounded-lg p-3.5 space-y-3 text-xs">
               <div class="flex items-center justify-between">
                 <span class="font-semibold text-slate-200 flex items-center space-x-1.5">
                   <Icon icon="lucide:shield-check" class="w-4 h-4 text-emerald-400" />
                   <span>Proteksi Kunci SSH (Self-Healing ke 10.99.0.1)</span>
                 </span>
-                <button
-                  @click="autoGenerateOrFetchKey"
-                  class="text-[11px] text-emerald-400 hover:text-emerald-300 transition flex items-center space-x-1 font-medium"
-                >
-                  <Icon icon="lucide:sparkles" class="w-3 h-3" />
-                  <span>Generate / Ambil Otomatis</span>
-                </button>
+                <div class="flex items-center space-x-2">
+                  <button
+                    @click="generateAndSaveKeyPair"
+                    :disabled="isGeneratingKey"
+                    class="text-[11px] text-emerald-400 hover:text-emerald-300 transition flex items-center space-x-1 font-semibold disabled:opacity-50"
+                    title="Buat sepasang kunci baru: Private Key disimpan di laptopmu, Public Key dipasang di server"
+                  >
+                    <Icon icon="lucide:sparkles" class="w-3.5 h-3.5" :class="isGeneratingKey ? 'animate-spin' : ''" />
+                    <span>{{ isGeneratingKey ? 'Membuat...' : 'Buat Pasangan Kunci (Auto-Save ke Laptop)' }}</span>
+                  </button>
+                  <span class="text-slate-600">|</span>
+                  <button
+                    @click="autoGenerateOrFetchKey"
+                    class="text-[11px] text-slate-400 hover:text-slate-200 transition"
+                    title="Gunakan kunci yang sudah ada di server"
+                  >
+                    Ambil dari Server
+                  </button>
+                </div>
               </div>
 
+              <!-- Vault Key Selector & Target User -->
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label class="block text-slate-400 mb-1">Target SSH User</label>
                   <input
                     v-model="configForm.sshUser"
                     type="text"
-                    class="w-full px-2.5 py-1 bg-[#161a26] border border-[#283045] rounded text-slate-200 font-mono text-[11px] focus:outline-none"
+                    class="w-full px-2.5 py-1.5 bg-[#161a26] border border-[#283045] rounded text-slate-200 font-mono text-[11px] focus:outline-none"
                     placeholder="root"
                   />
                 </div>
-                <div class="sm:col-span-2">
-                  <label class="block text-slate-400 mb-1">Boba SSH Public Key</label>
+                <div>
+                  <label class="block text-slate-400 mb-1">Private Key di Boba Laptop</label>
+                  <select
+                    v-model="selectedKeyId"
+                    class="w-full px-2 py-1.5 bg-[#161a26] border border-[#283045] rounded text-slate-200 text-[11px] focus:outline-none cursor-pointer"
+                  >
+                    <option value="">-- Kunci Baru (Auto-Attach) --</option>
+                    <option v-for="k in vaultStore.vault.keys" :key="k.id" :value="k.id">
+                      {{ k.name }}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1">Public Key di Server</label>
                   <input
                     v-model="configForm.authorizedKey"
                     type="text"
-                    class="w-full px-2.5 py-1 bg-[#161a26] border border-[#283045] rounded text-slate-200 font-mono text-[11px] focus:outline-none truncate"
+                    class="w-full px-2.5 py-1.5 bg-[#161a26] border border-[#283045] rounded text-slate-200 font-mono text-[11px] focus:outline-none truncate"
                     placeholder="ssh-ed25519 AAAAC3... atau ssh-rsa..."
                   />
                 </div>
@@ -345,7 +370,7 @@
 
               <div class="flex items-center justify-between pt-1">
                 <span class="text-[11px] text-slate-500">
-                  Kunci ini otomatis diinjeksi ke <code>authorized_keys</code> agar login ke <code>10.99.0.1:22</code> tidak butuh password.
+                  Private Key tersimpan aman di Boba, dan Public Key otomatis dipulihkan ke <code>authorized_keys</code> server.
                 </span>
                 <button
                   @click="triggerHealCheck"
@@ -427,7 +452,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge';
 import { useVaultStore } from '../stores/vaultStore';
@@ -463,6 +488,8 @@ const useSudo = ref(props.initialUseSudo ?? true);
 const isChecking = ref(false);
 const isDeploying = ref(false);
 const isHealing = ref(false);
+const isGeneratingKey = ref(false);
+const selectedKeyId = ref(props.sessionConfig?.key_id || '');
 const copied = ref(false);
 const deployLogs = ref('');
 const activeTab = ref<'setup' | 'client-preview'>('setup');
@@ -640,6 +667,51 @@ function openExistingWgSession() {
   }
 }
 
+async function generateAndSaveKeyPair() {
+  isGeneratingKey.value = true;
+  healStatus.value = null;
+  try {
+    const cmd = `PRIV_F=$(mktemp) && ssh-keygen -t ed25519 -N "" -f "$PRIV_F" -C "boba-wireguard" -q && cat "\${PRIV_F}.pub" && echo "---KEY_DELIMITER---" && cat "$PRIV_F" && rm -f "$PRIV_F" "\${PRIV_F}.pub"`;
+    const res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+
+    if (res && res.includes('---KEY_DELIMITER---')) {
+      const [pubPart, privPart] = res.split('---KEY_DELIMITER---');
+      const pubKey = pubPart?.trim() || '';
+      const privKey = privPart?.trim() || '';
+
+      if (pubKey.startsWith('ssh-') && privKey.includes('PRIVATE KEY')) {
+        const newKeyId = `key_wg_${Date.now()}`;
+        const keyName = `[WireGuard] ${sessionBaseName}`;
+
+        await vaultStore.saveKey({
+          id: newKeyId,
+          name: keyName,
+          private_key: privKey,
+        });
+
+        configForm.authorizedKey = pubKey;
+        selectedKeyId.value = newKeyId;
+
+        healStatus.value = {
+          type: 'success',
+          title: 'Pasangan Kunci Berhasil Dibuat & Disimpan!',
+          detail: `Private Key telah tersimpan di Boba Vault ("${keyName}"). Public Key siap diinjeksi ke server.`
+        };
+        return;
+      }
+    }
+    throw new Error('Server tidak mengembalikan pasangan kunci yang valid.');
+  } catch (err: any) {
+    healStatus.value = {
+      type: 'error',
+      title: 'Gagal Membuat Kunci',
+      detail: String(err?.message || err)
+    };
+  } finally {
+    isGeneratingKey.value = false;
+  }
+}
+
 async function autoGenerateOrFetchKey() {
   try {
     let cmd = `cat ~/.ssh/authorized_keys 2>/dev/null | grep -E '^ssh-(ed25519|rsa)' | head -n 1`;
@@ -723,6 +795,26 @@ onMounted(async () => {
   await refreshAll();
   if (!configForm.authorizedKey) {
     await autoGenerateOrFetchKey();
+  }
+});
+
+watch(selectedKeyId, async (newId) => {
+  if (!newId) return;
+  const keyItem = vaultStore.vault.keys.find(k => k.id === newId);
+  if (keyItem) {
+    try {
+      const escaped = keyItem.private_key.replace(/'/g, "'\\''");
+      const cmd = `echo '${escaped}' | ssh-keygen -y -f /dev/stdin 2>/dev/null || true`;
+      const pub = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+      if (pub && pub.trim().startsWith('ssh-')) {
+        configForm.authorizedKey = pub.trim();
+        healStatus.value = {
+          type: 'success',
+          title: 'Kunci Terpilih dari Vault',
+          detail: `Menggunakan "${keyItem.name}". Public key berhasil diekstrak dan siap diinjeksi ke server.`
+        };
+      }
+    } catch {}
   }
 });
 </script>
