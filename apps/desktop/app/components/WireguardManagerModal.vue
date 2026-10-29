@@ -300,25 +300,13 @@
                   <Icon icon="lucide:key" class="w-4 h-4 text-amber-400" />
                   <span>WireGuard Key Pairs (Curve25519)</span>
                 </span>
-                <div class="flex items-center space-x-2">
-                  <button
-                    @click="applyServerActiveKeys"
-                    :disabled="!status.serverPublicKey"
-                    class="text-[11px] text-teal-400 hover:text-teal-300 font-semibold transition flex items-center space-x-1 disabled:opacity-40"
-                    title="Gunakan kunci yang saat ini aktif berjalan di server"
-                  >
-                    <Icon icon="lucide:check-circle" class="w-3 h-3" />
-                    <span>Gunakan Kunci Aktif Server</span>
-                  </button>
-                  <span class="text-slate-600">|</span>
-                  <button
-                    @click="generateRandomKeys"
-                    class="text-[11px] text-red-400 hover:text-red-300 transition flex items-center space-x-1"
-                  >
-                    <Icon icon="lucide:sparkles" class="w-3 h-3" />
-                    <span>Generate Key Baru</span>
-                  </button>
-                </div>
+                <button
+                  @click="generateRandomKeys"
+                  class="text-[11px] text-red-400 hover:text-red-300 transition flex items-center space-x-1"
+                >
+                  <Icon icon="lucide:sparkles" class="w-3 h-3" />
+                  <span>Generate Key Baru</span>
+                </button>
               </div>
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
@@ -645,30 +633,10 @@ async function generateRandomKeys() {
   }
 }
 
-function applyServerActiveKeys() {
-  if (status.serverPublicKey) {
-    configForm.serverPublicKey = status.serverPublicKey;
-  }
-  if (status.serverPrivateKey) {
-    configForm.serverPrivateKey = status.serverPrivateKey;
-  }
-  if (status.peers.length > 0 && status.peers[0]?.publicKey) {
-    configForm.clientPublicKey = status.peers[0].publicKey;
-  }
-  healStatus.value = {
-    type: 'success',
-    title: 'Kunci Aktif Server Diterapkan!',
-    detail: `Menggunakan Server Public Key: ${status.serverPublicKey}. Silakan download ulang config client untuk menggunakannya.`
-  };
-}
-
 async function refreshAll() {
   isChecking.value = true;
   try {
-    const cmd = buildWireguardStatusCheckCommand(
-      useSudo.value,
-      sudoPassword.value || props.sessionConfig?.password
-    );
+    const cmd = buildWireguardStatusCheckCommand(useSudo.value);
     const out = await tauriBridge.sshExecCommand(props.sessionId, cmd);
     const parsed = parseWireguardStatus(out);
     status.isInstalled = parsed.isInstalled;
