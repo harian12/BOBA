@@ -696,7 +696,7 @@ async function generateAndSaveKeyPair() {
   try {
     const now = Date.now();
     // Use unique path that doesn't exist so ssh-keygen NEVER prompts "Overwrite (y/n)?"
-    const cmd = `F="/tmp/boba_key_${now}" ; rm -f "$F" "\${F}.pub" 2>/dev/null ; ssh-keygen -q -t ed25519 -N '' -C "" -f "$F" < /dev/null && cat "\${F}.pub" && echo "---KEY_DELIMITER---" && cat "$F" && rm -f "$F" "\${F}.pub"`;
+    const cmd = `F="/tmp/boba_key_${now}" ; rm -f "$F" "\${F}.pub" 2>/dev/null ; ssh-keygen -q -t ed25519 -N '' -C "boba-wireguard" -f "$F" < /dev/null && cat "\${F}.pub" && echo "---KEY_DELIMITER---" && cat "$F" && rm -f "$F" "\${F}.pub"`;
     
     keyGenProgressText.value = '[2/3] Menghasilkan pasangan kunci Ed25519...';
 
@@ -805,7 +805,7 @@ async function autoGenerateOrFetchKey() {
     }
 
     if (!res || !res.trim().startsWith('ssh-')) {
-      cmd = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && (test -f ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "" -q < /dev/null) && cat ~/.ssh/id_ed25519.pub`;
+      cmd = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && (test -f ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "boba-wireguard" -q) && cat ~/.ssh/id_ed25519.pub`;
       res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
     }
 
