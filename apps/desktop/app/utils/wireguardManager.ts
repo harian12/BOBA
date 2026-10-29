@@ -141,6 +141,13 @@ export function buildWireguardHealKeyCommand(sshUser: string, authorizedKey: str
   return `${sudo}mkdir -p ${home}/.ssh && grep -qF "${keyEscaped}" ${home}/.ssh/authorized_keys 2>/dev/null && echo "KEY_PRESENT" || (echo "${keyEscaped}" | ${sudo}tee -a ${home}/.ssh/authorized_keys >/dev/null && ${sudo}chmod 600 ${home}/.ssh/authorized_keys && echo "KEY_HEALED")`;
 }
 
+export function buildWireguardUpdateKeyCommand(sshUser: string, authorizedKey: string, useSudo = false): string {
+  const sudo = useSudo ? 'sudo ' : '';
+  const home = sshUser === 'root' ? '/root' : `/home/${sshUser}`;
+  const keyEscaped = authorizedKey.trim().replace(/"/g, '\\"');
+  return `${sudo}mkdir -p ${home}/.ssh && ${sudo}chmod 700 ${home}/.ssh && (grep -qF "${keyEscaped}" ${home}/.ssh/authorized_keys 2>/dev/null || echo "${keyEscaped}" | ${sudo}tee -a ${home}/.ssh/authorized_keys >/dev/null) && ${sudo}chmod 600 ${home}/.ssh/authorized_keys && echo "KEY_UPDATED"`;
+}
+
 export function buildWireguardUninstallCommand(useSudo = false): string {
   const sudo = useSudo ? 'sudo ' : '';
   return `${sudo}systemctl stop wg-quick@wg0 2>/dev/null || ${sudo}wg-quick down wg0 2>/dev/null || true ; ${sudo}systemctl disable wg-quick@wg0 2>/dev/null || true ; ${sudo}rm -f /etc/wireguard/wg0.conf /etc/sysctl.d/99-wireguard.conf ; echo "WG_UNINSTALLED_OK"`;
