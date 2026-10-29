@@ -31,6 +31,8 @@ export interface WireguardStatus {
   interfaceName?: string;
   serverPublicKey?: string;
   listenPort?: number;
+  serverPrivateKey?: string;
+  clientPublicKey?: string;
   peers: WireguardPeerStatus[];
 }
 
@@ -180,13 +182,13 @@ export function buildWireguardStatusCheckCommand(useSudo = false): string {
     'which wg >/dev/null 2>&1 && echo "INSTALLED=true" || echo "INSTALLED=false"',
     `${sudo}wg show 2>/dev/null || echo "WG_DOWN"`,
     'echo "---CONFIG_START---"',
-    `cat /etc/wireguard/wg0.conf 2>/dev/null || echo ""`,
+    `${sudo}cat /etc/wireguard/wg0.conf 2>/dev/null || cat /etc/wireguard/wg0.conf 2>/dev/null || echo ""`,
     'echo "---WG_STATUS_END---"',
   ].join(' ; ');
 }
 
 /**
- * Parse output of `wg show`
+ * Parse output of `wg show` and `/etc/wireguard/wg0.conf`
  */
 export function parseWireguardStatus(output: string): WireguardStatus {
   const isInstalled = output.includes('INSTALLED=true') || (!output.includes('INSTALLED=false') && output.includes('interface:'));
@@ -196,12 +198,34 @@ export function parseWireguardStatus(output: string): WireguardStatus {
   let interfaceName: string | undefined;
   let serverPublicKey: string | undefined;
   let listenPort: number | undefined;
+  let serverPrivateKey: string | undefined;
+  let clientPublicKey: string | undefined;
   const peers: WireguardPeerStatus[] = [];
 
   let currentPeer: WireguardPeerStatus | null = null;
+  let inConfigSection = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
+
+    if (trimmed === '---CONFIG_START---') {
+      inConfigSection = true;
+      continue;
+    }
+    if (trimmed === '---WG_STATUS_END---') {
+      inConfigSection = false;
+      continue;
+    }
+
+    if (inConfigSection) {
+      if (trimmed.startsWith('PrivateKey =') || trimmed.startsWith('PrivateKey=')) {
+        serverPrivateKey = trimmed.split('=')[1]?.trim();
+      }
+      if (trimmed.startsWith('PublicKey =') || trimmed.startsWith('PublicKey=')) {
+        clientPublicKey = trimmed.split('=')[1]?.trim();
+      }
+      continue;
+    }
 
     if (trimmed.startsWith('interface:')) {
       isActive = true;
@@ -242,6 +266,8 @@ export function parseWireguardStatus(output: string): WireguardStatus {
     interfaceName,
     serverPublicKey,
     listenPort,
+    serverPrivateKey,
+    clientPublicKey,
     peers,
   };
 }

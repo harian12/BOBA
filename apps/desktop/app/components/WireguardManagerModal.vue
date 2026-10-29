@@ -652,6 +652,12 @@ async function refreshAll() {
     if (parsed.serverPublicKey) {
       configForm.serverPublicKey = parsed.serverPublicKey;
     }
+    if (parsed.serverPrivateKey) {
+      configForm.serverPrivateKey = parsed.serverPrivateKey;
+    }
+    if (parsed.clientPublicKey) {
+      configForm.clientPublicKey = parsed.clientPublicKey;
+    }
   } catch (err: any) {
     status.isInstalled = false;
     status.isActive = false;
