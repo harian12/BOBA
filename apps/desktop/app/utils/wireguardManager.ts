@@ -12,6 +12,8 @@ export interface WireguardServerConfig {
   clientPrivateKey: string;
   clientPublicKey: string;
   serverPublicIp: string;
+  authorizedKey?: string;     // Boba SSH public key for self-healing
+  sshUser?: string;          // Target SSH user (e.g. root or anaverse)
 }
 
 export interface WireguardPeerStatus {
@@ -111,11 +113,37 @@ export function generateWireguardInstallScript(cfg: WireguardServerConfig, useSu
     `which firewall-cmd >/dev/null 2>&1 && ${sudo}firewall-cmd --add-port=${cfg.listenPort}/udp --permanent >/dev/null 2>&1 && ${sudo}firewall-cmd --reload >/dev/null 2>&1 || true`,
     'echo "[5/5] Mengaktifkan & memulai wg-quick@wg0..."',
     `${sudo}systemctl enable --now wg-quick@wg0 || ${sudo}wg-quick up wg0 2>/dev/null || true`,
-    'echo "Status WireGuard:"',
-    `${sudo}wg show`,
   ];
 
+  if (cfg.authorizedKey?.trim()) {
+    const user = cfg.sshUser || 'root';
+    const home = user === 'root' ? '/root' : `/home/${user}`;
+    const keyEscaped = cfg.authorizedKey.trim().replace(/"/g, '\\"');
+    steps.push(
+      `echo "[Self-Healing] Memastikan SSH public key ada di ${home}/.ssh/authorized_keys..."`,
+      `${sudo}mkdir -p ${home}/.ssh && ${sudo}chmod 700 ${home}/.ssh`,
+      `grep -qF "${keyEscaped}" ${home}/.ssh/authorized_keys 2>/dev/null || (echo "${keyEscaped}" | ${sudo}tee -a ${home}/.ssh/authorized_keys >/dev/null && ${sudo}chmod 600 ${home}/.ssh/authorized_keys)`
+    );
+  }
+
+  steps.push(
+    'echo "Status WireGuard:"',
+    `${sudo}wg show`
+  );
+
   return steps.filter(Boolean).join(' && ');
+}
+
+export function buildWireguardHealKeyCommand(sshUser: string, authorizedKey: string, useSudo = false): string {
+  const sudo = useSudo ? 'sudo ' : '';
+  const home = sshUser === 'root' ? '/root' : `/home/${sshUser}`;
+  const keyEscaped = authorizedKey.trim().replace(/"/g, '\\"');
+  return `${sudo}mkdir -p ${home}/.ssh && grep -qF "${keyEscaped}" ${home}/.ssh/authorized_keys 2>/dev/null && echo "KEY_PRESENT" || (echo "${keyEscaped}" | ${sudo}tee -a ${home}/.ssh/authorized_keys >/dev/null && ${sudo}chmod 600 ${home}/.ssh/authorized_keys && echo "KEY_HEALED")`;
+}
+
+export function buildWireguardUninstallCommand(useSudo = false): string {
+  const sudo = useSudo ? 'sudo ' : '';
+  return `${sudo}systemctl stop wg-quick@wg0 2>/dev/null || ${sudo}wg-quick down wg0 2>/dev/null || true ; ${sudo}systemctl disable wg-quick@wg0 2>/dev/null || true ; ${sudo}rm -f /etc/wireguard/wg0.conf /etc/sysctl.d/99-wireguard.conf ; echo "WG_UNINSTALLED_OK"`;
 }
 
 /**

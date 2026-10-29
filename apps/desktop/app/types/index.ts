@@ -27,10 +27,7 @@ export interface SshSessionConfig {
   snippets?: SnippetItem[];
   sftp_sudo?: boolean;
   sftp_sudo_command?: string;
-  system_tund_enabled?: boolean;
-  system_tund_port?: number;
-  system_tund_secret?: string;
-  system_tund_local_port?: number;
+  wireguard_enabled?: boolean;
 }
 
 export interface SshKeyItem {

@@ -306,18 +306,83 @@
               </div>
             </div>
 
+            <!-- SSH Key & Self-Healing Section -->
+            <div class="bg-[#0d1017] border border-[#262c3d] rounded-lg p-3.5 space-y-2.5 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-slate-200 flex items-center space-x-1.5">
+                  <Icon icon="lucide:shield-check" class="w-4 h-4 text-emerald-400" />
+                  <span>Proteksi Kunci SSH (Self-Healing ke 10.99.0.1)</span>
+                </span>
+                <button
+                  @click="autoGenerateOrFetchKey"
+                  class="text-[11px] text-emerald-400 hover:text-emerald-300 transition flex items-center space-x-1 font-medium"
+                >
+                  <Icon icon="lucide:sparkles" class="w-3 h-3" />
+                  <span>Generate / Ambil Otomatis</span>
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-slate-400 mb-1">Target SSH User</label>
+                  <input
+                    v-model="configForm.sshUser"
+                    type="text"
+                    class="w-full px-2.5 py-1 bg-[#161a26] border border-[#283045] rounded text-slate-200 font-mono text-[11px] focus:outline-none"
+                    placeholder="root"
+                  />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="block text-slate-400 mb-1">Boba SSH Public Key</label>
+                  <input
+                    v-model="configForm.authorizedKey"
+                    type="text"
+                    class="w-full px-2.5 py-1 bg-[#161a26] border border-[#283045] rounded text-slate-200 font-mono text-[11px] focus:outline-none truncate"
+                    placeholder="ssh-ed25519 AAAAC3... atau ssh-rsa..."
+                  />
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between pt-1">
+                <span class="text-[11px] text-slate-500">
+                  Kunci ini otomatis diinjeksi ke <code>authorized_keys</code> agar login ke <code>10.99.0.1:22</code> tidak butuh password.
+                </span>
+                <button
+                  @click="triggerHealCheck"
+                  :disabled="isHealing || !configForm.authorizedKey"
+                  class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] text-slate-200 transition flex items-center space-x-1 shrink-0 disabled:opacity-50"
+                >
+                  <Icon icon="lucide:check-circle" :class="['w-3 h-3 text-emerald-400', isHealing ? 'animate-spin' : '']" />
+                  <span>{{ isHealing ? 'Memeriksa...' : 'Verifikasi Key Sekarang' }}</span>
+                </button>
+              </div>
+              <div v-if="healMessage" class="p-2 rounded bg-slate-900 border border-slate-800 text-[11px] font-mono" :class="healMessage.includes('HEALED') || healMessage.includes('PRESENT') ? 'text-emerald-400' : 'text-amber-400'">
+                {{ healMessage }}
+              </div>
+            </div>
+
             <!-- Action Buttons -->
             <div class="pt-3 border-t border-[#23293a] flex flex-wrap items-center justify-between gap-3">
-              <button
-                v-if="status.isActive"
-                @click="stopWireguard"
-                :disabled="isDeploying"
-                class="px-3 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded text-xs text-rose-300 transition flex items-center space-x-1.5"
-              >
-                <Icon icon="lucide:square" class="w-4 h-4" />
-                <span>Hentikan wg0</span>
-              </button>
-              <div v-else></div>
+              <div class="flex space-x-2">
+                <button
+                  v-if="status.isActive"
+                  @click="stopWireguard"
+                  :disabled="isDeploying"
+                  class="px-3 py-2 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/60 rounded text-xs text-amber-300 transition flex items-center space-x-1.5"
+                >
+                  <Icon icon="lucide:square" class="w-4 h-4" />
+                  <span>Hentikan wg0</span>
+                </button>
+                <button
+                  v-if="status.isInstalled"
+                  @click="uninstallWireguard"
+                  :disabled="isDeploying"
+                  class="px-3 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded text-xs text-rose-300 transition flex items-center space-x-1.5"
+                >
+                  <Icon icon="lucide:trash-2" class="w-4 h-4" />
+                  <span>Uninstall WireGuard</span>
+                </button>
+              </div>
 
               <button
                 @click="deployWireguard"
@@ -368,6 +433,8 @@ import {
   buildWireguardStatusCheckCommand,
   parseWireguardStatus,
   generateClientWgConfig,
+  buildWireguardHealKeyCommand,
+  buildWireguardUninstallCommand,
   type WireguardServerConfig,
   type WireguardStatus,
 } from '../utils/wireguardManager';
@@ -390,12 +457,15 @@ const sessionStore = useSessionStore();
 const useSudo = ref(props.initialUseSudo ?? true);
 const isChecking = ref(false);
 const isDeploying = ref(false);
+const isHealing = ref(false);
+const healMessage = ref('');
 const copied = ref(false);
 const deployLogs = ref('');
 const activeTab = ref<'setup' | 'client-preview'>('setup');
 
 // Server Public IP extract
 const serverPublicIp = props.sessionConfig?.host || (props.hostTitle.includes('@') ? props.hostTitle.split('@')[1]! : '127.0.0.1');
+const defaultUser = props.sessionConfig?.username || (props.hostTitle.includes('@') ? props.hostTitle.split('@')[0]! : 'root');
 const sessionBaseName = props.sessionConfig?.name || props.hostTitle;
 const newSessionName = ref(`[WireGuard] ${sessionBaseName}`);
 
@@ -420,6 +490,8 @@ const configForm = reactive<WireguardServerConfig>({
   clientPrivateKey: randomBase64(32),
   clientPublicKey: randomBase64(32),
   serverPublicIp,
+  authorizedKey: '',
+  sshUser: defaultUser,
 });
 
 const status = reactive<WireguardStatus>({
@@ -537,6 +609,7 @@ async function saveWgSessionToVault() {
     key_id: props.sessionConfig?.key_id,
     password: props.sessionConfig?.password,
     sftp_auto_open: false,
+    wireguard_enabled: true,
   };
 
   await vaultStore.saveSession(newSession);
@@ -549,7 +622,67 @@ function openExistingWgSession() {
   }
 }
 
+async function autoGenerateOrFetchKey() {
+  try {
+    let cmd = `cat ~/.ssh/authorized_keys 2>/dev/null | grep -E '^ssh-(ed25519|rsa)' | head -n 1`;
+    let res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+
+    if (!res || !res.trim().startsWith('ssh-')) {
+      cmd = `cat ~/.ssh/id_ed25519.pub 2>/dev/null || cat ~/.ssh/id_rsa.pub 2>/dev/null || true`;
+      res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    }
+
+    if (!res || !res.trim().startsWith('ssh-')) {
+      cmd = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && (test -f ~/.ssh/id_ed25519.pub || ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "boba-wireguard" -q) && cat ~/.ssh/id_ed25519.pub`;
+      res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    }
+
+    if (res && res.trim().startsWith('ssh-')) {
+      configForm.authorizedKey = res.trim();
+    }
+  } catch (err: any) {
+    console.error('Error fetching/generating key:', err);
+  }
+}
+
+async function triggerHealCheck() {
+  if (!configForm.authorizedKey) return;
+  isHealing.value = true;
+  healMessage.value = '';
+  try {
+    const cmd = buildWireguardHealKeyCommand(
+      configForm.sshUser || 'root',
+      configForm.authorizedKey,
+      useSudo.value
+    );
+    const res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    healMessage.value = res.trim();
+  } catch (err: any) {
+    healMessage.value = `Gagal: ${err?.message || err}`;
+  } finally {
+    isHealing.value = false;
+  }
+}
+
+async function uninstallWireguard() {
+  if (!confirm('Yakin ingin meng-uninstall WireGuard dan menghapus /etc/wireguard/wg0.conf dari server?')) return;
+  isDeploying.value = true;
+  try {
+    const cmd = buildWireguardUninstallCommand(useSudo.value);
+    const res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    deployLogs.value = `Uninstall selesai:\n${res}`;
+    await refreshAll();
+  } catch (err: any) {
+    deployLogs.value = `Gagal uninstall: ${err?.message || err}`;
+  } finally {
+    isDeploying.value = false;
+  }
+}
+
 onMounted(async () => {
   await refreshAll();
+  if (!configForm.authorizedKey) {
+    await autoGenerateOrFetchKey();
+  }
 });
 </script>
