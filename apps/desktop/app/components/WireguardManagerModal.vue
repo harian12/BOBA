@@ -254,7 +254,18 @@
           <div v-if="activeTab === 'setup'" class="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4">
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div>
-                <label class="block text-slate-400 mb-1">Server Listen Port (UDP)</label>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="text-slate-400">Server Listen Port (UDP)</label>
+                  <button
+                    @click="openFirewallPort"
+                    :disabled="isOpeningPort"
+                    class="text-[10px] text-red-400 hover:text-red-300 font-semibold transition flex items-center space-x-1"
+                    title="Buka port UDP ini di iptables dan UFW server"
+                  >
+                    <Icon icon="lucide:shield-check" class="w-3 h-3" />
+                    <span>{{ isOpeningPort ? 'Membuka...' : 'Buka di Firewall' }}</span>
+                  </button>
+                </div>
                 <input
                   v-model.number="configForm.listenPort"
                   type="number"
@@ -497,6 +508,9 @@ import {
   buildWireguardHealKeyCommand,
   buildWireguardUpdateKeyCommand,
   buildWireguardUninstallCommand,
+  buildWgFullKeygenCommand,
+  parseWgFullKeygenOutput,
+  buildOpenPortCommand,
   type WireguardServerConfig,
   type WireguardStatus,
 } from '../utils/wireguardManager';
@@ -523,6 +537,7 @@ const isDeploying = ref(false);
 const isHealing = ref(false);
 const isGeneratingKey = ref(false);
 const isUpdatingKey = ref(false);
+const isOpeningPort = ref(false);
 const keyGenProgressText = ref('');
 const selectedKeyId = ref(props.sessionConfig?.key_id || '');
 const copied = ref(false);
@@ -599,11 +614,23 @@ function close() {
   emit('close');
 }
 
-function generateRandomKeys() {
-  configForm.serverPrivateKey = randomBase64(32);
-  configForm.serverPublicKey = randomBase64(32);
-  configForm.clientPrivateKey = randomBase64(32);
-  configForm.clientPublicKey = randomBase64(32);
+async function generateRandomKeys() {
+  isChecking.value = true;
+  try {
+    const cmd = buildWgFullKeygenCommand(useSudo.value);
+    const out = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    const parsed = parseWgFullKeygenOutput(out);
+    if (parsed) {
+      configForm.serverPrivateKey = parsed.serverPrivateKey;
+      configForm.serverPublicKey = parsed.serverPublicKey;
+      configForm.clientPrivateKey = parsed.clientPrivateKey;
+      configForm.clientPublicKey = parsed.clientPublicKey;
+    }
+  } catch (err: any) {
+    console.error('Curve25519 keygen error:', err);
+  } finally {
+    isChecking.value = false;
+  }
 }
 
 async function refreshAll() {
@@ -659,6 +686,28 @@ async function stopWireguard() {
     await refreshAll();
   } catch (err: any) {
     alert(`Gagal menghentikan: ${err?.message || err}`);
+  }
+}
+
+async function openFirewallPort() {
+  isOpeningPort.value = true;
+  try {
+    const cmd = buildOpenPortCommand(configForm.listenPort, useSudo.value);
+    const out = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    deployLogs.value += `Buka port ${configForm.listenPort}/udp:\n${out}\n`;
+    healStatus.value = {
+      type: 'success',
+      title: `Port UDP ${configForm.listenPort} Terbuka!`,
+      detail: `Aturan firewall (iptables & ufw) allow ${configForm.listenPort}/udp berhasil diterapkan. Jika menggunakan cloud VPS, pastikan port UDP ${configForm.listenPort} juga di-Allow di web console VPS.`
+    };
+  } catch (err: any) {
+    healStatus.value = {
+      type: 'error',
+      title: 'Gagal Membuka Port',
+      detail: String(err?.message || err)
+    };
+  } finally {
+    isOpeningPort.value = false;
   }
 }
 
