@@ -178,14 +178,14 @@ export function buildWireguardUninstallCommand(useSudo = false): string {
 export function buildWireguardStatusCheckCommand(useSudo = false, sudoPass?: string): string {
   const sudo = useSudo ? 'sudo ' : '';
   const sudoAuth = useSudo && sudoPass?.trim()
-    ? `echo '${sudoPass.replace(/'/g, "'\\''")}' | sudo -S -v 2>/dev/null || true`
+    ? `echo '${sudoPass.replace(/'/g, "'\\''")}' | sudo -S -v`
     : (useSudo ? 'sudo -v 2>/dev/null || true' : '');
 
   return [
     sudoAuth,
     'echo "---WG_STATUS_START---"',
     'which wg >/dev/null 2>&1 && echo "INSTALLED=true" || echo "INSTALLED=false"',
-    `${sudo}wg show 2>/dev/null || wg show 2>/dev/null || echo "WG_DOWN"`,
+    `${sudo}wg show 2>/dev/null || echo "WG_DOWN"`,
     'echo "---CONFIG_START---"',
     `${sudo}cat /etc/wireguard/wg0.conf 2>/dev/null || cat /etc/wireguard/wg0.conf 2>/dev/null || echo ""`,
     'echo "---WG_STATUS_END---"',
