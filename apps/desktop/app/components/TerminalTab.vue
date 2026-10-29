@@ -134,6 +134,16 @@
               <span>Tunnel</span>
             </button>
 
+            <!-- system-tund Modal Button -->
+            <button
+              @click.stop="isSystemTundModalOpen = true"
+              class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka system-tund (Auto-Connect & SSH Self-Healing Daemon)"
+            >
+              <Icon icon="lucide:shield-check" class="w-3 h-3 text-emerald-400" />
+              <span>system-tund</span>
+            </button>
+
             <!-- WireGuard Mesh VPN Modal Button -->
             <button
               @click.stop="isWireguardModalOpen = true"
@@ -250,6 +260,13 @@
             >
               <Icon icon="lucide:network" class="w-3.5 h-3.5 text-teal-400" />
               <span>SSH Tunnel / Port</span>
+            </button>
+            <button
+              @click="isSystemTundModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-emerald-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:shield-check" class="w-3.5 h-3.5 text-emerald-400" />
+              <span>system-tund (Auto-Connect & Heal)</span>
             </button>
             <button
               @click="isWireguardModalOpen = true; isToolsMenuOpen = false"
@@ -798,6 +815,16 @@
         @close="isTunnelModalOpen = false"
       />
 
+      <!-- system-tund Modal -->
+      <SystemTundModal
+        v-if="isSystemTundModalOpen"
+        :isOpen="isSystemTundModalOpen"
+        :sessionId="tab.id"
+        :sessionConfig="tab.sessionConfig"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        @close="isSystemTundModalOpen = false"
+      />
+
       <!-- WireGuard Mesh VPN Modal -->
       <WireguardManagerModal
         v-if="isWireguardModalOpen"
@@ -873,6 +900,7 @@ import type { ActiveTab, SnippetItem, ServerMetrics } from '../types/index.js';
 import DockerManagerModal from './DockerManagerModal.vue';
 import SystemdManagerModal from './SystemdManagerModal.vue';
 import TunnelManagerModal from './TunnelManagerModal.vue';
+import SystemTundModal from './SystemTundModal.vue';
 import WireguardManagerModal from './WireguardManagerModal.vue';
 import CronManagerModal from './CronManagerModal.vue';
 import FirewallPortsModal from './FirewallPortsModal.vue';
@@ -909,6 +937,9 @@ const isSystemdModalOpen = ref(false);
 // Tunnel Manager State
 const isTunnelModalOpen = ref(false);
 
+// system-tund State
+const isSystemTundModalOpen = ref(false);
+
 // WireGuard State
 const isWireguardModalOpen = ref(false);
 
@@ -935,6 +966,7 @@ const isAnyModalOpen = computed(() =>
   isDockerModalOpen.value ||
   isSystemdModalOpen.value ||
   isTunnelModalOpen.value ||
+  isSystemTundModalOpen.value ||
   isWireguardModalOpen.value ||
   isCronModalOpen.value ||
   isFirewallModalOpen.value ||
@@ -1338,6 +1370,9 @@ onUnmounted(() => {
   }
   cleanupListeners();
   document.removeEventListener('keydown', handleKeydownCapture, true);
+  if (props.tab.sessionConfig.system_tund_enabled) {
+    tauriBridge.sshStopTunnel(`system-tund-${props.tab.id}`).catch(() => {});
+  }
   if (term) term.dispose();
   tauriBridge.sshClose(props.tab.id).catch(() => {});
 });
@@ -1835,9 +1870,9 @@ async function connectSsh() {
     props.tab.connected = true;
     term.focus();
 
-    // Notify if WireGuard Virtual LAN is used
-    if (props.tab.sessionConfig.wireguard_enabled || props.tab.sessionConfig.host === '10.99.0.1') {
-      term?.writeln(`\r\n\x1b[32m⚡ [WireGuard] Terhubung langsung via Virtual LAN privat 10.99.0.1\x1b[0m\r\n`);
+    // Notify if system-tund self-healing is enabled on this session
+    if (props.tab.sessionConfig.system_tund_enabled) {
+      term?.writeln(`\r\n\x1b[32m⚡ [system-tund] Terhubung langsung! SSH Self-Healing aktif di server.\x1b[0m\r\n`);
     }
 
     // Fetch initial metrics

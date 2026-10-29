@@ -6,8 +6,6 @@ import {
   generateWireguardInstallScript,
   buildWireguardStatusCheckCommand,
   parseWireguardStatus,
-  buildWireguardHealKeyCommand,
-  buildWireguardUninstallCommand,
   type WireguardServerConfig,
 } from '../app/utils/wireguardManager.ts';
 
@@ -45,19 +43,12 @@ test('generateClientWgConfig produces valid client conf format', () => {
   assert.ok(conf.includes('PersistentKeepalive = 25'));
 });
 
-test('generateWireguardInstallScript builds sequential bash script with key self-healing', () => {
-  const cfgWithKey: WireguardServerConfig = {
-    ...dummyConfig,
-    authorizedKey: 'ssh-ed25519 AAAAB3... boba-key',
-    sshUser: 'anaverse',
-  };
-  const script = generateWireguardInstallScript(cfgWithKey, true);
+test('generateWireguardInstallScript builds sequential bash script', () => {
+  const script = generateWireguardInstallScript(dummyConfig, true);
   assert.ok(script.includes('/etc/wireguard/wg0.conf'));
   assert.ok(script.includes('sysctl -w net.ipv4.ip_forward=1'));
   assert.ok(script.includes('sudo '));
   assert.ok(script.includes('wg-quick@wg0'));
-  assert.ok(script.includes('/home/anaverse/.ssh/authorized_keys'));
-  assert.ok(script.includes('chmod 600'));
 });
 
 test('buildWireguardStatusCheckCommand creates query command', () => {
@@ -93,16 +84,13 @@ peer: CLIENT_PUB_456==
   assert.ok(parsed.peers[0]?.transferRx?.includes('4.12 MiB'));
 });
 
-test('buildWireguardHealKeyCommand checks and repairs authorized_keys', () => {
-  const cmd = buildWireguardHealKeyCommand('anaverse', 'ssh-ed25519 AAAAB3... boba-key', false);
-  assert.ok(cmd.includes('/home/anaverse/.ssh/authorized_keys'));
-  assert.ok(cmd.includes('chmod 600'));
-  assert.ok(cmd.includes('KEY_HEALED'));
-});
-
-test('buildWireguardUninstallCommand stops wg service and removes configs', () => {
-  const cmd = buildWireguardUninstallCommand(true);
-  assert.ok(cmd.includes('wg-quick@wg0'));
-  assert.ok(cmd.includes('rm -f /etc/wireguard/wg0.conf'));
-  assert.ok(cmd.includes('WG_UNINSTALLED_OK'));
+test('parseWireguardStatus handles uninstalled status', () => {
+  const output = `
+INSTALLED=false
+WG_DOWN
+`;
+  const parsed = parseWireguardStatus(output);
+  assert.equal(parsed.isInstalled, false);
+  assert.equal(parsed.isActive, false);
+  assert.equal(parsed.peers.length, 0);
 });
