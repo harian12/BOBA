@@ -110,10 +110,9 @@ export function generateWireguardInstallScript(cfg: WireguardServerConfig, useSu
     `${sudo}chmod 700 /etc/wireguard`,
     `echo "${confB64}" | base64 -d | ${sudo}tee /etc/wireguard/wg0.conf >/dev/null`,
     `${sudo}chmod 600 /etc/wireguard/wg0.conf`,
-    'echo "[4/5] Membuka port UDP di firewall (UFW, Firewalld, iptables)..."',
-    `which ufw >/dev/null 2>&1 && (${sudo}ufw allow ${cfg.listenPort}/udp >/dev/null 2>&1 || true)`,
-    `which firewall-cmd >/dev/null 2>&1 && (${sudo}firewall-cmd --add-port=${cfg.listenPort}/udp --permanent >/dev/null 2>&1 && ${sudo}firewall-cmd --reload >/dev/null 2>&1 || true)`,
-    `${sudo}iptables -C INPUT -p udp --dport ${cfg.listenPort} -j ACCEPT 2>/dev/null || ${sudo}iptables -I INPUT 1 -p udp --dport ${cfg.listenPort} -j ACCEPT 2>/dev/null || true`,
+    'echo "[4/5] Membuka port UDP di firewall..."',
+    `which ufw >/dev/null 2>&1 && ${sudo}ufw allow ${cfg.listenPort}/udp >/dev/null 2>&1 || true`,
+    `which firewall-cmd >/dev/null 2>&1 && ${sudo}firewall-cmd --add-port=${cfg.listenPort}/udp --permanent >/dev/null 2>&1 && ${sudo}firewall-cmd --reload >/dev/null 2>&1 || true`,
     'echo "[5/5] Mengaktifkan & memulai wg-quick@wg0..."',
     `${sudo}systemctl enable --now wg-quick@wg0 || ${sudo}wg-quick up wg0 2>/dev/null || true`,
   ];
@@ -149,16 +148,6 @@ export function buildWireguardUpdateKeyCommand(sshUser: string, authorizedKey: s
   const home = sshUser === 'root' ? '/root' : `/home/${sshUser}`;
   const keyEscaped = authorizedKey.trim().replace(/"/g, '\\"');
   return `${sudo}mkdir -p ${home}/.ssh && ${sudo}chmod 700 ${home}/.ssh && (grep -qF "${keyEscaped}" ${home}/.ssh/authorized_keys 2>/dev/null || echo "${keyEscaped}" | ${sudo}tee -a ${home}/.ssh/authorized_keys >/dev/null) && ${sudo}chmod 600 ${home}/.ssh/authorized_keys && echo "KEY_UPDATED"`;
-}
-
-export function buildOpenPortCommand(port: number, useSudo = false): string {
-  const sudo = useSudo ? 'sudo ' : '';
-  return [
-    `which ufw >/dev/null 2>&1 && (${sudo}ufw allow ${port}/udp 2>/dev/null || true)`,
-    `which firewall-cmd >/dev/null 2>&1 && (${sudo}firewall-cmd --add-port=${port}/udp --permanent 2>/dev/null && ${sudo}firewall-cmd --reload 2>/dev/null || true)`,
-    `${sudo}iptables -C INPUT -p udp --dport ${port} -j ACCEPT 2>/dev/null || ${sudo}iptables -I INPUT 1 -p udp --dport ${port} -j ACCEPT 2>/dev/null || true`,
-    `echo "PORT_OPENED_${port}"`,
-  ].join(' ; ');
 }
 
 export function buildWireguardUninstallCommand(useSudo = false): string {
@@ -247,30 +236,4 @@ export function parseWireguardStatus(output: string): WireguardStatus {
  */
 export function buildKeygenCommand(): string {
   return `which wg >/dev/null 2>&1 && PRIV=$(wg genkey) && PUB=$(echo "$PRIV" | wg pubkey) && echo "$PRIV $PUB" || echo "NO_WG"`;
-}
-
-export function buildWgFullKeygenCommand(useSudo = false): string {
-  const sudo = useSudo ? 'sudo ' : '';
-  return `which wg >/dev/null 2>&1 || (which apt-get >/dev/null 2>&1 && ${sudo}-E env DEBIAN_FRONTEND=noninteractive apt-get update -y && ${sudo}-E env DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard-tools) || true ; S_PRIV=$(wg genkey 2>/dev/null) ; S_PUB=$(echo "$S_PRIV" | wg pubkey 2>/dev/null) ; C_PRIV=$(wg genkey 2>/dev/null) ; C_PUB=$(echo "$C_PRIV" | wg pubkey 2>/dev/null) ; echo "WG_KEYS:$S_PRIV|$S_PUB|$C_PRIV|$C_PUB"`;
-}
-
-export function parseWgFullKeygenOutput(output: string): {
-  serverPrivateKey: string;
-  serverPublicKey: string;
-  clientPrivateKey: string;
-  clientPublicKey: string;
-} | null {
-  const line = output.split('\n').find(l => l.includes('WG_KEYS:'));
-  if (!line) return null;
-  const raw = line.replace(/.*WG_KEYS:/, '').trim();
-  const parts = raw.split('|');
-  if (parts.length === 4 && parts[0] && parts[1] && parts[2] && parts[3]) {
-    return {
-      serverPrivateKey: parts[0].trim(),
-      serverPublicKey: parts[1].trim(),
-      clientPrivateKey: parts[2].trim(),
-      clientPublicKey: parts[3].trim(),
-    };
-  }
-  return null;
 }
