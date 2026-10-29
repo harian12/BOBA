@@ -43,8 +43,6 @@ Address = ${cfg.serverAddress}
 ListenPort = ${cfg.listenPort}
 PrivateKey = ${cfg.serverPrivateKey}
 SaveConfig = false
-PostUp = iptables -I INPUT 1 -i %i -j ACCEPT; iptables -I FORWARD 1 -i %i -j ACCEPT; which ufw >/dev/null 2>&1 && ufw allow in on %i 2>/dev/null || true
-PostDown = iptables -D INPUT -i %i -j ACCEPT 2>/dev/null; iptables -D FORWARD -i %i -j ACCEPT 2>/dev/null || true
 
 [Peer]
 PublicKey = ${cfg.clientPublicKey}
@@ -112,11 +110,10 @@ export function generateWireguardInstallScript(cfg: WireguardServerConfig, useSu
     `${sudo}chmod 700 /etc/wireguard`,
     `echo "${confB64}" | base64 -d | ${sudo}tee /etc/wireguard/wg0.conf >/dev/null`,
     `${sudo}chmod 600 /etc/wireguard/wg0.conf`,
-    'echo "[4/5] Membuka port UDP di firewall (UFW, Firewalld, iptables) & mengizinkan trafik wg0..."',
-    `which ufw >/dev/null 2>&1 && (${sudo}ufw allow ${cfg.listenPort}/udp >/dev/null 2>&1 && ${sudo}ufw allow in on wg0 >/dev/null 2>&1 || true)`,
-    `which firewall-cmd >/dev/null 2>&1 && (${sudo}firewall-cmd --add-port=${cfg.listenPort}/udp --permanent >/dev/null 2>&1 && ${sudo}firewall-cmd --add-interface=wg0 --zone=trusted --permanent >/dev/null 2>&1 && ${sudo}firewall-cmd --reload >/dev/null 2>&1 || true)`,
+    'echo "[4/5] Membuka port UDP di firewall (UFW, Firewalld, iptables)..."',
+    `which ufw >/dev/null 2>&1 && (${sudo}ufw allow ${cfg.listenPort}/udp >/dev/null 2>&1 || true)`,
+    `which firewall-cmd >/dev/null 2>&1 && (${sudo}firewall-cmd --add-port=${cfg.listenPort}/udp --permanent >/dev/null 2>&1 && ${sudo}firewall-cmd --reload >/dev/null 2>&1 || true)`,
     `${sudo}iptables -C INPUT -p udp --dport ${cfg.listenPort} -j ACCEPT 2>/dev/null || ${sudo}iptables -I INPUT 1 -p udp --dport ${cfg.listenPort} -j ACCEPT 2>/dev/null || true`,
-    `${sudo}iptables -C INPUT -i wg0 -j ACCEPT 2>/dev/null || ${sudo}iptables -I INPUT 1 -i wg0 -j ACCEPT 2>/dev/null || true`,
     'echo "[5/5] Mengaktifkan & memulai wg-quick@wg0..."',
     `${sudo}systemctl enable --now wg-quick@wg0 || ${sudo}wg-quick up wg0 2>/dev/null || true`,
   ];
@@ -157,10 +154,9 @@ export function buildWireguardUpdateKeyCommand(sshUser: string, authorizedKey: s
 export function buildOpenPortCommand(port: number, useSudo = false): string {
   const sudo = useSudo ? 'sudo ' : '';
   return [
-    `which ufw >/dev/null 2>&1 && (${sudo}ufw allow ${port}/udp 2>/dev/null && ${sudo}ufw allow in on wg0 2>/dev/null || true)`,
-    `which firewall-cmd >/dev/null 2>&1 && (${sudo}firewall-cmd --add-port=${port}/udp --permanent 2>/dev/null && ${sudo}firewall-cmd --add-interface=wg0 --zone=trusted --permanent 2>/dev/null && ${sudo}firewall-cmd --reload 2>/dev/null || true)`,
+    `which ufw >/dev/null 2>&1 && (${sudo}ufw allow ${port}/udp 2>/dev/null || true)`,
+    `which firewall-cmd >/dev/null 2>&1 && (${sudo}firewall-cmd --add-port=${port}/udp --permanent 2>/dev/null && ${sudo}firewall-cmd --reload 2>/dev/null || true)`,
     `${sudo}iptables -C INPUT -p udp --dport ${port} -j ACCEPT 2>/dev/null || ${sudo}iptables -I INPUT 1 -p udp --dport ${port} -j ACCEPT 2>/dev/null || true`,
-    `${sudo}iptables -C INPUT -i wg0 -j ACCEPT 2>/dev/null || ${sudo}iptables -I INPUT 1 -i wg0 -j ACCEPT 2>/dev/null || true`,
     `echo "PORT_OPENED_${port}"`,
   ].join(' ; ');
 }
