@@ -28,6 +28,7 @@ test('generateServerWgConfig produces valid wg0.conf format', () => {
   assert.ok(conf.includes('Address = 10.99.0.1/24'));
   assert.ok(conf.includes('ListenPort = 51820'));
   assert.ok(conf.includes('PrivateKey = SERVER_PRIV_KEY=='));
+  assert.ok(conf.includes('PostUp = iptables -I INPUT 1 -i %i -j ACCEPT'));
   assert.ok(conf.includes('[Peer]'));
   assert.ok(conf.includes('PublicKey = CLIENT_PUB_KEY=='));
   assert.ok(conf.includes('AllowedIPs = 10.99.0.2/32'));
