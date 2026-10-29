@@ -368,38 +368,19 @@
                 </div>
               </div>
 
-              <div class="flex items-center justify-between pt-1 flex-wrap gap-2">
+              <div class="flex items-center justify-between pt-1">
                 <span class="text-[11px] text-slate-500">
                   Private Key tersimpan aman di Boba, dan Public Key otomatis dipulihkan ke <code>authorized_keys</code> server.
                 </span>
-                <div class="flex items-center space-x-2">
-                  <button
-                    @click="updateKeyOnServer"
-                    :disabled="isUpdatingKey || !configForm.authorizedKey"
-                    class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-semibold transition flex items-center space-x-1 shrink-0 disabled:opacity-50 shadow cursor-pointer"
-                    title="Terapkan / perbarui public key ini langsung ke ~/.ssh/authorized_keys server"
-                  >
-                    <Icon icon="lucide:arrow-up-circle" :class="['w-3.5 h-3.5', isUpdatingKey ? 'animate-spin' : '']" />
-                    <span>{{ isUpdatingKey ? 'Memperbarui...' : 'Update Kunci ke Server' }}</span>
-                  </button>
-
-                  <button
-                    @click="triggerHealCheck"
-                    :disabled="isHealing || !configForm.authorizedKey"
-                    class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] text-slate-200 transition flex items-center space-x-1 shrink-0 disabled:opacity-50 cursor-pointer"
-                  >
-                    <Icon icon="lucide:check-circle" :class="['w-3 h-3 text-emerald-400', isHealing ? 'animate-spin' : '']" />
-                    <span>{{ isHealing ? 'Memeriksa...' : 'Verifikasi Key Sekarang' }}</span>
-                  </button>
-                </div>
+                <button
+                  @click="triggerHealCheck"
+                  :disabled="isHealing || !configForm.authorizedKey"
+                  class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] text-slate-200 transition flex items-center space-x-1 shrink-0 disabled:opacity-50"
+                >
+                  <Icon icon="lucide:check-circle" :class="['w-3 h-3 text-emerald-400', isHealing ? 'animate-spin' : '']" />
+                  <span>{{ isHealing ? 'Memeriksa...' : 'Verifikasi Key Sekarang' }}</span>
+                </button>
               </div>
-
-              <!-- Live Progress Banner when generating or updating keys -->
-              <div v-if="keyGenProgressText" class="p-2.5 rounded-lg bg-[#141926] border border-emerald-800/60 text-xs flex items-center space-x-2.5 animate-pulse text-emerald-300">
-                <Icon icon="lucide:loader" class="w-4 h-4 animate-spin text-emerald-400 shrink-0" />
-                <span class="font-mono text-[11px] font-medium">{{ keyGenProgressText }}</span>
-              </div>
-
               <div v-if="healStatus" class="p-2.5 rounded-lg border text-xs flex items-start space-x-2.5 animate-fade-in"
                    :class="healStatus.type === 'error' ? 'bg-rose-950/40 border-rose-800/60 text-rose-300' : 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'">
                 <Icon :icon="healStatus.type === 'error' ? 'lucide:alert-circle' : 'lucide:check-circle-2'" class="w-4 h-4 shrink-0 mt-0.5" />
@@ -483,7 +464,6 @@ import {
   parseWireguardStatus,
   generateClientWgConfig,
   buildWireguardHealKeyCommand,
-  buildWireguardUpdateKeyCommand,
   buildWireguardUninstallCommand,
   type WireguardServerConfig,
   type WireguardStatus,
@@ -509,8 +489,6 @@ const isChecking = ref(false);
 const isDeploying = ref(false);
 const isHealing = ref(false);
 const isGeneratingKey = ref(false);
-const isUpdatingKey = ref(false);
-const keyGenProgressText = ref('');
 const selectedKeyId = ref(props.sessionConfig?.key_id || '');
 const copied = ref(false);
 const deployLogs = ref('');
@@ -692,23 +670,9 @@ function openExistingWgSession() {
 async function generateAndSaveKeyPair() {
   isGeneratingKey.value = true;
   healStatus.value = null;
-  keyGenProgressText.value = '[1/3] Menyiapkan generator kunci di server...';
   try {
-    const now = Date.now();
-    // Use unique path that doesn't exist so ssh-keygen NEVER prompts "Overwrite (y/n)?"
-    const cmd = `F="/tmp/boba_key_${now}" ; rm -f "$F" "\${F}.pub" 2>/dev/null ; ssh-keygen -q -t ed25519 -N '' -C "boba-wireguard" -f "$F" < /dev/null && cat "\${F}.pub" && echo "---KEY_DELIMITER---" && cat "$F" && rm -f "$F" "\${F}.pub"`;
-    
-    keyGenProgressText.value = '[2/3] Menghasilkan pasangan kunci Ed25519...';
-
-    // 15-second timeout safety net to avoid infinite loading
-    const execPromise = tauriBridge.sshExecCommand(props.sessionId, cmd);
-    const timeoutPromise = new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('Waktu pembuatan kunci habis (timeout 15 detik).')), 15000)
-    );
-
-    const res = await Promise.race([execPromise, timeoutPromise]);
-
-    keyGenProgressText.value = '[3/3] Menyimpan Private Key ke Boba Vault laptop...';
+    const cmd = `PRIV_F=$(mktemp) && ssh-keygen -t ed25519 -N "" -f "$PRIV_F" -C "boba-wireguard" -q && cat "\${PRIV_F}.pub" && echo "---KEY_DELIMITER---" && cat "$PRIV_F" && rm -f "$PRIV_F" "\${PRIV_F}.pub"`;
+    const res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
 
     if (res && res.includes('---KEY_DELIMITER---')) {
       const [pubPart, privPart] = res.split('---KEY_DELIMITER---');
@@ -716,7 +680,7 @@ async function generateAndSaveKeyPair() {
       const privKey = privPart?.trim() || '';
 
       if (pubKey.startsWith('ssh-') && privKey.includes('PRIVATE KEY')) {
-        const newKeyId = `key_wg_${now}`;
+        const newKeyId = `key_wg_${Date.now()}`;
         const keyName = `[WireGuard] ${sessionBaseName}`;
 
         await vaultStore.saveKey({
@@ -728,23 +692,15 @@ async function generateAndSaveKeyPair() {
         configForm.authorizedKey = pubKey;
         selectedKeyId.value = newKeyId;
 
-        // Auto update into server authorized_keys
-        const updateCmd = buildWireguardUpdateKeyCommand(
-          configForm.sshUser || 'root',
-          pubKey,
-          useSudo.value
-        );
-        await tauriBridge.sshExecCommand(props.sessionId, updateCmd);
-
         healStatus.value = {
           type: 'success',
-          title: 'Pasangan Kunci Berhasil Dibuat & Aktif!',
-          detail: `Private Key tersimpan di Boba Vault ("${keyName}"). Public Key langsung diinjeksi ke ~/.ssh/authorized_keys server.`
+          title: 'Pasangan Kunci Berhasil Dibuat & Disimpan!',
+          detail: `Private Key telah tersimpan di Boba Vault ("${keyName}"). Public Key siap diinjeksi ke server.`
         };
         return;
       }
     }
-    throw new Error('Server tidak mengembalikan pasangan kunci yang valid: ' + (res || 'kosong'));
+    throw new Error('Server tidak mengembalikan pasangan kunci yang valid.');
   } catch (err: any) {
     healStatus.value = {
       type: 'error',
@@ -753,44 +709,6 @@ async function generateAndSaveKeyPair() {
     };
   } finally {
     isGeneratingKey.value = false;
-    keyGenProgressText.value = '';
-  }
-}
-
-async function updateKeyOnServer() {
-  if (!configForm.authorizedKey) return;
-  isUpdatingKey.value = true;
-  healStatus.value = null;
-  keyGenProgressText.value = 'Menerapkan public key ke ~/.ssh/authorized_keys server...';
-  try {
-    const cmd = buildWireguardUpdateKeyCommand(
-      configForm.sshUser || 'root',
-      configForm.authorizedKey,
-      useSudo.value
-    );
-    const res = (await tauriBridge.sshExecCommand(props.sessionId, cmd)).trim();
-    if (res.includes('KEY_UPDATED')) {
-      healStatus.value = {
-        type: 'success',
-        title: 'Kunci Publik Berhasil Diperbarui di Server!',
-        detail: `Kunci publik baru telah ditulis dan aktif di ~/.ssh/authorized_keys (${configForm.sshUser || 'root'}). Anda bisa langsung menggunakannya.`
-      };
-    } else {
-      healStatus.value = {
-        type: 'error',
-        title: 'Status Update',
-        detail: res
-      };
-    }
-  } catch (err: any) {
-    healStatus.value = {
-      type: 'error',
-      title: 'Gagal Update Kunci',
-      detail: String(err?.message || err)
-    };
-  } finally {
-    isUpdatingKey.value = false;
-    keyGenProgressText.value = '';
   }
 }
 
