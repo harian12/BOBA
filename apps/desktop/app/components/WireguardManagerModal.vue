@@ -356,13 +356,8 @@
                   <span>{{ isHealing ? 'Memeriksa...' : 'Verifikasi Key Sekarang' }}</span>
                 </button>
               </div>
-              <div v-if="healStatus" class="p-2.5 rounded-lg border text-xs flex items-start space-x-2.5 animate-fade-in"
-                   :class="healStatus.type === 'error' ? 'bg-rose-950/40 border-rose-800/60 text-rose-300' : 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'">
-                <Icon :icon="healStatus.type === 'error' ? 'lucide:alert-circle' : 'lucide:check-circle-2'" class="w-4 h-4 shrink-0 mt-0.5" />
-                <div class="space-y-0.5">
-                  <div class="font-bold">{{ healStatus.title }}</div>
-                  <div class="text-[11px] opacity-90 leading-relaxed">{{ healStatus.detail }}</div>
-                </div>
+              <div v-if="healMessage" class="p-2 rounded bg-slate-900 border border-slate-800 text-[11px] font-mono" :class="healMessage.includes('HEALED') || healMessage.includes('PRESENT') ? 'text-emerald-400' : 'text-amber-400'">
+                {{ healMessage }}
               </div>
             </div>
 
@@ -463,16 +458,10 @@ const useSudo = ref(props.initialUseSudo ?? true);
 const isChecking = ref(false);
 const isDeploying = ref(false);
 const isHealing = ref(false);
+const healMessage = ref('');
 const copied = ref(false);
 const deployLogs = ref('');
 const activeTab = ref<'setup' | 'client-preview'>('setup');
-
-interface HealStatus {
-  type: 'success' | 'healed' | 'error';
-  title: string;
-  detail: string;
-}
-const healStatus = ref<HealStatus | null>(null);
 
 // Server Public IP extract
 const serverPublicIp = props.sessionConfig?.host || (props.hostTitle.includes('@') ? props.hostTitle.split('@')[1]! : '127.0.0.1');
@@ -609,22 +598,15 @@ function downloadClientConfig() {
 
 async function saveWgSessionToVault() {
   const targetId = existingWgSessionInVault.value?.id || `wg-${Date.now()}`;
-
-  // Pastikan kunci SSH disesuaikan dengan pasangan kunci yang dijaga oleh Self-Healing
-  let attachedKeyId = props.sessionConfig?.key_id;
-  if (!attachedKeyId && vaultStore.vault.keys.length > 0) {
-    attachedKeyId = vaultStore.vault.keys[0]?.id;
-  }
-
   const newSession: SshSessionConfig = {
     id: targetId,
     folder_id: props.sessionConfig?.folder_id || null,
     name: newSessionName.value || `[WireGuard] ${sessionBaseName}`,
     host: '10.99.0.1',
     port: 22,
-    username: configForm.sshUser || props.sessionConfig?.username || 'root',
-    auth_type: attachedKeyId ? 'key' : (props.sessionConfig?.auth_type || 'key'),
-    key_id: attachedKeyId,
+    username: props.sessionConfig?.username || 'root',
+    auth_type: props.sessionConfig?.auth_type || 'key',
+    key_id: props.sessionConfig?.key_id,
     password: props.sessionConfig?.password,
     sftp_auto_open: false,
     wireguard_enabled: true,
@@ -666,39 +648,17 @@ async function autoGenerateOrFetchKey() {
 async function triggerHealCheck() {
   if (!configForm.authorizedKey) return;
   isHealing.value = true;
-  healStatus.value = null;
+  healMessage.value = '';
   try {
     const cmd = buildWireguardHealKeyCommand(
       configForm.sshUser || 'root',
       configForm.authorizedKey,
       useSudo.value
     );
-    const res = (await tauriBridge.sshExecCommand(props.sessionId, cmd)).trim();
-    if (res.includes('KEY_PRESENT')) {
-      healStatus.value = {
-        type: 'success',
-        title: 'Kunci SSH Terverifikasi & Aktif',
-        detail: `Kunci publik Boba aktif di ~/.ssh/authorized_keys (${configForm.sshUser || 'root'}). Sesi SSH ke 10.99.0.1:22 siap digunakan langsung tanpa password.`
-      };
-    } else if (res.includes('KEY_HEALED')) {
-      healStatus.value = {
-        type: 'healed',
-        title: 'Kunci SSH Berhasil Dipulihkan (Self-Healed)',
-        detail: 'Kunci sebelumnya hilang atau terhapus, sistem telah otomatis menyuntikkannya kembali ke ~/.ssh/authorized_keys server.'
-      };
-    } else {
-      healStatus.value = {
-        type: 'error',
-        title: 'Respons Server',
-        detail: res
-      };
-    }
+    const res = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    healMessage.value = res.trim();
   } catch (err: any) {
-    healStatus.value = {
-      type: 'error',
-      title: 'Gagal Memverifikasi Kunci',
-      detail: String(err?.message || err)
-    };
+    healMessage.value = `Gagal: ${err?.message || err}`;
   } finally {
     isHealing.value = false;
   }
