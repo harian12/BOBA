@@ -303,9 +303,8 @@
                 <div class="flex items-center space-x-2">
                   <button
                     @click="applyServerActiveKeys"
-                    :disabled="!status.serverPublicKey"
-                    class="text-[11px] text-teal-400 hover:text-teal-300 font-semibold transition flex items-center space-x-1 disabled:opacity-40"
-                    title="Gunakan kunci yang saat ini aktif berjalan di server"
+                    class="text-[11px] text-teal-400 hover:text-teal-300 font-semibold transition flex items-center space-x-1 cursor-pointer"
+                    title="Ambil dan gunakan kunci yang saat ini aktif berjalan di server"
                   >
                     <Icon icon="lucide:check-circle" class="w-3 h-3" />
                     <span>Gunakan Kunci Aktif Server</span>
@@ -313,7 +312,7 @@
                   <span class="text-slate-600">|</span>
                   <button
                     @click="generateRandomKeys"
-                    class="text-[11px] text-red-400 hover:text-red-300 transition flex items-center space-x-1"
+                    class="text-[11px] text-red-400 hover:text-red-300 transition flex items-center space-x-1 cursor-pointer"
                   >
                     <Icon icon="lucide:sparkles" class="w-3 h-3" />
                     <span>Generate Key Baru</span>
@@ -645,21 +644,52 @@ async function generateRandomKeys() {
   }
 }
 
-function applyServerActiveKeys() {
-  if (status.serverPublicKey) {
-    configForm.serverPublicKey = status.serverPublicKey;
+async function applyServerActiveKeys() {
+  // Always query server live directly to ensure 100% accurate active keys
+  isChecking.value = true;
+  try {
+    const cmd = buildWireguardStatusCheckCommand(
+      useSudo.value,
+      sudoPassword.value || props.sessionConfig?.password
+    );
+    const out = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    const parsed = parseWireguardStatus(out);
+
+    let pubKey = parsed.serverPublicKey;
+    let peerKey = parsed.peers[0]?.publicKey || parsed.clientPublicKey;
+
+    // Fallback direct check if wg show required sudo
+    if (!pubKey) {
+      const sudoPrefix = (useSudo.value || (configForm.sshUser && configForm.sshUser !== 'root')) ? 'sudo ' : '';
+      const fallbackCmd = `${sudoPrefix}wg show wg0 public-key 2>/dev/null ; echo "---" ; ${sudoPrefix}wg show wg0 peers 2>/dev/null`;
+      const fallbackOut = await tauriBridge.sshExecCommand(props.sessionId, fallbackCmd);
+      const [fPub, fPeer] = fallbackOut.split('---');
+      if (fPub?.trim()) pubKey = fPub.trim();
+      if (fPeer?.trim()) peerKey = fPeer.trim();
+    }
+
+    if (pubKey) {
+      configForm.serverPublicKey = pubKey;
+      status.serverPublicKey = pubKey;
+    }
+    if (peerKey) {
+      configForm.clientPublicKey = peerKey;
+    }
+
+    healStatus.value = {
+      type: 'success',
+      title: 'Kunci Aktif Server Berhasil Diterapkan!',
+      detail: `Server Public Key: ${configForm.serverPublicKey} & Client Peer Key: ${configForm.clientPublicKey}. Silakan download ulang config client (.conf).`
+    };
+  } catch (err: any) {
+    healStatus.value = {
+      type: 'error',
+      title: 'Gagal Membaca Kunci Server',
+      detail: String(err?.message || err)
+    };
+  } finally {
+    isChecking.value = false;
   }
-  if (status.serverPrivateKey) {
-    configForm.serverPrivateKey = status.serverPrivateKey;
-  }
-  if (status.peers.length > 0 && status.peers[0]?.publicKey) {
-    configForm.clientPublicKey = status.peers[0].publicKey;
-  }
-  healStatus.value = {
-    type: 'success',
-    title: 'Kunci Aktif Server Diterapkan!',
-    detail: `Menggunakan Server Public Key: ${status.serverPublicKey}. Silakan download ulang config client untuk menggunakannya.`
-  };
 }
 
 async function refreshAll() {
