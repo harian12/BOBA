@@ -232,22 +232,10 @@
               </button>
             </div>
 
-            <div class="flex items-center space-x-3">
-              <label v-if="configForm.sshUser !== 'root'" class="flex items-center space-x-1.5 text-xs text-slate-300">
-                <span class="text-[11px] text-slate-400">Password sudo:</span>
-                <input
-                  v-model="sudoPassword"
-                  type="password"
-                  placeholder="Password sudo..."
-                  class="w-32 px-2 py-0.5 bg-[#1a1f2e] border border-[#2d354b] rounded text-slate-200 text-xs focus:border-red-500 focus:outline-none"
-                />
-              </label>
-
-              <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
-                <input type="checkbox" v-model="useSudo" class="rounded bg-[#1a1f2e] border-slate-700 text-red-500 focus:ring-0" />
-                <span>Gunakan sudo</span>
-              </label>
-            </div>
+            <label class="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+              <input type="checkbox" v-model="useSudo" class="rounded bg-[#1a1f2e] border-slate-700 text-red-500 focus:ring-0" />
+              <span>Gunakan sudo</span>
+            </label>
           </div>
 
           <!-- Tab 1: Setup Server -->
@@ -517,7 +505,6 @@ const vaultStore = useVaultStore();
 const sessionStore = useSessionStore();
 
 const useSudo = ref(props.initialUseSudo ?? true);
-const sudoPassword = ref('');
 const isChecking = ref(false);
 const isDeploying = ref(false);
 const isHealing = ref(false);
@@ -540,18 +527,7 @@ const healStatus = ref<HealStatus | null>(null);
 const serverPublicIp = props.sessionConfig?.host || (props.hostTitle.includes('@') ? props.hostTitle.split('@')[1]! : '127.0.0.1');
 const defaultUser = props.sessionConfig?.username || (props.hostTitle.includes('@') ? props.hostTitle.split('@')[0]! : 'root');
 const sessionBaseName = props.sessionConfig?.name || props.hostTitle;
-
-function getUniqueSessionName(base: string): string {
-  let name = base;
-  let count = 1;
-  while (vaultStore.vault.sessions.some(s => s.name.trim().toLowerCase() === name.trim().toLowerCase())) {
-    count++;
-    name = `${base} (${count})`;
-  }
-  return name;
-}
-
-const newSessionName = ref(getUniqueSessionName(`[WireGuard] ${sessionBaseName}`));
+const newSessionName = ref(`[WireGuard] ${sessionBaseName}`);
 
 function randomBase64(length = 32): string {
   const bytes = new Uint8Array(length);
@@ -640,7 +616,7 @@ async function deployWireguard() {
     const script = generateWireguardInstallScript(
       configForm,
       useSudo.value,
-      sudoPassword.value || props.sessionConfig?.password
+      props.sessionConfig?.password
     );
     const out = await tauriBridge.sshExecCommand(props.sessionId, script);
     deployLogs.value += out;
@@ -684,21 +660,15 @@ async function saveWgSessionToVault() {
   const targetId = existingWgSessionInVault.value?.id || `wg-${Date.now()}`;
 
   // Pastikan kunci SSH disesuaikan dengan pasangan kunci yang dijaga oleh Self-Healing
-  const attachedKeyId = selectedKeyId.value || props.sessionConfig?.key_id || (vaultStore.vault.keys[0]?.id);
-
-  // Jangan dengan nama yang sama jika sudah ada di vault sessions, tambahkan nomor
-  const baseSessionName = newSessionName.value || `[WireGuard] ${sessionBaseName}`;
-  let finalSessionName = baseSessionName;
-  let count = 1;
-  while (vaultStore.vault.sessions.some(s => s.id !== targetId && s.name.trim().toLowerCase() === finalSessionName.trim().toLowerCase())) {
-    count++;
-    finalSessionName = `${baseSessionName} (${count})`;
+  let attachedKeyId = props.sessionConfig?.key_id;
+  if (!attachedKeyId && vaultStore.vault.keys.length > 0) {
+    attachedKeyId = vaultStore.vault.keys[0]?.id;
   }
 
   const newSession: SshSessionConfig = {
     id: targetId,
     folder_id: props.sessionConfig?.folder_id || null,
-    name: finalSessionName,
+    name: newSessionName.value || `[WireGuard] ${sessionBaseName}`,
     host: '10.99.0.1',
     port: 22,
     username: configForm.sshUser || props.sessionConfig?.username || 'root',
@@ -747,17 +717,11 @@ async function generateAndSaveKeyPair() {
 
       if (pubKey.startsWith('ssh-') && privKey.includes('PRIVATE KEY')) {
         const newKeyId = `key_wg_${now}`;
-        const baseKeyName = `[WireGuard] ${sessionBaseName}`;
-        let finalKeyName = baseKeyName;
-        let count = 1;
-        while (vaultStore.vault.keys.some(k => k.name.trim().toLowerCase() === finalKeyName.trim().toLowerCase())) {
-          count++;
-          finalKeyName = `${baseKeyName} (${count})`;
-        }
+        const keyName = `[WireGuard] ${sessionBaseName}`;
 
         await vaultStore.saveKey({
           id: newKeyId,
-          name: finalKeyName,
+          name: keyName,
           private_key: privKey,
         });
 
@@ -775,7 +739,7 @@ async function generateAndSaveKeyPair() {
         healStatus.value = {
           type: 'success',
           title: 'Pasangan Kunci Berhasil Dibuat & Aktif!',
-          detail: `Private Key tersimpan di Boba Vault ("${finalKeyName}"). Public Key langsung diinjeksi ke ~/.ssh/authorized_keys server.`
+          detail: `Private Key tersimpan di Boba Vault ("${keyName}"). Public Key langsung diinjeksi ke ~/.ssh/authorized_keys server.`
         };
         return;
       }

@@ -88,12 +88,10 @@ export function encodeWgBase64(str: string): string {
  * Generates bash commands to install WireGuard, enable IP forwarding, write config, and start service.
  */
 export function generateWireguardInstallScript(cfg: WireguardServerConfig, useSudo = false, sudoPass?: string): string {
-  // If sshUser is not root or useSudo is true, enforce sudo
-  const needSudo = useSudo || (cfg.sshUser && cfg.sshUser !== 'root');
-  const sudo = needSudo ? 'sudo ' : '';
-  const sudoAuth = needSudo && sudoPass?.trim()
+  const sudo = useSudo ? 'sudo ' : '';
+  const sudoAuth = useSudo && sudoPass?.trim()
     ? `echo '${sudoPass.replace(/'/g, "'\\''")}' | sudo -S -v`
-    : (needSudo ? 'sudo -v 2>/dev/null || true' : '');
+    : (useSudo ? 'sudo -v 2>/dev/null || true' : '');
 
   const serverConf = generateServerWgConfig(cfg);
   const confB64 = encodeWgBase64(serverConf);
@@ -101,7 +99,7 @@ export function generateWireguardInstallScript(cfg: WireguardServerConfig, useSu
   const steps = [
     sudoAuth,
     'echo "[1/5] Memeriksa & memasang paket WireGuard..."',
-    `which wg >/dev/null 2>&1 || (which apt-get >/dev/null 2>&1 && ${sudo}-E env DEBIAN_FRONTEND=noninteractive apt-get update -y && ${sudo}-E env DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard iptables) || (which dnf >/dev/null 2>&1 && ${sudo}dnf install -y wireguard-tools iptables) || (which yum >/dev/null 2>&1 && ${sudo}yum install -y epel-release wireguard-tools iptables) || (which apk >/dev/null 2>&1 && ${sudo}apk add wireguard-tools iptables) || true`,
+    `which wg >/dev/null 2>&1 || (which apt-get >/dev/null 2>&1 && ${sudo}DEBIAN_FRONTEND=noninteractive apt-get update -y && ${sudo}DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard iptables) || (which dnf >/dev/null 2>&1 && ${sudo}dnf install -y wireguard-tools iptables) || (which yum >/dev/null 2>&1 && ${sudo}yum install -y epel-release wireguard-tools iptables) || (which apk >/dev/null 2>&1 && ${sudo}apk add wireguard-tools iptables) || true`,
     'echo "[2/5] Mengaktifkan IPv4 forwarding di kernel..."',
     `${sudo}sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true`,
     `echo "net.ipv4.ip_forward=1" | ${sudo}tee -a /etc/sysctl.d/99-wireguard.conf >/dev/null 2>&1 || true`,
