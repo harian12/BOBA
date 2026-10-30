@@ -236,6 +236,15 @@
                   <span>Restart</span>
                 </button>
                 <button
+                  @click="openLogsModal"
+                  :disabled="isLoadingLogs"
+                  class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-cyan-300 rounded text-xs transition flex items-center space-x-1 cursor-pointer disabled:opacity-50"
+                  title="Lihat log service WireGuard (journalctl, dmesg, wg show)"
+                >
+                  <Icon icon="lucide:file-text" class="w-3 h-3 text-cyan-400" />
+                  <span>Log Service</span>
+                </button>
+                <button
                   @click="uninstallWireguard"
                   :disabled="isActionLoading"
                   class="px-2 py-1 bg-rose-950/30 hover:bg-rose-900/50 text-rose-400 border border-rose-800/40 rounded text-xs transition cursor-pointer"
@@ -374,6 +383,15 @@
 
                 <!-- Peer Action Buttons -->
                 <div class="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                  <button
+                    @click="openPeerLogsModal(peer)"
+                    class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-cyan-300 rounded text-xs transition flex items-center space-x-1 cursor-pointer"
+                    title="Lihat riwayat handshake, endpoint, dan log aktivitas user ini"
+                  >
+                    <Icon icon="lucide:activity" class="w-3 h-3 text-cyan-400" />
+                    <span>Log User</span>
+                  </button>
+
                   <button
                     @click="viewPeerConfig(peer)"
                     class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-slate-300 rounded text-xs transition flex items-center space-x-1 cursor-pointer"
@@ -547,6 +565,139 @@
         </div>
       </div>
     </div>
+
+    <!-- Sub-Modal: Log Viewer (journalctl, dmesg, wg show) -->
+    <div
+      v-if="isLogsModalOpen"
+      class="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+      @click.self="isLogsModalOpen = false"
+    >
+      <div class="bg-[#141824] border border-[#262c3d] rounded-xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[85vh] p-5 text-slate-200 text-xs space-y-3">
+        <div class="flex items-center justify-between border-b border-[#262c3d] pb-3 shrink-0">
+          <div class="flex items-center space-x-2">
+            <Icon icon="lucide:terminal" class="w-4 h-4 text-cyan-400" />
+            <h3 class="text-sm font-bold text-slate-100">Log Service WireGuard (wg-quick@wg0)</h3>
+          </div>
+          <div class="flex items-center space-x-2">
+            <select
+              v-model="logsLines"
+              @change="fetchLogs"
+              class="px-2 py-0.5 bg-[#0d1017] border border-[#2d354b] rounded text-slate-300 text-[11px] focus:outline-none"
+            >
+              <option :value="50">50 baris</option>
+              <option :value="100">100 baris</option>
+              <option :value="250">250 baris</option>
+            </select>
+            <button
+              @click="fetchLogs"
+              :disabled="isLoadingLogs"
+              class="px-2 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
+              title="Refresh log"
+            >
+              <Icon icon="lucide:refresh-cw" :class="['w-3 h-3', isLoadingLogs ? 'animate-spin text-cyan-400' : '']" />
+              <span>Refresh</span>
+            </button>
+            <button @click="isLogsModalOpen = false" class="text-slate-400 hover:text-white p-1">✕</button>
+          </div>
+        </div>
+
+        <!-- Log Output Terminal Box -->
+        <pre class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[60vh] leading-relaxed whitespace-pre select-all">{{ logsOutput || 'Belum ada log atau sedang memuat...' }}</pre>
+
+        <div class="flex items-center justify-between pt-2 border-t border-[#262c3d] shrink-0">
+          <button
+            @click="copyText(logsOutput, 'Log berhasil disalin ke clipboard')"
+            class="px-3 py-1.5 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-slate-200 rounded-lg transition flex items-center space-x-1.5 cursor-pointer"
+          >
+            <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-blue-400" />
+            <span>Salin Log</span>
+          </button>
+          <button
+            @click="isLogsModalOpen = false"
+            class="px-3.5 py-1.5 bg-[#1e2333] hover:bg-[#282f45] text-slate-300 rounded-lg transition cursor-pointer"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-Modal: Log & Aktivitas Per User -->
+    <div
+      v-if="isPeerLogsModalOpen && activeLogPeer"
+      class="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+      @click.self="isPeerLogsModalOpen = false"
+    >
+      <div class="bg-[#141824] border border-[#262c3d] rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh] p-5 text-slate-200 text-xs space-y-3">
+        <div class="flex items-center justify-between border-b border-[#262c3d] pb-3 shrink-0">
+          <div class="flex items-center space-x-2">
+            <Icon icon="lucide:activity" class="w-4 h-4 text-cyan-400" />
+            <h3 class="text-sm font-bold text-slate-100">Aktivitas & Log User: {{ activeLogPeer.name }}</h3>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button
+              @click="fetchPeerLogs(activeLogPeer)"
+              :disabled="isLoadingPeerLogs"
+              class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
+            >
+              <Icon icon="lucide:refresh-cw" :class="['w-3 h-3', isLoadingPeerLogs ? 'animate-spin text-cyan-400' : '']" />
+              <span>Refresh</span>
+            </button>
+            <button @click="isPeerLogsModalOpen = false" class="text-slate-400 hover:text-white p-1">✕</button>
+          </div>
+        </div>
+
+        <!-- Realtime Peer Snapshot Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#0d1017] p-3 rounded-lg border border-[#262c3d] text-[11px] shrink-0">
+          <div>
+            <span class="text-slate-500 block text-[10px]">IP VPN</span>
+            <span class="font-mono text-blue-300 font-semibold">{{ activeLogPeer.allowedIps }}</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">Endpoint Asal</span>
+            <span class="font-mono text-slate-200 truncate block">{{ activeLogPeer.endpoint || 'Belum konek' }}</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">Handshake Terakhir</span>
+            <span class="text-slate-200 truncate block">{{ activeLogPeer.latestHandshake || 'Belum pernah' }}</span>
+          </div>
+          <div>
+            <span class="text-slate-500 block text-[10px]">Data Transfer</span>
+            <span class="font-mono text-teal-300 truncate block">↓ {{ activeLogPeer.transferRx || '0 B' }} / ↑ {{ activeLogPeer.transferTx || '0 B' }}</span>
+          </div>
+        </div>
+
+        <!-- Dynamic Debug Notice -->
+        <div class="flex items-center justify-between bg-blue-950/40 border border-blue-800/40 px-3 py-1.5 rounded-lg text-[11px] shrink-0">
+          <span class="text-blue-300">Mau log handshake packet mendalam di kernel dmesg?</span>
+          <button
+            @click="enableDynamicDebug"
+            class="text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
+          >
+            Aktifkan Dynamic Debug
+          </button>
+        </div>
+
+        <!-- Peer Log Terminal Output -->
+        <pre class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[50vh] leading-relaxed whitespace-pre select-all">{{ peerLogsOutput || 'Memuat log aktivitas peer...' }}</pre>
+
+        <div class="flex items-center justify-between pt-2 border-t border-[#262c3d] shrink-0">
+          <button
+            @click="copyText(peerLogsOutput, 'Log aktivitas user berhasil disalin')"
+            class="px-3 py-1.5 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-slate-200 rounded-lg transition flex items-center space-x-1.5 cursor-pointer"
+          >
+            <Icon icon="lucide:copy" class="w-3.5 h-3.5 text-blue-400" />
+            <span>Salin Log</span>
+          </button>
+          <button
+            @click="isPeerLogsModalOpen = false"
+            class="px-3.5 py-1.5 bg-[#1e2333] hover:bg-[#282f45] text-slate-300 rounded-lg transition cursor-pointer"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -567,6 +718,9 @@ import {
   buildDeletePeerCommand,
   buildServiceControlCommand,
   buildUninstallWireguardScript,
+  buildWireguardLogsCommand,
+  buildPeerLogsCommand,
+  buildEnableDynamicDebugCommand,
   type WireguardServerStatus,
   type WireguardPeer,
 } from '../utils/wireguardManager.js';
@@ -629,6 +783,18 @@ const isConfigModalOpen = ref(false);
 const activeConfigTitle = ref('');
 const activeConfigContent = ref('');
 const activeConfigFilename = ref('');
+
+// Logs Viewer State
+const isLogsModalOpen = ref(false);
+const isLoadingLogs = ref(false);
+const logsOutput = ref('');
+const logsLines = ref(100);
+
+// Peer Logs Viewer State
+const isPeerLogsModalOpen = ref(false);
+const isLoadingPeerLogs = ref(false);
+const activeLogPeer = ref<WireguardPeer | null>(null);
+const peerLogsOutput = ref('');
 
 // Computed endpoint
 const currentEndpoint = computed(() => {
@@ -885,6 +1051,59 @@ async function uninstallWireguard() {
     await refreshStatus();
   } catch (err: any) {
     dialogStore.showToast(`Gagal menghapus: ${err?.message || err}`, 'error');
+  }
+}
+
+// General WireGuard Service Logs
+async function openLogsModal() {
+  isLogsModalOpen.value = true;
+  await fetchLogs();
+}
+
+async function fetchLogs() {
+  isLoadingLogs.value = true;
+  try {
+    const cmd = buildWireguardLogsCommand(logsLines.value, useSudo.value, sudoPassword.value);
+    const out = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    logsOutput.value = out || '(Log kosong)';
+  } catch (err: any) {
+    logsOutput.value = `Gagal membaca log: ${err?.message || err}`;
+  } finally {
+    isLoadingLogs.value = false;
+  }
+}
+
+// Peer-Specific Activity & Kernel Logs
+async function openPeerLogsModal(peer: WireguardPeer) {
+  activeLogPeer.value = peer;
+  isPeerLogsModalOpen.value = true;
+  await fetchPeerLogs(peer);
+}
+
+async function fetchPeerLogs(peer: WireguardPeer) {
+  isLoadingPeerLogs.value = true;
+  try {
+    const cmd = buildPeerLogsCommand(peer.publicKey, useSudo.value, sudoPassword.value);
+    const out = await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    peerLogsOutput.value = out || '(Log aktivitas kosong)';
+  } catch (err: any) {
+    peerLogsOutput.value = `Gagal membaca log: ${err?.message || err}`;
+  } finally {
+    isLoadingPeerLogs.value = false;
+  }
+}
+
+// Enable Dynamic Debug for In-Depth Kernel WireGuard Logs
+async function enableDynamicDebug() {
+  try {
+    const cmd = buildEnableDynamicDebugCommand(useSudo.value, sudoPassword.value);
+    await tauriBridge.sshExecCommand(props.sessionId, cmd);
+    dialogStore.showToast('Dynamic debug WireGuard kernel berhasil diaktifkan', 'success');
+    if (activeLogPeer.value) {
+      await fetchPeerLogs(activeLogPeer.value);
+    }
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal mengaktifkan dynamic debug: ${err?.message || err}`, 'error');
   }
 }
 

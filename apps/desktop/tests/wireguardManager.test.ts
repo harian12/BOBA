@@ -11,6 +11,9 @@ import {
   buildDeletePeerCommand,
   buildServiceControlCommand,
   buildUninstallWireguardScript,
+  buildWireguardLogsCommand,
+  buildPeerLogsCommand,
+  buildEnableDynamicDebugCommand,
   formatSudoPrefix,
 } from '../app/utils/wireguardManager.ts';
 
@@ -205,4 +208,16 @@ test('command builders contain expected flags and keywords', () => {
 
   const uninstCmd = buildUninstallWireguardScript(false);
   assert.match(uninstCmd, /rm -f \/etc\/wireguard\/wg0.conf/);
+
+  const logsCmd = buildWireguardLogsCommand(50, true, 'pass');
+  assert.match(logsCmd, /journalctl -u wg-quick@wg0/);
+  assert.match(logsCmd, /dmesg/);
+  assert.match(logsCmd, /wg show wg0/);
+
+  const peerLogsCmd = buildPeerLogsCommand('myPublicKey123456789==', true, 'pass');
+  assert.match(peerLogsCmd, /myPublicKey123456789==/);
+  assert.match(peerLogsCmd, /dmesg/);
+
+  const debugCmd = buildEnableDynamicDebugCommand(true, 'pass');
+  assert.match(debugCmd, /dynamic_debug/);
 });

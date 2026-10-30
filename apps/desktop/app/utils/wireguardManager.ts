@@ -499,3 +499,54 @@ export function buildUninstallWireguardScript(useSudo = false, sudoPass?: string
   const sudo = formatSudoPrefix(useSudo, sudoPass);
   return `${sudo}systemctl stop wg-quick@wg0 2>/dev/null || ${sudo}wg-quick down wg0 2>/dev/null || true ; ${sudo}systemctl disable wg-quick@wg0 2>/dev/null || true ; ${sudo}rm -f /etc/wireguard/wg0.conf /etc/sysctl.d/99-wireguard.conf ; echo "WG_UNINSTALLED_OK"`;
 }
+
+/**
+ * Command to fetch WireGuard systemd journal and kernel logs
+ */
+export function buildWireguardLogsCommand(
+  lines = 100,
+  useSudo = false,
+  sudoPass?: string
+): string {
+  const sudo = formatSudoPrefix(useSudo, sudoPass);
+  return [
+    'echo "=== SYSTEMD JOURNAL (wg-quick@wg0) ==="',
+    `${sudo}journalctl -u wg-quick@wg0 -n ${lines} --no-pager 2>/dev/null || echo "(Tidak ada journal systemd)"`,
+    'echo ""',
+    'echo "=== KERNEL DMESG (WireGuard) ==="',
+    `${sudo}dmesg -T 2>/dev/null | grep -i wireguard | tail -n 50 || ${sudo}dmesg 2>/dev/null | grep -i wireguard | tail -n 50 || echo "(Tidak ada log dmesg)"`,
+    'echo ""',
+    'echo "=== RUNTIME DUMP (wg show wg0) ==="',
+    `${sudo}wg show wg0 2>/dev/null || echo "(Interface wg0 tidak aktif)"`,
+  ].join(' ; ');
+}
+
+/**
+ * Command to fetch real-time activity and kernel logs for a specific peer
+ */
+export function buildPeerLogsCommand(
+  publicKey: string,
+  useSudo = false,
+  sudoPass?: string
+): string {
+  const sudo = formatSudoPrefix(useSudo, sudoPass);
+  const shortKey = publicKey.slice(0, 10);
+  return [
+    'echo "=== STATUS RUNTIME PEER (wg show wg0) ==="',
+    `${sudo}wg show wg0 2>/dev/null | grep -A 5 -F "${publicKey}" || echo "(Peer belum pernah mengirim handshake/traffic)"`,
+    'echo ""',
+    'echo "=== LOG KERNEL / DMESG TERKAIT KEY INI ==="',
+    `(${sudo}dmesg -T 2>/dev/null || ${sudo}dmesg 2>/dev/null) | grep -i -F "${shortKey}" | tail -n 30 || echo "(Tidak ada log kernel dmesg spesifik key ini)"`,
+    'echo ""',
+    'echo "=== STATISTIK TRANSFER PACKET (IP ROUTE / CONNTRACK) ==="',
+    `(${sudo}conntrack -L -p udp --dport 51820 2>/dev/null || ${sudo}ss -u -a -p 2>/dev/null | grep 51820) | tail -n 10 || echo "(Koneksi UDP aktif tidak terdeteksi di conntrack)"`,
+  ].join(' ; ');
+}
+
+/**
+ * Enable dynamic debug for in-depth packet/handshake logging in dmesg
+ */
+export function buildEnableDynamicDebugCommand(useSudo = false, sudoPass?: string): string {
+  const sudo = formatSudoPrefix(useSudo, sudoPass);
+  return `echo "module wireguard +p" | ${sudo}tee /sys/kernel/debug/dynamic_debug/control 2>/dev/null || true ; echo "DYNAMIC_DEBUG_OK"`;
+}
