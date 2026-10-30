@@ -1,15 +1,15 @@
 ﻿{
     "platforms": {
         "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYi9qZll1ek5ic2czY0NlV29nWkR3bVlyaHB6dkhDcEhPVlpIZFJYbkY0WmQwRXFRZDNLN1JlNENuaTNZUE1LK2xVSzFCelNFSURERllmSzVQckVEemdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzM5OTc5CWZpbGU6Qk9CQV8wLjIuMjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4yNQpnUDAwSWlNdmhvUjkzQXQ0TWEzbUdUV0FGS0QvekpFRnVLSk91L0JMWWtncXBEaVUvQnlNWFdlK3VMdlNBdHRDTnIzVEZicCt2NlA3YjlIRlFPVmVEdz09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.25/BOBA_0.2.25_x64-setup.exe"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVBbVpTL1hOYUJMWmo1SC81YUU2b1ErMHQyTWF6QWxSZUNScFV1YTU4OU51czI4SW01WmdkamdDcFpWWGV6WFROL1V1YjIyOHg2c2lySE5NK3FZNVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzQ0MjQ0CWZpbGU6Qk9CQV8wLjIuMjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4yNgpmTnRNQWhxc0EzU2ZETC9vQ2VBU2hseXJkaXRiM3VZKzI3bE5vbThNQ0JRZ2pGanRva1Q4OEdrTE5rOFlqWEpSUis2N21mU0lDdXJ3OFB4am02TFJBdz09Cg==",
+            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.26/BOBA_0.2.26_x64-setup.exe"
         },
         "windows-x86_64-nsis": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYi9qZll1ek5ic2czY0NlV29nWkR3bVlyaHB6dkhDcEhPVlpIZFJYbkY0WmQwRXFRZDNLN1JlNENuaTNZUE1LK2xVSzFCelNFSURERllmSzVQckVEemdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzM5OTc5CWZpbGU6Qk9CQV8wLjIuMjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4yNQpnUDAwSWlNdmhvUjkzQXQ0TWEzbUdUV0FGS0QvekpFRnVLSk91L0JMWWtncXBEaVUvQnlNWFdlK3VMdlNBdHRDTnIzVEZicCt2NlA3YjlIRlFPVmVEdz09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.25/BOBA_0.2.25_x64-setup.exe"
+            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVBbVpTL1hOYUJMWmo1SC81YUU2b1ErMHQyTWF6QWxSZUNScFV1YTU4OU51czI4SW01WmdkamdDcFpWWGV6WFROL1V1YjIyOHg2c2lySE5NK3FZNVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzQ0MjQ0CWZpbGU6Qk9CQV8wLjIuMjZfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4yNgpmTnRNQWhxc0EzU2ZETC9vQ2VBU2hseXJkaXRiM3VZKzI3bE5vbThNQ0JRZ2pGanRva1Q4OEdrTE5rOFlqWEpSUis2N21mU0lDdXJ3OFB4am02TFJBdz09Cg==",
+            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.26/BOBA_0.2.26_x64-setup.exe"
         }
     },
-    "pub_date": "2026-10-30T05:00:00Z",
-    "version": "0.2.25",
-    "notes": "Release v0.2.25 - WireGuard VPN Manager terintegrasi penuh: installer otomatis kernel L3 wg0, manajemen user (tambah, hapus, unduh config client .conf), inspeksi status real-time, dan live streaming log journalctl & kernel dmesg per-user."
+    "pub_date": "2026-10-30T07:15:00Z",
+    "version": "0.2.26",
+    "notes": "Release v0.2.26 - Deteksi otomatis nama user/client WireGuard dari berbagai skrip server (angristan, pivpn, wg-easy), sinkronisasi unduhan config client asli dari server, serta penghapusan peer tuntas."
 }

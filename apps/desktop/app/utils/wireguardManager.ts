@@ -7,6 +7,7 @@ export interface WireguardPeer {
   transferRx?: string;
   transferTx?: string;
   isActive?: boolean;
+  clientPrivateKey?: string;
 }
 
 export interface WireguardServerStatus {
@@ -63,6 +64,41 @@ export function formatSudoPrefix(useSudo: boolean, sudoPass?: string): string {
 }
 
 /**
+ * Extract client name from WireGuard comment formats:
+ * - angristan: "### Client hari"
+ * - standard: "### Client: hari" or "# Client: hari" or "# Client hari"
+ * - wg-easy: "# Friendly Name: hari" or "# Friendly Name hari"
+ * - pivpn / others: "### begin hari ###" or "# BEGIN_PEER hari"
+ * - generic: "# User: hari", "# Peer: hari", "# Name: hari", or "### hari" / "# hari"
+ */
+export function extractClientCommentName(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('#')) return null;
+
+  // 1. Explicit prefixes: Client, Friendly Name, User, Peer, Name, BEGIN_PEER, begin, etc.
+  const prefixMatch = trimmed.match(
+    /^(?:###|#+)\s*(?:Client|client|Friendly Name|friendly-name|User|user|Peer|peer|Name|name|BEGIN_PEER|begin|\[Client\]|\[Peer\])\s*[:=]?\s*([^#]+?)(?:\s*###|\s*#+)?$/i
+  );
+  if (prefixMatch && prefixMatch[1]?.trim()) {
+    const candidate = prefixMatch[1].trim();
+    if (!/^(Interface|Server|Peers|Config|Configuration|End|END)$/i.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  // 2. Direct simple comment e.g. "### hari" or "# hari"
+  const simpleMatch = trimmed.match(/^(?:###|#)\s*([a-zA-Z0-9_\-\.\@\s]+?)(?:\s*###)?$/);
+  if (simpleMatch && simpleMatch[1]?.trim()) {
+    const candidate = simpleMatch[1].trim();
+    if (!/^(Interface|Server|Peers|Config|Configuration|End|END|Peer|Client|Client:|Address|PrivateKey|ListenPort|PostUp|PostDown|SaveConfig)$/i.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Command to check WireGuard installation, service status, and configuration
  */
 export function buildWireguardStatusCheckCommand(useSudo = false, sudoPass?: string): string {
@@ -102,6 +138,25 @@ export function parseWireguardStatus(rawOutput: string): WireguardServerStatus {
   let inConfSection = false;
   let currentRuntimePeer: WireguardPeer | null = null;
   let pendingClientName = '';
+  let currentConfPeer: { name?: string; publicKey?: string; allowedIps?: string } | null = null;
+
+  const flushConfPeer = () => {
+    if (!currentConfPeer || !currentConfPeer.publicKey) return;
+    const existing = peerMap.get(currentConfPeer.publicKey);
+    if (existing) {
+      if (currentConfPeer.name) existing.name = currentConfPeer.name;
+      if (currentConfPeer.allowedIps && !existing.allowedIps) {
+        existing.allowedIps = currentConfPeer.allowedIps;
+      }
+    } else {
+      peerMap.set(currentConfPeer.publicKey, {
+        name: currentConfPeer.name || `User-${peerMap.size + 1}`,
+        publicKey: currentConfPeer.publicKey,
+        allowedIps: currentConfPeer.allowedIps || '',
+      });
+    }
+    currentConfPeer = null;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!.trim();
@@ -116,6 +171,7 @@ export function parseWireguardStatus(rawOutput: string): WireguardServerStatus {
     }
 
     if (line === '---WG_CHECK_END---') {
+      flushConfPeer();
       inConfSection = false;
       continue;
     }
@@ -163,8 +219,28 @@ export function parseWireguardStatus(rawOutput: string): WireguardServerStatus {
       }
     } else {
       // Parsing /etc/wireguard/wg0.conf
-      if (line.startsWith('### Client:') || line.startsWith('# Client:') || line.startsWith('# Friendly Name:')) {
-        pendingClientName = line.replace(/^(###|#)\s*(Client:|Friendly Name:)\s*/i, '').trim();
+      const clientName = extractClientCommentName(line);
+      if (clientName) {
+        pendingClientName = clientName;
+        if (currentConfPeer && !currentConfPeer.name) {
+          currentConfPeer.name = clientName;
+        }
+        continue;
+      }
+
+      if (line === '[Peer]') {
+        flushConfPeer();
+        currentConfPeer = {
+          name: pendingClientName,
+          publicKey: '',
+          allowedIps: '',
+        };
+        pendingClientName = '';
+        continue;
+      }
+
+      if (line === '[Interface]') {
+        flushConfPeer();
         continue;
       }
 
@@ -177,28 +253,30 @@ export function parseWireguardStatus(rawOutput: string): WireguardServerStatus {
         serverPrivateKey = line.slice(line.indexOf('=') + 1).trim();
       } else if (line.startsWith('PublicKey =') || line.startsWith('PublicKey=')) {
         const pubKey = line.slice(line.indexOf('=') + 1).trim();
-        if (pubKey) {
-          const existing = peerMap.get(pubKey) || {
-            name: pendingClientName || `User-${peerMap.size + 1}`,
+        if (currentConfPeer) {
+          currentConfPeer.publicKey = pubKey;
+          if (pendingClientName && !currentConfPeer.name) {
+            currentConfPeer.name = pendingClientName;
+            pendingClientName = '';
+          }
+        } else {
+          currentConfPeer = {
+            name: pendingClientName,
             publicKey: pubKey,
             allowedIps: '',
           };
-          if (pendingClientName) existing.name = pendingClientName;
-          peerMap.set(pubKey, existing);
           pendingClientName = '';
         }
       } else if (line.startsWith('AllowedIPs =') || line.startsWith('AllowedIPs=')) {
         const ips = line.slice(line.indexOf('=') + 1).trim();
-        // Find the last peer in map and update allowedIps if needed
-        const keys = Array.from(peerMap.keys());
-        const lastKey = keys[keys.length - 1];
-        if (lastKey && ips) {
-          const p = peerMap.get(lastKey)!;
-          if (!p.allowedIps) p.allowedIps = ips;
+        if (currentConfPeer) {
+          currentConfPeer.allowedIps = ips;
         }
       }
     }
   }
+
+  flushConfPeer();
 
   if (currentRuntimePeer) {
     const existing = peerMap.get(currentRuntimePeer.publicKey);
@@ -453,23 +531,30 @@ export function parseAddPeerOutput(output: string): {
  */
 export function buildDeletePeerCommand(
   publicKey: string,
+  clientName?: string,
   useSudo = false,
   sudoPass?: string
 ): string {
   const sudo = formatSudoPrefix(useSudo, sudoPass);
+  const cleanName = clientName ? clientName.replace(/[^a-zA-Z0-9_\-]/g, '') : '';
 
   return `
 # Hapus peer dari interface runtime
 ${sudo}wg set wg0 peer "${publicKey}" remove 2>/dev/null || true
 
 # Hapus blok peer dari file konfigurasi menggunakan awk
-${sudo}awk -v key="${publicKey}" '
+${sudo}awk -v key="${publicKey}" -v name="${cleanName}" '
   BEGIN { RS = ""; ORS = "\\n\\n" }
-  index($0, key) == 0 { print }
+  (index($0, key) == 0) && (name == "" || index($0, name) == 0) { print }
 ' /etc/wireguard/wg0.conf | ${sudo}tee /etc/wireguard/wg0.conf.tmp >/dev/null
 
 ${sudo}mv /etc/wireguard/wg0.conf.tmp /etc/wireguard/wg0.conf
 ${sudo}chmod 600 /etc/wireguard/wg0.conf
+
+# Jika ada file .conf di /root atau /home atau /etc/wireguard, bersihkan juga
+if [ -n "${cleanName}" ]; then
+  ${sudo}rm -f "/root/${cleanName}.conf" "/home/*/${cleanName}.conf" "/etc/wireguard/clients/${cleanName}.conf" "/etc/wireguard/${cleanName}.conf" 2>/dev/null || true
+fi
 echo "WG_DELETE_PEER_SUCCESS"
 `.trim();
 }

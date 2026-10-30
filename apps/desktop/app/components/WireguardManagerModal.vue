@@ -1033,20 +1033,37 @@ async function submitAddUser() {
   }
 }
 
-// View Peer Config
-function viewPeerConfig(peer: WireguardPeer) {
+// Resolve complete client config from server if available (e.g. angristan / pivpn / custom), or generate fallback
+async function resolvePeerConfigFile(peer: WireguardPeer): Promise<string> {
+  const name = peer.name;
+  if (name && !name.startsWith('User-')) {
+    try {
+      const sudo = useSudo.value ? 'sudo ' : '';
+      const checkCmd = `${sudo}cat /root/${name}.conf 2>/dev/null || ${sudo}cat /home/*/${name}.conf 2>/dev/null || ${sudo}cat /etc/wireguard/clients/${name}.conf 2>/dev/null || ${sudo}cat /etc/wireguard/${name}.conf 2>/dev/null || echo ""`;
+      const out = await tauriBridge.sshExecCommand(props.sessionId, checkCmd);
+      if (out && out.includes('[Interface]') && (out.includes('PrivateKey') || out.includes('Address'))) {
+        return out.trim() + '\n';
+      }
+    } catch {}
+  }
+
+  // Fallback to template generator
   const serverPubKey = serverStatus.value.serverPublicKey || 'SERVER_PUB_KEY';
   const endpoint = currentEndpoint.value;
-
-  const configContent = generateClientConfigFile({
+  return generateClientConfigFile({
     name: peer.name,
-    clientPrivateKey: '<MASUKKAN_PRIVATE_KEY_CLIENT_ANDA>',
+    clientPrivateKey: peer.clientPrivateKey || '<MASUKKAN_PRIVATE_KEY_CLIENT_ANDA>',
     clientAddress: peer.allowedIps,
     dns: '1.1.1.1, 8.8.8.8',
     serverPublicKey: serverPubKey,
     serverEndpoint: endpoint,
     allowedIps: '10.99.0.0/24',
   });
+}
+
+// View Peer Config
+async function viewPeerConfig(peer: WireguardPeer) {
+  const configContent = await resolvePeerConfigFile(peer);
 
   activeConfigTitle.value = peer.name;
   activeConfigFilename.value = `${peer.name}.conf`;
@@ -1055,19 +1072,8 @@ function viewPeerConfig(peer: WireguardPeer) {
 }
 
 // Download Peer Config Directly
-function downloadPeerConfig(peer: WireguardPeer) {
-  const serverPubKey = serverStatus.value.serverPublicKey || 'SERVER_PUB_KEY';
-  const endpoint = currentEndpoint.value;
-
-  const configContent = generateClientConfigFile({
-    name: peer.name,
-    clientPrivateKey: '<MASUKKAN_PRIVATE_KEY_CLIENT_ANDA>',
-    clientAddress: peer.allowedIps,
-    dns: '1.1.1.1, 8.8.8.8',
-    serverPublicKey: serverPubKey,
-    serverEndpoint: endpoint,
-    allowedIps: '10.99.0.0/24',
-  });
+async function downloadPeerConfig(peer: WireguardPeer) {
+  const configContent = await resolvePeerConfigFile(peer);
 
   downloadFile(`${peer.name}.conf`, configContent);
   dialogStore.showToast(`File ${peer.name}.conf berhasil didownload`, 'success');
@@ -1092,7 +1098,7 @@ async function confirmDeletePeer(peer: WireguardPeer) {
   if (!confirmed) return;
 
   try {
-    const cmd = buildDeletePeerCommand(peer.publicKey, useSudo.value, sudoPassword.value);
+    const cmd = buildDeletePeerCommand(peer.publicKey, peer.name, useSudo.value, sudoPassword.value);
     await tauriBridge.sshExecCommand(props.sessionId, cmd);
     dialogStore.showToast(`User "${peer.name}" berhasil dihapus`, 'success');
     await refreshStatus();
