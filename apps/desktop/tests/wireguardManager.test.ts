@@ -313,6 +313,6 @@ test('command builders contain expected flags and keywords', () => {
   assert.match(liveServiceCmd, /journalctl -fu wg-quick@wg0/);
 
   const livePeerCmd = buildPeerLiveStreamCommand('myPublicKey123456789==', true, 'pass');
-  assert.match(livePeerCmd, /dmesg -w/);
-  assert.match(livePeerCmd, /myPublicKe/);
+  assert.match(livePeerCmd, /wg show wg0/);
+  assert.match(livePeerCmd, /myPublicKey123456789==/);
 });

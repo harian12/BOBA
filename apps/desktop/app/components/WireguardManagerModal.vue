@@ -635,6 +635,25 @@
           </div>
         </div>
 
+        <!-- Sudo Password Prompt Banner if requested by remote stream -->
+        <div v-if="promptingServiceSudo" class="flex items-center space-x-2 bg-amber-950/80 border border-amber-500/60 p-2.5 rounded-lg text-xs shrink-0 animate-pulse">
+          <Icon icon="lucide:key" class="w-4 h-4 text-amber-400 shrink-0" />
+          <span class="text-amber-200 shrink-0 font-medium">Server meminta password sudo:</span>
+          <input
+            v-model="serviceSudoInput"
+            type="password"
+            placeholder="Ketik password sudo..."
+            class="flex-1 px-2.5 py-1 bg-[#0d1017] border border-[#2d354b] rounded text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+            @keydown.enter="sendServiceSudoPassword"
+          />
+          <button
+            @click="sendServiceSudoPassword"
+            class="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded font-medium cursor-pointer shrink-0"
+          >
+            Kirim
+          </button>
+        </div>
+
         <!-- Log Output Terminal Box -->
         <pre ref="serviceLogBoxRef" class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[60vh] leading-relaxed whitespace-pre select-all">{{ logsOutput || 'Belum ada log atau sedang memuat...' }}</pre>
 
@@ -732,6 +751,25 @@
             class="text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
           >
             Aktifkan Dynamic Debug
+          </button>
+        </div>
+
+        <!-- Sudo Password Prompt Banner if requested by remote stream -->
+        <div v-if="promptingPeerSudo" class="flex items-center space-x-2 bg-amber-950/80 border border-amber-500/60 p-2.5 rounded-lg text-xs shrink-0 animate-pulse">
+          <Icon icon="lucide:key" class="w-4 h-4 text-amber-400 shrink-0" />
+          <span class="text-amber-200 shrink-0 font-medium">Server meminta password sudo:</span>
+          <input
+            v-model="peerSudoInput"
+            type="password"
+            placeholder="Ketik password sudo..."
+            class="flex-1 px-2.5 py-1 bg-[#0d1017] border border-[#2d354b] rounded text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+            @keydown.enter="sendPeerSudoPassword"
+          />
+          <button
+            @click="sendPeerSudoPassword"
+            class="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded font-medium cursor-pointer shrink-0"
+          >
+            Kirim
           </button>
         </div>
 
@@ -850,6 +888,8 @@ const logsOutput = ref('');
 const logsLines = ref(100);
 const serviceLogBoxRef = ref<HTMLPreElement | null>(null);
 const isServiceStreaming = ref(false);
+const promptingServiceSudo = ref(false);
+const serviceSudoInput = ref('');
 let serviceStreamId: string | null = null;
 let unlistenServiceChunk: (() => void) | null = null;
 let unlistenServiceEnded: (() => void) | null = null;
@@ -861,6 +901,8 @@ const activeLogPeer = ref<WireguardPeer | null>(null);
 const peerLogsOutput = ref('');
 const peerLogBoxRef = ref<HTMLPreElement | null>(null);
 const isPeerStreaming = ref(false);
+const promptingPeerSudo = ref(false);
+const peerSudoInput = ref('');
 let peerStreamId: string | null = null;
 let unlistenPeerChunk: (() => void) | null = null;
 let unlistenPeerEnded: (() => void) | null = null;
@@ -1154,6 +1196,8 @@ async function toggleServiceLiveStream() {
     return;
   }
 
+  promptingServiceSudo.value = false;
+  serviceSudoInput.value = '';
   logsOutput.value = '=== MEMULAI LIVE STREAM SERVICE (journalctl -fu wg-quick@wg0) ===\n';
   try {
     const cmd = buildWireguardLiveStreamCommand(useSudo.value, sudoPassword.value);
@@ -1163,6 +1207,17 @@ async function toggleServiceLiveStream() {
 
     unlistenServiceChunk = await tauriBridge.onLogStreamChunk(streamId, (chunk: string) => {
       logsOutput.value += chunk;
+
+      if (chunk.includes('[sudo] password for') || (chunk.toLowerCase().includes('password:') && chunk.toLowerCase().includes('sudo'))) {
+        if (sudoPassword.value && sudoPassword.value.trim()) {
+          tauriBridge.sshWriteLogStream(streamId, `${sudoPassword.value.trim()}\n`).catch(() => {});
+        } else {
+          promptingServiceSudo.value = true;
+        }
+      } else if (promptingServiceSudo.value && !chunk.toLowerCase().includes('try again') && !chunk.toLowerCase().includes('incorrect')) {
+        promptingServiceSudo.value = false;
+      }
+
       nextTick(() => {
         if (serviceLogBoxRef.value) {
           serviceLogBoxRef.value.scrollTop = serviceLogBoxRef.value.scrollHeight;
@@ -1179,6 +1234,14 @@ async function toggleServiceLiveStream() {
   }
 }
 
+async function sendServiceSudoPassword() {
+  if (!serviceStreamId || !serviceSudoInput.value) return;
+  sudoPassword.value = serviceSudoInput.value;
+  await tauriBridge.sshWriteLogStream(serviceStreamId, `${serviceSudoInput.value}\n`);
+  serviceSudoInput.value = '';
+  promptingServiceSudo.value = false;
+}
+
 function stopServiceLiveStream() {
   if (serviceStreamId) {
     tauriBridge.sshStopLogStream(serviceStreamId).catch(() => {});
@@ -1193,6 +1256,7 @@ function stopServiceLiveStream() {
     unlistenServiceEnded = null;
   }
   isServiceStreaming.value = false;
+  promptingServiceSudo.value = false;
 }
 
 function closeLogsModal() {
@@ -1236,6 +1300,8 @@ async function togglePeerLiveStream() {
     return;
   }
 
+  promptingPeerSudo.value = false;
+  peerSudoInput.value = '';
   peerLogsOutput.value = `=== MEMULAI LIVE STREAM KERNEL PEER: ${activeLogPeer.value.name} ===\n`;
   try {
     const cmd = buildPeerLiveStreamCommand(activeLogPeer.value.publicKey, useSudo.value, sudoPassword.value);
@@ -1245,6 +1311,17 @@ async function togglePeerLiveStream() {
 
     unlistenPeerChunk = await tauriBridge.onLogStreamChunk(streamId, (chunk: string) => {
       peerLogsOutput.value += chunk;
+
+      if (chunk.includes('[sudo] password for') || (chunk.toLowerCase().includes('password:') && chunk.toLowerCase().includes('sudo'))) {
+        if (sudoPassword.value && sudoPassword.value.trim()) {
+          tauriBridge.sshWriteLogStream(streamId, `${sudoPassword.value.trim()}\n`).catch(() => {});
+        } else {
+          promptingPeerSudo.value = true;
+        }
+      } else if (promptingPeerSudo.value && !chunk.toLowerCase().includes('try again') && !chunk.toLowerCase().includes('incorrect')) {
+        promptingPeerSudo.value = false;
+      }
+
       nextTick(() => {
         if (peerLogBoxRef.value) {
           peerLogBoxRef.value.scrollTop = peerLogBoxRef.value.scrollHeight;
@@ -1261,6 +1338,14 @@ async function togglePeerLiveStream() {
   }
 }
 
+async function sendPeerSudoPassword() {
+  if (!peerStreamId || !peerSudoInput.value) return;
+  sudoPassword.value = peerSudoInput.value;
+  await tauriBridge.sshWriteLogStream(peerStreamId, `${peerSudoInput.value}\n`);
+  peerSudoInput.value = '';
+  promptingPeerSudo.value = false;
+}
+
 function stopPeerLiveStream() {
   if (peerStreamId) {
     tauriBridge.sshStopLogStream(peerStreamId).catch(() => {});
@@ -1275,6 +1360,7 @@ function stopPeerLiveStream() {
     unlistenPeerEnded = null;
   }
   isPeerStreaming.value = false;
+  promptingPeerSudo.value = false;
 }
 
 function closePeerLogsModal() {

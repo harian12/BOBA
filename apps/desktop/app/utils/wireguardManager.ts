@@ -60,7 +60,7 @@ export function formatSudoPrefix(useSudo: boolean, sudoPass?: string): string {
     const escaped = sudoPass.replace(/'/g, "'\\''");
     return `echo '${escaped}' | sudo -S -v 2>/dev/null || true ; sudo `;
   }
-  return 'sudo -v 2>/dev/null || true ; sudo ';
+  return 'sudo ';
 }
 
 /**
@@ -643,8 +643,11 @@ export function buildWireguardLiveStreamCommand(
   useSudo = false,
   sudoPass?: string
 ): string {
-  const sudo = formatSudoPrefix(useSudo, sudoPass);
-  return `${sudo}journalctl -fu wg-quick@wg0 -n 50 --no-pager`;
+  const auth = useSudo && sudoPass?.trim()
+    ? `echo '${sudoPass.replace(/'/g, "'\\''")}' | sudo -S -v 2>/dev/null || true ; `
+    : '';
+  const sudo = useSudo ? 'sudo ' : '';
+  return `${auth}${sudo}journalctl -fu wg-quick@wg0 -n 50 --no-pager`;
 }
 
 /**
@@ -655,7 +658,21 @@ export function buildPeerLiveStreamCommand(
   useSudo = false,
   sudoPass?: string
 ): string {
-  const sudo = formatSudoPrefix(useSudo, sudoPass);
-  const shortKey = publicKey.slice(0, 10);
-  return `(echo "module wireguard +p" | ${sudo}tee /sys/kernel/debug/dynamic_debug/control 2>/dev/null || true) ; (${sudo}dmesg -w -T 2>/dev/null || ${sudo}dmesg -w 2>/dev/null || ${sudo}journalctl -kf 2>/dev/null) | grep --line-buffered -i -F "${shortKey}"`;
+  const auth = useSudo && sudoPass?.trim()
+    ? `echo '${sudoPass.replace(/'/g, "'\\''")}' | sudo -S -v 2>/dev/null || true`
+    : '';
+  const sudo = useSudo ? 'sudo ' : '';
+
+  return `
+${auth}
+# Enable dynamic debug if available
+echo "module wireguard +p" | ${sudo}tee /sys/kernel/debug/dynamic_debug/control >/dev/null 2>&1 || true
+
+# Live stream: Update peer runtime activity (handshake, bytes Rx/Tx, endpoint) continuously
+while true; do
+  echo "--- [LIVE $(date +'%T')] ---"
+  ${sudo}wg show wg0 2>/dev/null | grep -A 5 -F "${publicKey}" || echo "(Menunggu traffic peer...)"
+  sleep 2
+done
+`.trim();
 }
