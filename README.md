@@ -126,6 +126,20 @@ BOBA adalah aplikasi remote terminal & SFTP manager modern untuk Windows dengan 
 - **Analisa Log dengan AI**: Baris log yang mencurigakan dikirim ke AI Copilot untuk dianalisa, termasuk jumlah error dan warning pada log tersebut.
 - **Batas Keamanan Stream**: Maksimal 3 live stream aktif, dan setiap stream memakai channel SSH khusus yang tidak di-*detach*, sehingga otomatis berhenti saat jendela ditutup dan tidak meninggalkan proses `tail` yatim di server.
 
+### 9. WireGuard VPN Manager (v0.2.25)
+- **Instalasi Otomatis WireGuard Server**: Pemasangan paket kernel Linux WireGuard, aktivasi IP forwarding (`net.ipv4.ip_forward=1`), konfigurasi NAT iptables, pembukaan port firewall UDP 51820, dan aktivasi systemd service `wg-quick@wg0`.
+- **Manajemen User / Peer VPN**:
+  - Penambahan user/client baru dengan kalkulasi otomatis IP subnet yang belum terpakai (`10.99.0.x/32`).
+  - Pembuatan pasangan kunci Curve25519 otomatis di server.
+  - Pilihan mode rute trafik: Split Tunnel (`10.99.0.0/24`) atau Full Tunnel (`0.0.0.0/0`).
+  - Pencabutan dan penghapusan peer secara aman dari antarmuka runtime dan file konfigurasi.
+- **Generator & Unduhan Konfigurasi Klien (.conf)**: Pratinjau langsung isi konfigurasi client dalam antarmuka, tombol salin ke clipboard, dan pengunduhan file `.conf` untuk langsung diimpor ke aplikasi WireGuard Windows, macOS, Android, atau iOS.
+- **Inspeksi Status & Statistik Real-Time**: Pemantauan endpoint asal, waktu handshake terakhir, status online/idle, serta akumulasi kuota data transfer (Rx/Tx).
+- **Live Stream Log Real-Time**:
+  - Live streaming log service via `journalctl -fu wg-quick@wg0`.
+  - Live streaming kernel event handshake/packet per-user via `dmesg -w` dengan dukungan aktivasi dynamic debug (`module wireguard +p`).
+  - Opsi membuka live tail langsung di terminal utama.
+
 ---
 
 ## Arsitektur & Teknologi
