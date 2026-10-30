@@ -550,3 +550,27 @@ export function buildEnableDynamicDebugCommand(useSudo = false, sudoPass?: strin
   const sudo = formatSudoPrefix(useSudo, sudoPass);
   return `echo "module wireguard +p" | ${sudo}tee /sys/kernel/debug/dynamic_debug/control 2>/dev/null || true ; echo "DYNAMIC_DEBUG_OK"`;
 }
+
+/**
+ * Command to follow live log stream for WireGuard service
+ */
+export function buildWireguardLiveStreamCommand(
+  useSudo = false,
+  sudoPass?: string
+): string {
+  const sudo = formatSudoPrefix(useSudo, sudoPass);
+  return `${sudo}journalctl -fu wg-quick@wg0 -n 50 --no-pager`;
+}
+
+/**
+ * Command to follow live kernel packet/handshake events for a specific peer
+ */
+export function buildPeerLiveStreamCommand(
+  publicKey: string,
+  useSudo = false,
+  sudoPass?: string
+): string {
+  const sudo = formatSudoPrefix(useSudo, sudoPass);
+  const shortKey = publicKey.slice(0, 10);
+  return `(echo "module wireguard +p" | ${sudo}tee /sys/kernel/debug/dynamic_debug/control 2>/dev/null || true) ; (${sudo}dmesg -w -T 2>/dev/null || ${sudo}dmesg -w 2>/dev/null || ${sudo}journalctl -kf 2>/dev/null) | grep --line-buffered -i -F "${shortKey}"`;
+}

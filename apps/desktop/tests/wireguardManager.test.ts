@@ -14,6 +14,8 @@ import {
   buildWireguardLogsCommand,
   buildPeerLogsCommand,
   buildEnableDynamicDebugCommand,
+  buildWireguardLiveStreamCommand,
+  buildPeerLiveStreamCommand,
   formatSudoPrefix,
 } from '../app/utils/wireguardManager.ts';
 
@@ -220,4 +222,11 @@ test('command builders contain expected flags and keywords', () => {
 
   const debugCmd = buildEnableDynamicDebugCommand(true, 'pass');
   assert.match(debugCmd, /dynamic_debug/);
+
+  const liveServiceCmd = buildWireguardLiveStreamCommand(true, 'pass');
+  assert.match(liveServiceCmd, /journalctl -fu wg-quick@wg0/);
+
+  const livePeerCmd = buildPeerLiveStreamCommand('myPublicKey123456789==', true, 'pass');
+  assert.match(livePeerCmd, /dmesg -w/);
+  assert.match(livePeerCmd, /myPublicKe/);
 });

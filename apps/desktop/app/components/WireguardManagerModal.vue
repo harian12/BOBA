@@ -577,9 +577,42 @@
           <div class="flex items-center space-x-2">
             <Icon icon="lucide:terminal" class="w-4 h-4 text-cyan-400" />
             <h3 class="text-sm font-bold text-slate-100">Log Service WireGuard (wg-quick@wg0)</h3>
+            <span
+              v-if="isServiceStreaming"
+              class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-500 flex items-center space-x-1"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>LIVE</span>
+            </span>
           </div>
           <div class="flex items-center space-x-2">
+            <!-- Live Stream Toggle -->
+            <button
+              @click="toggleServiceLiveStream"
+              :class="[
+                'px-2.5 py-1 rounded text-[11px] font-semibold transition flex items-center space-x-1.5 cursor-pointer',
+                isServiceStreaming
+                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                  : 'bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-cyan-300'
+              ]"
+              :title="isServiceStreaming ? 'Klik untuk menghentikan live stream' : 'Mulai streaming log secara live realtime'"
+            >
+              <Icon :icon="isServiceStreaming ? 'lucide:radio' : 'lucide:play'" :class="['w-3.5 h-3.5', isServiceStreaming ? 'text-emerald-400 animate-pulse' : '']" />
+              <span>{{ isServiceStreaming ? 'Stop Stream' : 'Live Stream' }}</span>
+            </button>
+
+            <!-- Buka di Terminal Tab -->
+            <button
+              @click="openServiceLogTerminal"
+              class="px-2 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] text-slate-300 transition flex items-center space-x-1 cursor-pointer"
+              title="Buka live tail di terminal utama (journalctl -fu)"
+            >
+              <Icon icon="lucide:external-link" class="w-3 h-3 text-slate-400" />
+              <span class="hidden sm:inline">Terminal</span>
+            </button>
+
             <select
+              v-if="!isServiceStreaming"
               v-model="logsLines"
               @change="fetchLogs"
               class="px-2 py-0.5 bg-[#0d1017] border border-[#2d354b] rounded text-slate-300 text-[11px] focus:outline-none"
@@ -589,20 +622,21 @@
               <option :value="250">250 baris</option>
             </select>
             <button
+              v-if="!isServiceStreaming"
               @click="fetchLogs"
               :disabled="isLoadingLogs"
               class="px-2 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
-              title="Refresh log"
+              title="Refresh snapshot log"
             >
               <Icon icon="lucide:refresh-cw" :class="['w-3 h-3', isLoadingLogs ? 'animate-spin text-cyan-400' : '']" />
               <span>Refresh</span>
             </button>
-            <button @click="isLogsModalOpen = false" class="text-slate-400 hover:text-white p-1">✕</button>
+            <button @click="closeLogsModal" class="text-slate-400 hover:text-white p-1">✕</button>
           </div>
         </div>
 
         <!-- Log Output Terminal Box -->
-        <pre class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[60vh] leading-relaxed whitespace-pre select-all">{{ logsOutput || 'Belum ada log atau sedang memuat...' }}</pre>
+        <pre ref="serviceLogBoxRef" class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[60vh] leading-relaxed whitespace-pre select-all">{{ logsOutput || 'Belum ada log atau sedang memuat...' }}</pre>
 
         <div class="flex items-center justify-between pt-2 border-t border-[#262c3d] shrink-0">
           <button
@@ -633,9 +667,32 @@
           <div class="flex items-center space-x-2">
             <Icon icon="lucide:activity" class="w-4 h-4 text-cyan-400" />
             <h3 class="text-sm font-bold text-slate-100">Aktivitas & Log User: {{ activeLogPeer.name }}</h3>
+            <span
+              v-if="isPeerStreaming"
+              class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-500 flex items-center space-x-1"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>LIVE</span>
+            </span>
           </div>
           <div class="flex items-center space-x-2">
+            <!-- Peer Live Stream Toggle -->
             <button
+              @click="togglePeerLiveStream"
+              :class="[
+                'px-2.5 py-1 rounded text-[11px] font-semibold transition flex items-center space-x-1.5 cursor-pointer',
+                isPeerStreaming
+                  ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]'
+                  : 'bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] text-cyan-300'
+              ]"
+              :title="isPeerStreaming ? 'Klik untuk stop live stream' : 'Streaming live packet event dari kernel dmesg'"
+            >
+              <Icon :icon="isPeerStreaming ? 'lucide:radio' : 'lucide:play'" :class="['w-3.5 h-3.5', isPeerStreaming ? 'text-emerald-400 animate-pulse' : '']" />
+              <span>{{ isPeerStreaming ? 'Stop Stream' : 'Live Stream' }}</span>
+            </button>
+
+            <button
+              v-if="!isPeerStreaming"
               @click="fetchPeerLogs(activeLogPeer)"
               :disabled="isLoadingPeerLogs"
               class="px-2.5 py-1 bg-[#1e2333] hover:bg-[#282f45] border border-[#2e374d] rounded text-[11px] flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
@@ -643,7 +700,7 @@
               <Icon icon="lucide:refresh-cw" :class="['w-3 h-3', isLoadingPeerLogs ? 'animate-spin text-cyan-400' : '']" />
               <span>Refresh</span>
             </button>
-            <button @click="isPeerLogsModalOpen = false" class="text-slate-400 hover:text-white p-1">✕</button>
+            <button @click="closePeerLogsModal" class="text-slate-400 hover:text-white p-1">✕</button>
           </div>
         </div>
 
@@ -679,7 +736,7 @@
         </div>
 
         <!-- Peer Log Terminal Output -->
-        <pre class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[50vh] leading-relaxed whitespace-pre select-all">{{ peerLogsOutput || 'Memuat log aktivitas peer...' }}</pre>
+        <pre ref="peerLogBoxRef" class="flex-1 p-3.5 bg-[#090b10] border border-[#262c3d] rounded-lg text-[11px] font-mono text-cyan-300/90 overflow-y-auto max-h-[50vh] leading-relaxed whitespace-pre select-all">{{ peerLogsOutput || 'Memuat log aktivitas peer...' }}</pre>
 
         <div class="flex items-center justify-between pt-2 border-t border-[#262c3d] shrink-0">
           <button
@@ -702,7 +759,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import { Icon } from '@iconify/vue';
 import { tauriBridge } from '../services/tauriBridge.js';
 import { useDialogStore } from '../stores/dialogStore.js';
@@ -721,6 +778,8 @@ import {
   buildWireguardLogsCommand,
   buildPeerLogsCommand,
   buildEnableDynamicDebugCommand,
+  buildWireguardLiveStreamCommand,
+  buildPeerLiveStreamCommand,
   type WireguardServerStatus,
   type WireguardPeer,
 } from '../utils/wireguardManager.js';
@@ -789,12 +848,22 @@ const isLogsModalOpen = ref(false);
 const isLoadingLogs = ref(false);
 const logsOutput = ref('');
 const logsLines = ref(100);
+const serviceLogBoxRef = ref<HTMLPreElement | null>(null);
+const isServiceStreaming = ref(false);
+let serviceStreamId: string | null = null;
+let unlistenServiceChunk: (() => void) | null = null;
+let unlistenServiceEnded: (() => void) | null = null;
 
 // Peer Logs Viewer State
 const isPeerLogsModalOpen = ref(false);
 const isLoadingPeerLogs = ref(false);
 const activeLogPeer = ref<WireguardPeer | null>(null);
 const peerLogsOutput = ref('');
+const peerLogBoxRef = ref<HTMLPreElement | null>(null);
+const isPeerStreaming = ref(false);
+let peerStreamId: string | null = null;
+let unlistenPeerChunk: (() => void) | null = null;
+let unlistenPeerEnded: (() => void) | null = null;
 
 // Computed endpoint
 const currentEndpoint = computed(() => {
@@ -1073,6 +1142,66 @@ async function fetchLogs() {
   }
 }
 
+async function toggleServiceLiveStream() {
+  if (isServiceStreaming.value) {
+    stopServiceLiveStream();
+    return;
+  }
+
+  logsOutput.value = '=== MEMULAI LIVE STREAM SERVICE (journalctl -fu wg-quick@wg0) ===\n';
+  try {
+    const cmd = buildWireguardLiveStreamCommand(useSudo.value, sudoPassword.value);
+    const streamId = await tauriBridge.sshStartLogStream(props.sessionId, cmd, 'wireguard:service');
+    serviceStreamId = streamId;
+    isServiceStreaming.value = true;
+
+    unlistenServiceChunk = await tauriBridge.onLogStreamChunk(streamId, (chunk: string) => {
+      logsOutput.value += chunk;
+      nextTick(() => {
+        if (serviceLogBoxRef.value) {
+          serviceLogBoxRef.value.scrollTop = serviceLogBoxRef.value.scrollHeight;
+        }
+      });
+    });
+
+    unlistenServiceEnded = await tauriBridge.onLogStreamEnded(streamId, () => {
+      stopServiceLiveStream();
+    });
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal memulai live stream: ${err?.message || err}`, 'error');
+    stopServiceLiveStream();
+  }
+}
+
+function stopServiceLiveStream() {
+  if (serviceStreamId) {
+    tauriBridge.sshStopLogStream(serviceStreamId).catch(() => {});
+    serviceStreamId = null;
+  }
+  if (unlistenServiceChunk) {
+    unlistenServiceChunk();
+    unlistenServiceChunk = null;
+  }
+  if (unlistenServiceEnded) {
+    unlistenServiceEnded();
+    unlistenServiceEnded = null;
+  }
+  isServiceStreaming.value = false;
+}
+
+function closeLogsModal() {
+  stopServiceLiveStream();
+  isLogsModalOpen.value = false;
+}
+
+async function openServiceLogTerminal() {
+  const sudo = useSudo.value ? 'sudo ' : '';
+  const cmd = `${sudo}journalctl -fu wg-quick@wg0`;
+  await tauriBridge.sshWrite(props.sessionId, `${cmd}\n`);
+  closeLogsModal();
+  emit('close');
+}
+
 // Peer-Specific Activity & Kernel Logs
 async function openPeerLogsModal(peer: WireguardPeer) {
   activeLogPeer.value = peer;
@@ -1091,6 +1220,60 @@ async function fetchPeerLogs(peer: WireguardPeer) {
   } finally {
     isLoadingPeerLogs.value = false;
   }
+}
+
+async function togglePeerLiveStream() {
+  if (!activeLogPeer.value) return;
+
+  if (isPeerStreaming.value) {
+    stopPeerLiveStream();
+    return;
+  }
+
+  peerLogsOutput.value = `=== MEMULAI LIVE STREAM KERNEL PEER: ${activeLogPeer.value.name} ===\n`;
+  try {
+    const cmd = buildPeerLiveStreamCommand(activeLogPeer.value.publicKey, useSudo.value, sudoPassword.value);
+    const streamId = await tauriBridge.sshStartLogStream(props.sessionId, cmd, `wireguard:peer:${activeLogPeer.value.name}`);
+    peerStreamId = streamId;
+    isPeerStreaming.value = true;
+
+    unlistenPeerChunk = await tauriBridge.onLogStreamChunk(streamId, (chunk: string) => {
+      peerLogsOutput.value += chunk;
+      nextTick(() => {
+        if (peerLogBoxRef.value) {
+          peerLogBoxRef.value.scrollTop = peerLogBoxRef.value.scrollHeight;
+        }
+      });
+    });
+
+    unlistenPeerEnded = await tauriBridge.onLogStreamEnded(streamId, () => {
+      stopPeerLiveStream();
+    });
+  } catch (err: any) {
+    dialogStore.showToast(`Gagal memulai live stream peer: ${err?.message || err}`, 'error');
+    stopPeerLiveStream();
+  }
+}
+
+function stopPeerLiveStream() {
+  if (peerStreamId) {
+    tauriBridge.sshStopLogStream(peerStreamId).catch(() => {});
+    peerStreamId = null;
+  }
+  if (unlistenPeerChunk) {
+    unlistenPeerChunk();
+    unlistenPeerChunk = null;
+  }
+  if (unlistenPeerEnded) {
+    unlistenPeerEnded();
+    unlistenPeerEnded = null;
+  }
+  isPeerStreaming.value = false;
+}
+
+function closePeerLogsModal() {
+  stopPeerLiveStream();
+  isPeerLogsModalOpen.value = false;
 }
 
 // Enable Dynamic Debug for In-Depth Kernel WireGuard Logs
@@ -1139,8 +1322,16 @@ watch(
         installForm.value.publicIpOrDomain = props.sessionConfig.host;
       }
       refreshStatus();
+    } else {
+      stopServiceLiveStream();
+      stopPeerLiveStream();
     }
   },
   { immediate: true }
 );
+
+onUnmounted(() => {
+  stopServiceLiveStream();
+  stopPeerLiveStream();
+});
 </script>
