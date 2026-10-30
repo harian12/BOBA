@@ -134,6 +134,16 @@
               <span>Tunnel</span>
             </button>
 
+            <!-- WireGuard VPN Manager Modal Button -->
+            <button
+              @click.stop="isWireguardModalOpen = true"
+              class="px-2 py-0.5 bg-blue-950/40 hover:bg-blue-900/60 text-blue-300 border border-blue-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+              title="Buka WireGuard VPN Manager"
+            >
+              <Icon icon="lucide:shield-check" class="w-3 h-3 text-blue-400" />
+              <span>WireGuard</span>
+            </button>
+
             <!-- Cron Job Manager Modal Button -->
             <button
               @click.stop="isCronModalOpen = true"
@@ -240,6 +250,13 @@
             >
               <Icon icon="lucide:network" class="w-3.5 h-3.5 text-teal-400" />
               <span>SSH Tunnel / Port</span>
+            </button>
+            <button
+              @click="isWireguardModalOpen = true; isToolsMenuOpen = false"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-blue-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:shield-check" class="w-3.5 h-3.5 text-blue-400" />
+              <span>WireGuard VPN</span>
             </button>
             <button
               @click="isCronModalOpen = true; isToolsMenuOpen = false"
@@ -541,6 +558,17 @@
         </div>
       </button>
 
+      <!-- Open WireGuard Manager Context Menu -->
+      <button
+        @click="closeContextMenu(); isWireguardModalOpen = true"
+        class="w-full flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-blue-600 hover:text-white transition"
+      >
+        <div class="flex items-center space-x-2">
+          <span class="text-xs">🛡️</span>
+          <span>WireGuard VPN Manager</span>
+        </div>
+      </button>
+
       <!-- Open Cron Manager Context Menu -->
       <button
         @click="closeContextMenu(); isCronModalOpen = true"
@@ -781,6 +809,17 @@
         @close="isTunnelModalOpen = false"
       />
 
+      <!-- WireGuard VPN Manager Modal -->
+      <WireguardManagerModal
+        v-if="isWireguardModalOpen"
+        :isOpen="isWireguardModalOpen"
+        :sessionId="tab.id"
+        :sessionConfig="tab.sessionConfig"
+        :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
+        :initialUseSudo="tab.sessionConfig.username !== 'root'"
+        @close="isWireguardModalOpen = false"
+      />
+
       <!-- Cron Manager Modal -->
       <CronManagerModal
         v-if="isCronModalOpen"
@@ -846,6 +885,7 @@ import type { ActiveTab, SnippetItem, ServerMetrics } from '../types/index.js';
 import DockerManagerModal from './DockerManagerModal.vue';
 import SystemdManagerModal from './SystemdManagerModal.vue';
 import TunnelManagerModal from './TunnelManagerModal.vue';
+import WireguardManagerModal from './WireguardManagerModal.vue';
 import CronManagerModal from './CronManagerModal.vue';
 import FirewallPortsModal from './FirewallPortsModal.vue';
 import NetworkSslModal from './NetworkSslModal.vue';
@@ -881,6 +921,9 @@ const isSystemdModalOpen = ref(false);
 // Tunnel Manager State
 const isTunnelModalOpen = ref(false);
 
+// WireGuard VPN Manager State
+const isWireguardModalOpen = ref(false);
+
 // Cron Manager State
 const isCronModalOpen = ref(false);
 
@@ -904,6 +947,7 @@ const isAnyModalOpen = computed(() =>
   isDockerModalOpen.value ||
   isSystemdModalOpen.value ||
   isTunnelModalOpen.value ||
+  isWireguardModalOpen.value ||
   isCronModalOpen.value ||
   isFirewallModalOpen.value ||
   isNetworkModalOpen.value ||
