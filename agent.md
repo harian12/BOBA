@@ -129,7 +129,13 @@ $manifestHeaders = @{
     "Content-Type" = "application/json"
 }
 Invoke-RestMethod -Uri $uploadManifestUrl -Method Post -Headers $manifestHeaders -Body $jsonBytes
+
+# 5. Hapus Folder Target (Hemat Disk Setelah Berhasil Diunggah)
+Remove-Item -Recurse -Force "apps\desktop\src-tauri\target"
 ```
+
+### Pembersihan Otomatis Folder Target
+Setelah installer `.exe` dan `latest.json` selesai diunggah ke GitHub Release, **wajib langsung hapus folder `apps/desktop/src-tauri/target`**. Cache kompilasi Rust berukuran sangat besar (mencapai puluhan GB) dan tidak diperlukan lagi setelah rilis berhasil dipublikasikan.
 
 ### WAJIB: Kirim Body sebagai Byte UTF-8
 
