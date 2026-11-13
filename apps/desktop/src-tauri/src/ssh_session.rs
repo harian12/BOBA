@@ -537,6 +537,8 @@ impl SshManager {
         let app_clone = app.clone();
         let session_id_clone = session_id.clone();
         let sessions_map = Arc::clone(&self.sessions);
+        let log_streams_map = Arc::clone(&self.log_streams);
+        let active_tunnels_map = Arc::clone(&self.active_tunnels);
 
         tokio::spawn(async move {
             loop {
@@ -581,6 +583,35 @@ impl SshManager {
             }
 
             sessions_map.lock().remove(&session_id_clone);
+
+            // Clean up any remaining log streams for this disconnected session
+            let mut streams = log_streams_map.lock();
+            let stream_ids: Vec<String> = streams
+                .iter()
+                .filter(|(_, s)| s.session_id == session_id_clone)
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in stream_ids {
+                if let Some(s) = streams.remove(&id) {
+                    s.cancel.store(true, Ordering::SeqCst);
+                    s.cancel_notify.notify_waiters();
+                }
+            }
+
+            // Clean up any active tunnels for this disconnected session
+            let mut tunnels = active_tunnels_map.lock();
+            let tunnel_ids: Vec<String> = tunnels
+                .iter()
+                .filter(|(_, (info, _, _))| info.session_id == session_id_clone)
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in tunnel_ids {
+                if let Some((_, cancel, notify)) = tunnels.remove(&id) {
+                    cancel.store(true, Ordering::SeqCst);
+                    notify.notify_waiters();
+                }
+            }
+
             let _ = app_clone.emit(&format!("ssh-closed:{}", session_id_clone), ());
         });
 
