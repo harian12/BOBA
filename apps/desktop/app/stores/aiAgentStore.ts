@@ -280,8 +280,14 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       return aiSessId;
     }
 
-    // 3. Ambil konfigurasi server dari Vault
-    const config = vaultStore.vault.sessions.find(s => s.id === sessionId);
+    // 3. Ambil konfigurasi server dari Vault atau tab terbuka
+    let config = vaultStore.vault.sessions.find(s => s.id === sessionId);
+    if (!config) {
+      const anyTab = sessionStore.tabs.find(t => t.id === sessionId || t.sessionConfig?.id === sessionId);
+      if (anyTab?.sessionConfig) {
+        config = anyTab.sessionConfig;
+      }
+    }
     if (!config) {
       throw new Error(`Sesi server dengan ID "${sessionId}" tidak ditemukan di Vault.`);
     }
@@ -291,16 +297,21 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       keyItem = vaultStore.vault.keys.find(k => k.id === config.key_id);
     }
 
-    dialogStore.showToast(`Menghubungkan background SSH: ${config.name} (${config.host})...`, 'info', 2000);
-    await tauriBridge.sshConnect(
-      aiSessId,
-      config,
-      keyItem,
-      80,
-      24
-    );
-    connectedAiSessions.add(aiSessId);
-    return aiSessId;
+    dialogStore.showToast(`Menghubungkan background SSH: ${config.name || config.host} (${config.host})...`, 'info', 2000);
+    try {
+      await tauriBridge.sshConnect(
+        aiSessId,
+        config,
+        keyItem,
+        80,
+        24
+      );
+      connectedAiSessions.add(aiSessId);
+      return aiSessId;
+    } catch (e) {
+      connectedAiSessions.delete(aiSessId);
+      throw e;
+    }
   }
 
   function toggleDrawer() {
@@ -489,8 +500,12 @@ ${langPrompt}
 
   const activeThread = computed<AiChatThread | null>(() => {
     const sid = selectedSessionId.value || 'default';
-    const currentId = activeThreadPerSession.value[sid] || activeThreadId.value;
-    return threads.value.find(t => t.id === currentId) || threads.value.find(t => t.sessionId === sid) || null;
+    const currentId = activeThreadPerSession.value[sid];
+    if (currentId) {
+      const match = threads.value.find(t => t.id === currentId && t.sessionId === sid);
+      if (match) return match;
+    }
+    return threads.value.find(t => t.sessionId === sid) || null;
   });
 
   const currentSessionThreads = computed<AiChatThread[]>(() => {
@@ -906,6 +921,7 @@ ${langPrompt}
     } catch (err: any) {
       toolCall.error = String(err?.message || err);
       toolCall.status = 'failed';
+      connectedAiSessions.delete(`ai_${sessionId}`);
       throw err;
     } finally {
       isExecutingTool.value = false;
@@ -956,13 +972,14 @@ ${langPrompt}
     }
   }
 
-  function rejectToolCall(toolCallId: string, targetSessionId?: string) {
+  async function rejectToolCall(toolCallId: string, targetSessionId?: string) {
     let thread = targetSessionId
       ? threads.value.find(t => t.sessionId === targetSessionId && t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId)))
       : null;
     if (!thread) {
       thread = threads.value.find(t => t.messages.some(m => m.toolCalls?.some(tc => tc.id === toolCallId))) || getOrCreateActiveThread(selectedSessionId.value);
     }
+    const sid = thread.sessionId;
     const list = thread.messages;
     for (const msg of list) {
       const tc = msg.toolCalls?.find(t => t.id === toolCallId);
@@ -972,11 +989,12 @@ ${langPrompt}
           id: `msg_tool_rej_${Date.now()}`,
           role: 'tool',
           toolCallId: tc.id,
-          content: 'User membatalkan/menolak eksekusi aksi ini.',
+          content: 'User menolak eksekusi aksi ini. Jangan ulangi perintah yang sama, berikan konfirmasi pembatalan dan tanyakan alternatif tindakan atau berikan kesimpulan.',
           createdAt: Date.now(),
         });
         thread.updatedAt = Date.now();
         saveState();
+        await continueAgentLoop(sid);
         break;
       }
     }
@@ -1385,6 +1403,7 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
             saveState();
           },
           onFinish: async () => {
+            const wasAborted = !activeAbortController || activeAbortController.signal.aborted;
             isThinking.value = false;
             activeAbortController = null;
 
@@ -1392,11 +1411,13 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
               assistantMsg.content = stripToolCallsFromText(assistantMsg.content);
             }
 
-            // A finished turn is the natural commit point. The debounce alone
-            // would leave the last of the answer unwritten if the window closed
-            // mid-stream, and the `beforeunload` flush is a dynamic import plus
-            // an IPC round trip that will not reliably complete during unload.
+            // A finished turn is the natural commit point.
             void flushChatArchive();
+
+            // Jika dibatalkan oleh pengguna (klik Stop), jangan jalankan tool call otomatis
+            if (wasAborted) {
+              return;
+            }
 
             // Cek apakah ada tool calls lanjutan yang dihasilkan
             if (assistantMsg.toolCalls && assistantMsg.toolCalls.length > 0) {

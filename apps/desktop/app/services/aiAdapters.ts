@@ -1192,6 +1192,32 @@ async function streamAnthropic(
     }
   }
 
+  // Normalize for Anthropic: messages must strictly alternate user/assistant and begin with user
+  const normalizedMessages: any[] = [];
+  for (const turn of formattedMessages) {
+    const prev = normalizedMessages[normalizedMessages.length - 1];
+    if (prev && prev.role === turn.role) {
+      const prevContent = Array.isArray(prev.content)
+        ? prev.content
+        : [{ type: 'text', text: String(prev.content || '') }];
+      const turnContent = Array.isArray(turn.content)
+        ? turn.content
+        : [{ type: 'text', text: String(turn.content || '') }];
+      prev.content = [...prevContent, ...turnContent];
+    } else {
+      normalizedMessages.push(turn);
+    }
+  }
+
+  while (normalizedMessages.length > 0 && normalizedMessages[0].role !== 'user') {
+    normalizedMessages.shift();
+  }
+
+  if (normalizedMessages.length === 0) {
+    callbacks.onFinish();
+    return;
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': apiKey,
@@ -1211,7 +1237,7 @@ async function streamAnthropic(
     model,
     max_tokens: 4096,
     system: effectiveSystemPrompt,
-    messages: formattedMessages,
+    messages: normalizedMessages,
     tools: anthropicTools,
     stream: true,
   });
