@@ -1216,11 +1216,12 @@ You are currently in BUILD Mode.
     const langDirective = isId
       ? `### ATURAN BAHASA: BAHASA INDONESIA (MUTLAK & MENYELURUH)
 - Pengguna memilih Bahasa Indonesia. Seluruh respon Anda WAJIB 100% menggunakan BAHASA INDONESIA:
-  1. Kalimat pembuka, penalaran, dan penjelasan rencana sebelum pemanggilan perintah HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat pembuka berbahasa Inggris seperti "CPU usage is at 100%, therefore examining...", dsb).
+  1. Kalimat pembuka, observasi, penalaran langkah, dan penjelasan rencana sebelum pemanggilan perintah HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat pembuka atau coretan observasi berbahasa Inggris seperti "Port 8082 -> 200 OK. monitoring.filigrana 502 — likely domain not in nginx...", "502 means upstream fail. Check nginx conf...", "Note: this may be pre-existing. Check conf.", "CPU usage is at 100%, therefore examining...", dsb).
   2. Kalimat pengantar observasi dan uraian temuan setelah eksekusi perintah terminal HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat berbahasa Inggris seperti "High CPU and memory usage is concentrated within several active processes...", dsb).
   3. Seluruh ringkasan temuan teknis, langkah perbaikan, dan kesimpulan akhir HARUS Bahasa Indonesia.
-- DILARANG mencampurkan kalimat pengantar atau paragraf berbahasa Inggris. Semua narasi wajib Bahasa Indonesia.
-- Tetap pertahankan HANYA sintaks perintah bash, nama service/paket, kode, dan istilah teknis standar (CPU, RAM, swap, PID, load average, disk) apa adanya.`
+- DILARANG mencampurkan kalimat pengantar, pemikiran, catatan awal, atau paragraf berbahasa Inggris. Semua narasi wajib Bahasa Indonesia yang mengalir alami dan profesional.
+- Contoh yang BENAR: "Port 8082 merespon normal (200 OK). Namun domain monitoring.filigrana menghasilkan 502 Bad Gateway yang menandakan koneksi ke upstream bermasalah. Saya akan memeriksa konfigurasi vhost Nginx dan log error terkait."
+- Tetap pertahankan HANYA sintaks perintah bash, nama service/paket, kode, dan istilah teknis standar (CPU, RAM, swap, PID, load average, disk, port, vhost) apa adanya.`
       : (langCode === 'es'
         ? `### LANGUAGE DIRECTIVE: SPANISH (MANDATORY)
 - You MUST respond, provide analyses, and present all conclusions in Spanish.
@@ -1287,6 +1288,7 @@ ${executionModeDirective}
 ### ATURAN MUTLAK EKSEKUSI PERINTAH (STRICTLY ONE-BY-ONE SEQUENTIAL):
 - Kamu HANYA BOLEH memanggil MAKSIMAL 1 tool dalam satu respon/giliran. DILARANG KERAS memanggil lebih dari satu tool sekaligus secara paralel.
 - Kamu WAJIB menunggu hasil output eksekusi dari tool sebelumnya sebelum menentukan dan memanggil langkah/perintah berikutnya.
+- Narasi atau teks pengantar sebelum memanggil tool WAJIB 100% ditulis dalam Bahasa Indonesia. DILARANG menulis coretan rencana atau observasi dalam Bahasa Inggris.
 - Saat memanggil 'exec_command' atau 'db_execute_query', kamu WAJIB menyertakan:
   * 'description': Penjelasan ringkas dalam Bahasa Indonesia yang ramah bagi pengguna awam mengenai apa yang dilakukan query/perintah ini.
   * 'impact': Penjelasan dampak langsung atau efek samping (apakah aman/read-only, atau mengubah/menghapus baris data pada tabel tertentu).
@@ -1401,7 +1403,7 @@ ${langDirective}
 ${instructionsBody}
 
 ### PENEGASAN AKHIR (FINAL LANGUAGE ENFORCEMENT):
-${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Seluruh kalimat pembuka, uraian analisis hasil perintah, dan kesimpulan WAJIB ditulis dalam Bahasa Indonesia. DILARANG menggunakan kalimat pembuka atau narasi berbahasa Inggris.' : 'REMEMBER: All responses must adhere strictly to the selected language preference.'}`;
+${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Seluruh kalimat pembuka, uraian observasi awal, penalaran sebelum memanggil perintah, analisis hasil perintah, dan kesimpulan akhir WAJIB ditulis dalam Bahasa Indonesia. DILARANG menggunakan kalimat pembuka, catatan observasi, atau narasi berbahasa Inggris.' : 'REMEMBER: All responses must adhere strictly to the selected language preference.'}`;
   }
 
   async function sendMessage(promptText: string) {

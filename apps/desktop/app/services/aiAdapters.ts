@@ -1,7 +1,7 @@
 import type { AiProviderConfig, AiChatMessage, AiToolCall, AiCopilotMode } from '../types/index.ts';
 import { tauriBridge } from './tauriBridge.ts';
 
-export const AGENT_TOOLS = [
+export const AGENT_TOOLS_EN = [
   {
     type: 'function' as const,
     function: {
@@ -12,18 +12,18 @@ export const AGENT_TOOLS = [
         properties: {
           command: {
             type: 'string',
-            description: 'The exact bash command to execute (e.g. "systemctl status nginx", "cat /etc/hosts", "df -h"). PENTING: Dilarang memindai folder node_modules/vendor/.git kecuali pengguna secara eksplisit memintanya; selalu sertakan --exclude-dir=node_modules pada grep.',
+            description: 'The exact bash command to execute (e.g. "systemctl status nginx", "cat /etc/hosts", "df -h"). Always exclude node_modules via --exclude-dir=node_modules on grep.',
           },
           description: {
             type: 'string',
-            description: 'Penjelasan ringkas dalam Bahasa Indonesia yang mudah dipahami pengguna awam tentang tujuan perintah ini.',
+            description: 'Concise explanation in selected language of what this command does.',
           },
           impact: {
             type: 'string',
-            description: 'Penjelasan dampak atau konsekuensi perintah terhadap server (misal: aman/read-only, restart layanan, perubahan file, atau potensi downtime).',
+            description: 'Explanation of server impact (e.g. safe/read-only, restart service, file mutation, potential downtime).',
           },
         },
-        required: ['command'],
+        required: ['command', 'description'],
       },
     },
   },
@@ -175,7 +175,7 @@ export const AGENT_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'db_list_databases',
-      description: 'Daftar semua koneksi database yang tersimpan di vault (MySQL, PostgreSQL, SQLite, Redis, Mongo) beserta database/skema yang aktif.',
+      description: 'List all configured database connections from the secure Vault (MySQL, PostgreSQL, SQLite, Redis, Mongo).',
       parameters: {
         type: 'object',
         properties: {},
@@ -186,7 +186,247 @@ export const AGENT_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'db_get_schema',
-      description: 'Ambil skema lengkap (daftar tabel, kolom, tipe data, dan primary key) dari koneksi database tertentu atau yang sedang aktif.',
+      description: 'Inspect table schema (columns, data types, primary keys) of a target database.',
+      parameters: {
+        type: 'object',
+        properties: {
+          connection_id: {
+            type: 'string',
+            description: 'Database connection ID (optional, defaults to active database).',
+          },
+          database: {
+            type: 'string',
+            description: 'Specific database/schema name (optional).',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'db_execute_query',
+      description: 'Execute SQL query against the target database. Supports SELECT, UPDATE, DELETE, INSERT, DROP, ALTER.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'SQL query to execute.',
+          },
+          include_data_for_ai: {
+            type: 'boolean',
+            description: 'Set true only if raw row records are required for AI analysis.',
+          },
+          connection_id: {
+            type: 'string',
+            description: 'Database connection ID (optional).',
+          },
+          database: {
+            type: 'string',
+            description: 'Database / schema name (optional).',
+          },
+          description: {
+            type: 'string',
+            description: 'Concise explanation of what this query does.',
+          },
+          impact: {
+            type: 'string',
+            description: 'Impact statement (e.g. "Safe: Read-Only" or "Warning: Modifies table X").',
+          },
+        },
+        required: ['query', 'description'],
+      },
+    },
+  },
+];
+
+export const AGENT_TOOLS_ID = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'exec_command',
+      description: 'Menjalankan perintah bash/shell pada server Linux remote via sesi terminal SSH. Mengembalikan stdout dan stderr.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'Perintah bash yang akan dieksekusi (contoh: "systemctl status nginx", "cat /etc/hosts", "df -h"). DILARANG memindai folder node_modules/vendor/.git kecuali diminta; selalu sertakan --exclude-dir=node_modules pada grep.',
+          },
+          description: {
+            type: 'string',
+            description: 'Penjelasan ringkas dalam Bahasa Indonesia yang ramah pengguna mengenai tujuan perintah ini.',
+          },
+          impact: {
+            type: 'string',
+            description: 'Penjelasan dampak atau konsekuensi perintah terhadap server (misal: aman/read-only, restart layanan, perubahan file, atau potensi downtime).',
+          },
+        },
+        required: ['command', 'description'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_file',
+      description: 'Membaca isi teks file pada server remote via SFTP.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Path absolut ke file pada server remote (contoh: "/etc/nginx/nginx.conf")',
+          },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'write_file',
+      description: 'Menulis atau memperbarui file teks pada server remote. Salinan cadangan (backup) file asli dibuat otomatis sebelum disimpan.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Path absolut file yang akan dibuat atau ditimpa',
+          },
+          content: {
+            type: 'string',
+            description: 'Isi teks lengkap yang akan ditulis ke file',
+          },
+        },
+        required: ['path', 'content'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_system_metrics',
+      description: 'Mengambil metrik real-time CPU, RAM, penggunaan Disk, uptime, dan load average server remote.',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_dir',
+      description: 'Melihat isi direktori pada server remote beserta metadatanya (daftar file, folder, ukuran, dan izin akses).',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Path direktori pada server remote yang akan diperiksa (contoh: "/var/log", "/etc/nginx", "/home")',
+          },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'inspect_service',
+      description: 'Memeriksa status systemd service dan baris log journalctl terbaru pada server remote.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_name: {
+            type: 'string',
+            description: 'Nama service (contoh: "nginx", "docker", "mariadb", "pm2")',
+          },
+          lines: {
+            type: 'number',
+            description: 'Jumlah baris log terbaru yang diambil (default 30)',
+          },
+        },
+        required: ['service_name'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'run_security_audit',
+      description: 'Menjalankan audit keamanan server Linux otomatis (SSH hardening, firewall/port terbuka, login gagal, binary SUID, cron, sudo).',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: {
+            type: 'string',
+            enum: ['full', 'ssh', 'network', 'auth', 'permissions'],
+            description: 'Cakupan audit: "full" untuk audit lengkap, "ssh" untuk SSH, "network" untuk port & firewall, "auth" untuk login gagal, "permissions" untuk SUID & sudoers.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'check_auth_failures',
+      description: 'Menganalisis log autentikasi (/var/log/auth.log atau journalctl) untuk mendeteksi IP penyerang percobaan brute-force SSH terbanyak.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'number',
+            description: 'Jumlah maksimal IP penyerang yang dilaporkan (default 10)',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'setup_security_hardening',
+      description: 'Menerapkan pengerasan keamanan Linux dasar dengan proteksi lockout SSH (firewall UFW, kunci SSH, fail2ban).',
+      parameters: {
+        type: 'object',
+        properties: {
+          enable_ufw: {
+            type: 'boolean',
+            description: 'Aktifkan firewall UFW dan izinkan port SSH terlebih dahulu (default true)',
+          },
+          ssh_port: {
+            type: 'number',
+            description: 'Port SSH yang harus tetap terbuka agar tidak terkunci (default 22)',
+          },
+          install_fail2ban: {
+            type: 'boolean',
+            description: 'Pasang dan aktifkan service fail2ban untuk pencegahan intrusi SSH',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'db_list_databases',
+      description: 'Daftar semua koneksi database yang tersimpan di Vault (MySQL, PostgreSQL, SQLite, Redis, Mongo) beserta database/skema yang aktif.',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'db_get_schema',
+      description: 'Ambil skema lengkap (daftar tabel, kolom, tipe data, dan primary key) dari koneksi database target.',
       parameters: {
         type: 'object',
         properties: {
@@ -241,12 +481,15 @@ export const AGENT_TOOLS = [
   },
 ];
 
-export function getAgentTools(mode: AiCopilotMode = 'build') {
+export const AGENT_TOOLS = AGENT_TOOLS_ID;
+
+export function getAgentTools(mode: AiCopilotMode = 'build', aiLanguage: string = 'id') {
+  const tools = aiLanguage === 'id' ? AGENT_TOOLS_ID : AGENT_TOOLS_EN;
   if (mode === 'plan') {
     // Mode plan hanya read-only/diagnostik: sembunyikan write_file
-    return AGENT_TOOLS.filter(t => t.function.name !== 'write_file');
+    return tools.filter(t => t.function.name !== 'write_file');
   }
-  return AGENT_TOOLS;
+  return tools;
 }
 
 export function truncateOutput(text: string, _maxLen?: number): string {
@@ -517,7 +760,7 @@ export interface StreamCallbacks {
 function getPostToolLanguageReminder(aiLanguage: string): string {
   switch (aiLanguage) {
     case 'id':
-      return '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
+      return '\n\n[PENGINGAT BAHASA - SANGAT PENTING]: Perintah terminal baru saja selesai dieksekusi. Berikan observasi, penalaran langkah selanjutnya, analisis teknis, dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG KERAS menggunakan bahasa Inggris untuk kalimat pengantar, coretan observasi awal (seperti "likely domain not in nginx", "502 means upstream fail", "Check nginx conf", "this may be pre-existing", dsb), maupun kesimpulan akhir. Seluruh teks sebelum tool call berikutnya atau laporan penutup WAJIB 100% Bahasa Indonesia yang jelas dan alami.';
     case 'es':
       return '\n\n[RECORDATORIO DE IDIOMA]: El comando de terminal acaba de ejecutarse. Proporcione su análisis técnico y conclusión TOTALMENTE EN ESPAÑOL.';
     case 'zh':
@@ -537,7 +780,7 @@ export async function streamChat(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   copilotMode: AiCopilotMode = 'build',
-  aiLanguage: string = 'en'
+  aiLanguage: string = 'id'
 ): Promise<void> {
   const type = provider.type;
   const baseUrl = provider.baseUrl.trim().replace(/\/+$/, '');
@@ -566,7 +809,7 @@ async function streamOpencode(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   _copilotMode: AiCopilotMode = 'build',
-  aiLanguage: string = 'en'
+  aiLanguage: string = 'id'
 ): Promise<void> {
   const streamId = `opencode_stream_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   let accumulatedText = '';
@@ -825,7 +1068,7 @@ async function streamViaNativeHttp(
 export function sanitizeMessagesForOpenAi(
   messages: AiChatMessage[],
   systemPrompt: string,
-  aiLanguage: string = 'en'
+  aiLanguage: string = 'id'
 ): any[] {
   // Seluruh riwayat pesan dikirim penuh (tanpa limit pemotongan pesan)
   const windowedMessages = [...messages];
@@ -983,7 +1226,7 @@ async function streamOpenAiCompatible(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   copilotMode: AiCopilotMode = 'build',
-  aiLanguage: string = 'en'
+  aiLanguage: string = 'id'
 ) {
   let endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
   // Hanya tambahkan query key jika endpoint menuju Google Generative Language API
@@ -1004,7 +1247,7 @@ async function streamOpenAiCompatible(
   const reqBody = JSON.stringify({
     model,
     messages: formattedMessages,
-    tools: getAgentTools(copilotMode),
+    tools: getAgentTools(copilotMode, aiLanguage),
     tool_choice: 'auto',
     parallel_tool_calls: false, // Mutlak false agar AI hanya mengajukan 1 perintah per giliran
     stream: true,
@@ -1012,6 +1255,7 @@ async function streamOpenAiCompatible(
 
   let buffer = '';
   let accumulatedText = '';
+  let isInsideReasoning = false;
   const accumulatedToolCalls: Record<number, { id: string; name: string; argsStr: string }> = {};
 
   const handleChunk = (chunkText: string) => {
@@ -1030,18 +1274,37 @@ async function streamOpenAiCompatible(
           const choice = json.choices?.[0];
           if (!choice) continue;
 
-          // Content delta (termasuk text delta & reasoning_content untuk DeepSeek R1 / Qwen)
+          // Reasoning content delta (DeepSeek R1 / V4 / Qwen)
+          const reasoning = choice.delta?.reasoning_content;
           const token = choice.delta?.content ?? choice.delta?.text ?? choice.text;
+
+          if (reasoning) {
+            if (!isInsideReasoning) {
+              isInsideReasoning = true;
+              accumulatedText += '<think>\n';
+              callbacks.onToken('<think>\n');
+            }
+            accumulatedText += reasoning;
+            callbacks.onToken(reasoning);
+          }
+
           if (token) {
+            if (isInsideReasoning) {
+              isInsideReasoning = false;
+              accumulatedText += '\n</think>\n';
+              callbacks.onToken('\n</think>\n');
+            }
             accumulatedText += token;
             callbacks.onToken(token);
-          } else if (choice.delta?.reasoning_content) {
-            accumulatedText += choice.delta.reasoning_content;
-            callbacks.onToken(choice.delta.reasoning_content);
           }
 
           // Tool calls delta
           if (choice.delta?.tool_calls) {
+            if (isInsideReasoning) {
+              isInsideReasoning = false;
+              accumulatedText += '\n</think>\n';
+              callbacks.onToken('\n</think>\n');
+            }
             for (const tc of choice.delta.tool_calls) {
               const idx = tc.index ?? 0;
               if (!accumulatedToolCalls[idx]) {
@@ -1076,6 +1339,12 @@ async function streamOpenAiCompatible(
 
     if (buffer.trim()) {
       handleChunk('\n');
+    }
+
+    if (isInsideReasoning) {
+      isInsideReasoning = false;
+      accumulatedText += '\n</think>\n';
+      callbacks.onToken('\n</think>\n');
     }
 
     // Process collected tool calls
@@ -1134,11 +1403,11 @@ async function streamAnthropic(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   copilotMode: AiCopilotMode = 'build',
-  aiLanguage: string = 'en'
+  aiLanguage: string = 'id'
 ) {
   const endpoint = `${baseUrl || 'https://api.anthropic.com'}/v1/messages`;
 
-  const toolsToUse = getAgentTools(copilotMode);
+  const toolsToUse = getAgentTools(copilotMode, aiLanguage);
   const anthropicTools = toolsToUse.map(t => ({
     name: t.function.name,
     description: t.function.description,
@@ -1351,13 +1620,13 @@ async function streamGemini(
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
   copilotMode: AiCopilotMode = 'build',
-  aiLanguage: string = 'en'
+  aiLanguage: string = 'id'
 ) {
   const root = baseUrl || 'https://generativelanguage.googleapis.com';
   const cleanModel = model.replace(/^models\//, '');
   const endpoint = `${root}/v1beta/models/${cleanModel}:streamGenerateContent?key=${apiKey}&alt=sse`;
 
-  const toolsToUse = getAgentTools(copilotMode);
+  const toolsToUse = getAgentTools(copilotMode, aiLanguage);
   const geminiTools = [
     {
       function_declarations: toolsToUse.map(t => ({

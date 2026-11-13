@@ -1074,8 +1074,9 @@ function formatMessageText(text: string): string {
   if (!text) return '';
   const stripped = stripToolCallsFromText(text);
   return stripped
-    .replace(/^[\s\S]*?<\/think>\s*/i, '') // Bersihkan blok reasoning DeepSeek jika ada di awal
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/gi, '') // Bersihkan buffer reasoning yang masih aktif streaming
+    .replace(/^[\s\S]*?<\/think>\s*/i, '') // Bersihkan jika ada penutup tanpa pembuka di awal
     .replace(/<\/think>/gi, '')
     .trim();
 }

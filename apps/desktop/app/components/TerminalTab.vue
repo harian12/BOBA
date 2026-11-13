@@ -5,7 +5,7 @@
   >
     <!-- Compact Terminal Quick Toolbar (Header) -->
     <div
-      class="h-7 border-b flex items-center justify-between px-2 text-[11px] select-none shrink-0 transition-colors gap-2 relative z-30"
+      class="min-h-7 py-0.5 border-b flex items-center justify-between px-2 text-[11px] select-none shrink-0 transition-colors gap-2 relative z-30 flex-wrap"
       :class="[
         sessionStore.activeTabId === tab.id
           ? 'bg-[#181d28] border-sky-500/50 text-slate-100'
@@ -25,169 +25,61 @@
         </span>
       </div>
 
-      <div class="flex items-center space-x-1 min-w-0 justify-end">
-        <!-- Quick Action Buttons Strip -->
-        <div class="flex items-center space-x-1 overflow-x-auto no-scrollbar py-0.5 min-w-0">
-          <!-- Ask AI Copilot Button -->
-          <button
-            @click.stop="handleAskCopilot"
-            class="px-2 py-0.5 bg-sky-950/60 hover:bg-sky-900/80 hover:text-sky-200 text-sky-300 border border-sky-700/60 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-            title="Tanya AI Copilot tentang kendala atau diagnosa server ini"
-          >
-            <Icon icon="lucide:sparkles" class="w-3 h-3 text-purple-400" />
-            <span class="hidden sm:inline">Copilot</span>
-          </button>
+      <div class="flex items-center space-x-1 shrink-0 justify-end">
+        <!-- Ask AI Copilot Button -->
+        <button
+          @click.stop="handleAskCopilot"
+          class="px-2 py-0.5 bg-sky-950/60 hover:bg-sky-900/80 hover:text-sky-200 text-sky-300 border border-sky-700/60 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
+          title="Tanya AI Copilot tentang kendala atau diagnosa server ini"
+        >
+          <Icon icon="lucide:sparkles" class="w-3 h-3 text-purple-400" />
+          <span class="hidden sm:inline">Copilot</span>
+        </button>
 
-          <!-- Quick Commands Toggle -->
-          <button
-            @click.stop="showCommandsBar = !showCommandsBar"
-            :class="['px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer', showCommandsBar ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-[#1a1e29] text-slate-400 hover:text-slate-200']"
-            title="Quick Commands"
-          >
-            <Icon icon="lucide:terminal" class="w-3 h-3 text-amber-400" />
-            <span class="hidden sm:inline">Commands</span>
-            <span class="text-[9px] px-1 rounded-full bg-slate-800 text-slate-300 font-mono">({{ allSnippets.length }})</span>
-          </button>
+        <!-- Quick Commands Toggle -->
+        <button
+          @click.stop="showCommandsBar = !showCommandsBar"
+          :class="['px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer', showCommandsBar ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-[#1a1e29] text-slate-400 hover:text-slate-200']"
+          title="Quick Commands"
+        >
+          <Icon icon="lucide:terminal" class="w-3 h-3 text-amber-400" />
+          <span class="hidden sm:inline">Commands</span>
+          <span class="text-[9px] px-1 rounded-full bg-slate-800 text-slate-300 font-mono">({{ allSnippets.length }})</span>
+        </button>
 
-          <!-- Cancel Auto Reconnect Button -->
-          <button
-            v-if="isReconnecting"
-            @click.stop="cancelAutoReconnect"
-            class="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-[10px] font-medium transition shrink-0 cursor-pointer"
-            title="Cancel auto reconnect"
-          >
-            Cancel
-          </button>
+        <!-- Cancel Auto Reconnect Button -->
+        <button
+          v-if="isReconnecting"
+          @click.stop="cancelAutoReconnect"
+          class="px-2 py-0.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-[10px] font-medium transition shrink-0 cursor-pointer"
+          title="Cancel auto reconnect"
+        >
+          Cancel
+        </button>
 
-          <!-- Manual Reconnect -->
-          <button
-            v-else
-            @click.stop="reconnect"
-            class="px-2 py-0.5 bg-[#1a1e29] hover:bg-[#232936] text-slate-300 rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer"
-            title="Reconnect SSH"
-          >
-            <Icon icon="lucide:refresh-cw" class="w-3 h-3" />
-            <span class="hidden md:inline">Reconnect</span>
-          </button>
+        <!-- Manual Reconnect -->
+        <button
+          v-else
+          @click.stop="reconnect"
+          class="px-2 py-0.5 bg-[#1a1e29] hover:bg-[#232936] text-slate-300 rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer"
+          title="Reconnect SSH"
+        >
+          <Icon icon="lucide:refresh-cw" class="w-3 h-3" />
+          <span class="hidden md:inline">Reconnect</span>
+        </button>
 
-          <!-- SFTP Tab Open Button -->
-          <button
-            @click.stop="sessionStore.openSftpTab(tab)"
-            class="px-2 py-0.5 bg-[#1a1e29] hover:bg-sky-950/60 hover:text-sky-300 text-slate-400 border border-[#2e3748] rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer"
-            title="Open SFTP FileZilla Tab"
-          >
-            <Icon icon="lucide:folder-sync" class="w-3 h-3 text-sky-400" />
-            <span class="hidden md:inline">SFTP</span>
-          </button>
+        <!-- SFTP Tab Open Button -->
+        <button
+          @click.stop="sessionStore.openSftpTab(tab)"
+          class="px-2 py-0.5 bg-[#1a1e29] hover:bg-sky-950/60 hover:text-sky-300 text-slate-400 border border-[#2e3748] rounded text-[10px] font-medium transition flex items-center space-x-1 shrink-0 cursor-pointer"
+          title="Open SFTP FileZilla Tab"
+        >
+          <Icon icon="lucide:folder-sync" class="w-3 h-3 text-sky-400" />
+          <span class="hidden md:inline">SFTP</span>
+        </button>
 
-          <!-- Direct Action Buttons (Desktop Ultra-Wide screen >= 2xl) -->
-          <div class="hidden 2xl:flex items-center space-x-1">
-            <!-- Monitoring Dashboard Window Button -->
-            <button
-              @click.stop="openMonitoringWindow"
-              class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Dedicated Monitoring Window"
-            >
-              <Icon icon="lucide:activity" class="w-3 h-3 text-emerald-400" />
-              <span>Monitoring</span>
-            </button>
-
-            <!-- Server Setup & App Installer Window Button -->
-            <button
-              @click.stop="openInstallerWindow"
-              class="px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Server Setup & App Installer di jendela terpisah"
-            >
-              <Icon icon="lucide:package-plus" class="w-3 h-3 text-emerald-400" />
-              <span>App Installer</span>
-            </button>
-
-            <!-- Docker Manager Modal Button -->
-            <button
-              v-if="hasDocker"
-              @click.stop="isDockerModalOpen = true"
-              class="px-2 py-0.5 bg-sky-950/40 hover:bg-sky-900/60 text-sky-300 border border-sky-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Docker Manager"
-            >
-              <Icon icon="lucide:container" class="w-3 h-3 text-sky-400" />
-              <span>Docker</span>
-            </button>
-
-            <!-- Systemd Manager Modal Button -->
-            <button
-              v-if="hasSystemd"
-              @click.stop="isSystemdModalOpen = true"
-              class="px-2 py-0.5 bg-violet-950/40 hover:bg-violet-900/60 text-violet-300 border border-violet-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Systemd Manager"
-            >
-              <Icon icon="lucide:cpu" class="w-3 h-3 text-violet-400" />
-              <span>Systemd</span>
-            </button>
-
-            <!-- SSH Tunnel / Port Forwarding Modal Button -->
-            <button
-              @click.stop="isTunnelModalOpen = true"
-              class="px-2 py-0.5 bg-teal-950/40 hover:bg-teal-900/60 text-teal-300 border border-teal-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka SSH Port Forwarding / Tunnel Manager"
-            >
-              <Icon icon="lucide:network" class="w-3 h-3 text-teal-400" />
-              <span>Tunnel</span>
-            </button>
-
-            <!-- WireGuard VPN Manager Modal Button -->
-            <button
-              @click.stop="isWireguardModalOpen = true"
-              class="px-2 py-0.5 bg-blue-950/40 hover:bg-blue-900/60 text-blue-300 border border-blue-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka WireGuard VPN Manager"
-            >
-              <Icon icon="lucide:shield-check" class="w-3 h-3 text-blue-400" />
-              <span>WireGuard</span>
-            </button>
-
-            <!-- Cron Job Manager Modal Button -->
-            <button
-              @click.stop="isCronModalOpen = true"
-              class="px-2 py-0.5 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Cron Job Manager (Crontab)"
-            >
-              <Icon icon="lucide:calendar-clock" class="w-3 h-3 text-amber-400" />
-              <span>Cron</span>
-            </button>
-
-            <!-- Firewall & Listening Ports Modal Button -->
-            <button
-              @click.stop="isFirewallModalOpen = true"
-              class="px-2 py-0.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Firewall (UFW) & Listening Ports Inspector"
-            >
-              <Icon icon="lucide:shield-check" class="w-3 h-3 text-rose-400" />
-              <span>Firewall</span>
-            </button>
-
-            <!-- Network & SSL Inspector Modal Button -->
-            <button
-              @click.stop="isNetworkModalOpen = true"
-              class="px-2 py-0.5 bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Network & SSL Inspector"
-            >
-              <Icon icon="lucide:network" class="w-3 h-3 text-cyan-400" />
-              <span>Net/SSL</span>
-            </button>
-
-            <!-- Security & Hardening Auditor Modal Button -->
-            <button
-              @click.stop="isSecurityModalOpen = true"
-              class="px-2 py-0.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-600/40 rounded text-[10px] font-medium transition flex items-center space-x-1 shadow-sm shrink-0 cursor-pointer"
-              title="Buka Security & Hardening Auditor"
-            >
-              <Icon icon="lucide:shield-alert" class="w-3 h-3 text-rose-400" />
-              <span>Security</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Responsive "Fitur / Tools" Dropdown (Ditaruh di luar strip scroll agar tidak terpotong) -->
-        <div class="relative 2xl:hidden shrink-0">
+        <!-- Responsive "Fitur / Tools" Dropdown -->
+        <div class="relative shrink-0">
           <button
             @click.stop="isToolsMenuOpen = !isToolsMenuOpen"
             :class="[
@@ -213,7 +105,7 @@
           <!-- Dropdown Popover -->
           <div
             v-if="isToolsMenuOpen"
-            class="absolute right-0 top-full mt-1.5 w-52 bg-[#141824] border border-[#262c3d] rounded-lg shadow-2xl py-1 z-50 text-xs font-sans text-slate-200 animate-in fade-in zoom-in-95 duration-100"
+            class="absolute right-0 top-full mt-1.5 w-52 bg-[#141824] border border-[#262c3d] rounded-lg shadow-2xl py-1 z-50 text-xs font-sans text-slate-200 animate-in fade-in zoom-in-95 duration-100 max-h-[80vh] overflow-y-auto no-scrollbar"
             @click.stop
           >
             <button
@@ -291,18 +183,18 @@
       </div>
     </div>
 
-    <!-- Quick Commands Horizontal Chips Bar -->
+    <!-- Quick Commands Bar (Responsive Auto Wrap) -->
     <div
       v-if="showCommandsBar"
-      class="h-8 bg-[#161922] border-b border-[#232936] flex items-center px-2 space-x-1.5 overflow-x-auto no-scrollbar shrink-0 text-xs"
+      class="min-h-8 max-h-36 bg-[#161922] border-b border-[#232936] flex flex-wrap items-center px-2 py-1 gap-1.5 overflow-y-auto no-scrollbar shrink-0 text-xs"
     >
-      <span class="text-[10px] font-semibold text-amber-400 flex items-center space-x-1 uppercase shrink-0">
+      <span class="text-[10px] font-semibold text-amber-400 flex items-center space-x-1 uppercase shrink-0 py-0.5">
         <Icon icon="lucide:terminal" class="w-3 h-3" />
         <span>Run:</span>
       </span>
 
       <!-- Empty state if no snippets -->
-      <span v-if="allSnippets.length === 0" class="text-[11px] text-slate-500 italic">
+      <span v-if="allSnippets.length === 0" class="text-[11px] text-slate-500 italic py-0.5">
         No quick commands yet.
       </span>
 
@@ -342,7 +234,7 @@
       <!-- Add New Custom Command for this session -->
       <button
         @click.stop="openAddModal"
-        class="px-2 py-0.5 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition shrink-0 font-medium"
+        class="px-2 py-0.5 bg-boba-800 hover:bg-boba-700 text-slate-300 hover:text-white rounded text-[11px] transition shrink-0 font-medium cursor-pointer"
         title="Add new quick command"
       >
         + Add Command
