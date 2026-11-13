@@ -260,16 +260,22 @@
           </h4>
           <p class="text-[11px] text-slate-400 leading-relaxed max-w-xs font-sans">
             {{
-              isDbTarget
-                ? `Terhubung ke Database "${currentTargetLabel}". Perintahkan AI untuk menganalisis query SQL, memeriksa skema tabel, atau mencari data.`
-                : 'Perintahkan AI untuk mengecek log, memperbaiki konfigurasi Nginx/Apache, memantau metrik, atau menjalankan diagnosa di server target.'
+              aiStore.aiLanguage === 'en'
+                ? (isDbTarget
+                    ? `Connected to Database "${currentTargetLabel}". Instruct AI to analyze SQL queries, inspect table schemas, or search data.`
+                    : 'Instruct AI to check logs, fix Nginx/Apache configuration, monitor metrics, or diagnose issues on the target server.')
+                : (isDbTarget
+                    ? `Terhubung ke Database "${currentTargetLabel}". Perintahkan AI untuk menganalisis query SQL, memeriksa skema tabel, atau mencari data.`
+                    : 'Perintahkan AI untuk mengecek log, memperbaiki konfigurasi Nginx/Apache, memantau metrik, atau menjalankan diagnosa di server target.')
             }}
           </p>
         </div>
 
         <!-- Quick Starter Action Chips -->
         <div class="w-full space-y-2 pt-2">
-          <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider text-left">Contoh Perintah Cepat:</div>
+          <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider text-left">
+            {{ aiStore.aiLanguage === 'en' ? 'Quick Starter Prompts:' : 'Contoh Perintah Cepat:' }}
+          </div>
           <button
             v-for="chip in starterChips"
             :key="chip"
@@ -749,10 +755,10 @@
               @click="toggleLanguage"
               type="button"
               class="px-2 py-1 rounded-md text-[10px] font-mono font-medium transition flex items-center space-x-1 border shrink-0 bg-boba-850 border-boba-700 text-sky-300 hover:border-boba-600 hover:text-white shadow-sm"
-              :title="aiStore.aiLanguage === 'id' ? 'Bahasa Respon AI: Bahasa Indonesia (Klik untuk ganti ke English)' : 'AI Response Language: English (Click to switch to Bahasa Indonesia)'"
+              :title="aiStore.aiLanguage === 'id' ? 'Bahasa Respon AI: Bahasa Indonesia (Klik untuk ganti ke English)' : `AI Response Language: ${(aiStore.aiLanguage || 'en').toUpperCase()} (Click to switch to Bahasa Indonesia)`"
             >
               <Icon icon="lucide:languages" class="w-3 h-3 text-sky-400" />
-              <span>{{ (aiStore.aiLanguage || 'en').toUpperCase() }}</span>
+              <span>{{ (aiStore.aiLanguage || 'id').toUpperCase() }}</span>
             </button>
           </div>
 
@@ -1000,23 +1006,41 @@ const currentTargetLabel = computed(() => {
 });
 
 const starterChips = computed(() => {
+  const isEn = aiStore.aiLanguage === 'en';
   if (isDbTarget.value) {
-    return [
-      '📊 Inspeksi seluruh tabel & skema kolom database',
-      '🔍 Cari data user & jelaskan rincian akunnya',
-      '📈 Hitung jumlah baris & ringkasan tiap tabel',
-      '⚡ Cek relasi foreign key & keterkaitan tabel',
-      '🛡️ Cek kesehatan server & performa query database',
-    ];
+    return isEn
+      ? [
+          '📊 Inspect all tables & column schema in database',
+          '🔍 Search user data & explain account details',
+          '📈 Count rows & summary for each table',
+          '⚡ Check foreign key relations & schema design',
+          '🛡️ Check database health & slow queries',
+        ]
+      : [
+          '📊 Inspeksi seluruh tabel & skema kolom database',
+          '🔍 Cari data user & jelaskan rincian akunnya',
+          '📈 Hitung jumlah baris & ringkasan tiap tabel',
+          '⚡ Cek relasi foreign key & keterkaitan tabel',
+          '🛡️ Cek kesehatan server & performa query database',
+        ];
   }
-  return [
-    '🛡️ Audit Keamanan Server (SSH, Port, Firewall, Cron, Users)',
-    '🚨 Cek Percobaan Login Ilegal (Brute-Force SSH Attacks)',
-    'Cek status Nginx dan error log terakhir',
-    'Cek penggunaan CPU, RAM, dan kapasitas Disk',
-    'Diagnosa port terbuka dan aturan firewall (UFW)',
-    'Cek versi Node.js, PHP, Python, dan Docker yang terpasang',
-  ];
+  return isEn
+    ? [
+        '🛡️ Server Security Audit (SSH, Ports, Firewall, Cron, Users)',
+        '🚨 Check Failed Login Attempts (SSH Brute-Force)',
+        'Check Nginx status and latest error logs',
+        'Check CPU, RAM usage, and Disk space',
+        'Diagnose open ports and firewall rules (UFW)',
+        'Check installed versions of Node.js, PHP, Python, and Docker',
+      ]
+    : [
+        '🛡️ Audit Keamanan Server (SSH, Port, Firewall, Cron, Users)',
+        '🚨 Cek Percobaan Login Ilegal (Brute-Force SSH Attacks)',
+        'Cek status Nginx dan error log terakhir',
+        'Cek penggunaan CPU, RAM, dan kapasitas Disk',
+        'Diagnosa port terbuka dan aturan firewall (UFW)',
+        'Cek versi Node.js, PHP, Python, dan Docker yang terpasang',
+      ];
 });
 
 watch(

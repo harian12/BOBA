@@ -102,12 +102,12 @@
               </span>
             </div>
             <select
-              :value="aiStore.aiLanguage || 'en'"
+              :value="aiStore.aiLanguage || 'id'"
               @change="handleLanguageChange(($event.target as HTMLSelectElement).value)"
               class="w-full bg-boba-950 border border-boba-800 text-sky-300 rounded px-2 py-1 text-[11px] focus:outline-none focus:border-boba-accent font-sans cursor-pointer transition"
             >
-              <option value="en">English (Default)</option>
-              <option value="id">Bahasa Indonesia</option>
+              <option value="id">Bahasa Indonesia (Default)</option>
+              <option value="en">English</option>
               <option value="es">Español</option>
               <option value="zh">中文 (Chinese)</option>
               <option value="ja">日本語 (Japanese)</option>

@@ -514,6 +514,22 @@ export interface StreamCallbacks {
   onFinish: () => void;
 }
 
+function getPostToolLanguageReminder(aiLanguage: string): string {
+  switch (aiLanguage) {
+    case 'id':
+      return '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
+    case 'es':
+      return '\n\n[RECORDATORIO DE IDIOMA]: El comando de terminal acaba de ejecutarse. Proporcione su análisis técnico y conclusión TOTALMENTE EN ESPAÑOL.';
+    case 'zh':
+      return '\n\n[语言提醒]：终端命令执行已完成。请完全使用简体中文提供技术分析和结论。';
+    case 'ja':
+      return '\n\n[言語リマインダー]：端末コマンドの実行が完了しました。技術分析と結論はすべて日本語で提供してください。';
+    case 'en':
+    default:
+      return '\n\n[LANGUAGE REMINDER]: The terminal command has finished executing. Provide your technical analysis and conclusion ENTIRELY IN ENGLISH. Keep code identifiers and syntax exact.';
+  }
+}
+
 export async function streamChat(
   provider: AiProviderConfig,
   messages: AiChatMessage[],
@@ -634,8 +650,14 @@ DO NOT return an empty response!\n\n`;
 
   if (isId) {
     prompt += `[Pengingat Bahasa]: Seluruh respon pembuka dan analisis WAJIB dalam Bahasa Indonesia.\nAssistant: `;
+  } else if (aiLanguage === 'es') {
+    prompt += `[Recordatorio de idioma]: Toda la respuesta DEBE estar en español.\nAssistant: `;
+  } else if (aiLanguage === 'zh') {
+    prompt += `[语言提醒]：所有回答必须完全使用简体中文。\nAssistant: `;
+  } else if (aiLanguage === 'ja') {
+    prompt += `[言語リマインダー]：すべての回答は完全に日本語で行う必要があります。\nAssistant: `;
   } else {
-    prompt += `Assistant: `;
+    prompt += `[Language Reminder]: All responses and conclusions MUST be in English.\nAssistant: `;
   }
 
   return new Promise<void>(async (resolve, reject) => {
@@ -874,11 +896,9 @@ export function sanitizeMessagesForOpenAi(
   }
 
   let effectiveSystemPrompt = systemPrompt;
-  if (aiLanguage === 'id') {
-    const lastMsg = windowedMessages[windowedMessages.length - 1];
-    if (lastMsg && lastMsg.role === 'tool') {
-      effectiveSystemPrompt += '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
-    }
+  const lastMsg = windowedMessages[windowedMessages.length - 1];
+  if (lastMsg && lastMsg.role === 'tool') {
+    effectiveSystemPrompt += getPostToolLanguageReminder(aiLanguage);
   }
 
   const normalized: any[] = [{ role: 'system', content: effectiveSystemPrompt }];
@@ -1226,11 +1246,9 @@ async function streamAnthropic(
   };
 
   let effectiveSystemPrompt = systemPrompt;
-  if (aiLanguage === 'id') {
-    const lastMsg = validMessages[validMessages.length - 1];
-    if (lastMsg && lastMsg.role === 'tool') {
-      effectiveSystemPrompt += '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
-    }
+  const lastMsg = validMessages[validMessages.length - 1];
+  if (lastMsg && lastMsg.role === 'tool') {
+    effectiveSystemPrompt += getPostToolLanguageReminder(aiLanguage);
   }
 
   const reqBody = JSON.stringify({
@@ -1351,11 +1369,9 @@ async function streamGemini(
   ];
 
   let effectiveSystemPrompt = systemPrompt;
-  if (aiLanguage === 'id') {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg && lastMsg.role === 'tool') {
-      effectiveSystemPrompt += '\n\n[PENGINGAT BAHASA]: Perintah terminal baru saja selesai dieksekusi. Berikan analisis teknis dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG menggunakan bahasa Inggris untuk kalimat pengantar maupun kesimpulan.';
-    }
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg && lastMsg.role === 'tool') {
+    effectiveSystemPrompt += getPostToolLanguageReminder(aiLanguage);
   }
 
   const sanitized = sanitizeMessagesForOpenAi(messages, '', aiLanguage);

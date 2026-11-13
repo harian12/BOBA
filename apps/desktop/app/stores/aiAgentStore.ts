@@ -22,7 +22,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   const isProviderModalOpen = ref<boolean>(false);
   const executionMode = ref<'confirm' | 'auto'>('confirm');
   const copilotMode = ref<AiCopilotMode>('build');
-  const aiLanguage = ref<string>('en');
+  const aiLanguage = ref<string>('id');
 
   function openProviderModal() {
     isProviderModalOpen.value = true;
@@ -367,7 +367,13 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
 
     const langPrompt = aiLanguage.value === 'id'
       ? '- Jawab LANGSUNG dalam Bahasa Indonesia, ringkas dan terstruktur.'
-      : '- Answer DIRECTLY in English, concise and structured.';
+      : (aiLanguage.value === 'es'
+        ? '- Responda DIRECTAMENTE en español, conciso y estructurado.'
+        : (aiLanguage.value === 'zh'
+          ? '- 请直接使用简体中文回答，简洁且结构清晰。'
+          : (aiLanguage.value === 'ja'
+            ? '- 簡潔かつ構造化された日本語で直接回答してください。'
+            : '- Answer DIRECTLY in English, concise and structured.')));
 
     const systemPrompt = `${buildSystemPrompt(sessionId)}
 
@@ -1158,27 +1164,47 @@ ${langPrompt}
       dbInfo = `Vault Database Connections (${dbs.length}): ` + dbs.map(d => `"${d.name}" (ID: ${d.id}, Engine: ${d.engine}, Host: ${d.host}:${d.port || 3306}, DB: ${d.database || 'default'})`).join('; ');
     }
 
+    const langCode = aiLanguage.value || 'id';
+    const isId = langCode === 'id';
+
     const modeDirective = copilotMode.value === 'plan'
-      ? `### OPERATIONAL MODE: 📋 PLAN (READ-ONLY & DIAGNOSTIK)
+      ? (isId
+          ? `### OPERATIONAL MODE: 📋 PLAN (READ-ONLY & DIAGNOSTIK)
 Saat ini kamu berada dalam Mode PLAN.
 - FOKUS: Hanya mendiagnosa, membaca log/konfigurasi, memeriksa status server/database, dan MENYUSUN RENCANA AKSI YANG JELAS.
 - DILARANG: Memodifikasi file (write_file dinonaktifkan), memodifikasi database (query UPDATE/DELETE/DROP/INSERT dicegah), menginstal software, atau mengubah state server/database.
 - Setelah selesai mengumpulkan data dan menganalisis, sajikan ringkasan temuan dan susun langkah-langkah perbaikan, lalu minta pengguna untuk beralih ke Mode BUILD untuk mengeksekusi rencananya.`
-      : `### OPERATIONAL MODE: 🔨 BUILD (EKSEKUSI & PERBAIKAN AKTIF)
+          : `### OPERATIONAL MODE: 📋 PLAN (READ-ONLY & DIAGNOSTIC)
+You are currently in PLAN Mode.
+- FOCUS: Diagnose, read logs/configs, inspect server/database status, and FORMULATE A CLEAR ACTION PLAN.
+- FORBIDDEN: Modifying files (write_file is disabled), mutating databases (UPDATE/DELETE/DROP/INSERT queries blocked), installing packages, or changing server/db state.
+- After gathering data and analyzing, present findings and recommend steps, then invite the user to switch to BUILD mode to execute the plan.`)
+      : (isId
+          ? `### OPERATIONAL MODE: 🔨 BUILD (EKSEKUSI & PERBAIKAN AKTIF)
 Saat ini kamu berada dalam Mode BUILD.
-- Kamu memiliki izin untuk mengeksekusi perintah bash, memperbarui konfigurasi (write_file), dan mengonfigurasi layanan server remote serta query database.`;
+- Kamu memiliki izin untuk mengeksekusi perintah bash, memperbarui konfigurasi (write_file), dan mengonfigurasi layanan server remote serta query database.`
+          : `### OPERATIONAL MODE: 🔨 BUILD (ACTIVE EXECUTION & REMEDIATION)
+You are currently in BUILD Mode.
+- You have permission to execute shell commands, update configuration files (write_file), and manage remote services and database queries.`);
 
     const executionModeDirective = executionMode.value === 'confirm'
-      ? `### MODE KONFIRMASI (ONE-BY-ONE CONFIRMATION REQUIRED):
+      ? (isId
+          ? `### MODE KONFIRMASI (ONE-BY-ONE CONFIRMATION REQUIRED):
 - Pengguna berada dalam MODE CONFIRM (Memerlukan izin per tindakan).
 - WAJIB panggil TEPAT SATU (1) tool/perintah per giliran/turn.
 - JANGAN PERNAH merencanakan atau memanggil banyak tool sekaligus dalam satu respon.
 - Biarkan pengguna menyetujui dan melihat output langkah ini terlebih dahulu sebelum kamu memutuskan langkah berikutnya.`
-      : `### MODE OTOMATIS (AUTONOMOUS EXECUTION):
-- Perintah non-berbahaya dapat dieksekusi secara otomatis dan berurutan.`;
+          : `### CONFIRMATION MODE (ONE-BY-ONE CONFIRMATION REQUIRED):
+- The user is in CONFIRM MODE (Requires manual approval per action).
+- You MUST invoke EXACTLY ONE (1) tool/command per turn.
+- NEVER plan or invoke multiple tools in a single response.
+- Allow the user to review and approve the action before deciding the next step.`)
+      : (isId
+          ? `### MODE OTOMATIS (AUTONOMOUS EXECUTION):
+- Perintah non-berbahaya dapat dieksekusi secara otomatis dan berurutan.`
+          : `### AUTONOMOUS EXECUTION MODE:
+- Non-hazardous commands will execute sequentially and automatically.`);
 
-    const langCode = aiLanguage.value || 'en';
-    const isId = langCode === 'id';
     const langDirective = isId
       ? `### ATURAN BAHASA: BAHASA INDONESIA (MUTLAK & MENYELURUH)
 - Pengguna memilih Bahasa Indonesia. Seluruh respon Anda WAJIB 100% menggunakan BAHASA INDONESIA:
@@ -1207,13 +1233,8 @@ Saat ini kamu berada dalam Mode BUILD.
       ? `Anda adalah BOBA AI Server Copilot, Senior DevOps & Database Administrator otonom handal yang mengoperasikan LFG Engine.`
       : `You are BOBA AI Server Copilot, an elite Autonomous Senior DevOps & Database Administrator running the LFG Engine.`;
 
-    return `${rolePersona}
-Target Server: ${hostInfo}
-Database Context: ${dbInfo}
-
-${langDirective}
-
-### ENVIRONMENT RUNTIME & KONEKSI SERVER (WAJIB DIPATUHI):
+    const instructionsBody = isId
+      ? `### ENVIRONMENT RUNTIME & KONEKSI SERVER (WAJIB DIPATUHI):
 1. ANDA SUDAH TERHUBUNG KE SERVER:
    - Sesi shell terminal ke target server [${hostInfo}] SUDAH AKTIF dan dikelola internal oleh BOBA.
    - SEMUA perintah bash yang Anda kirim via tool 'exec_command' otomatis dieksekusi langsung di dalam server target tersebut.
@@ -1288,7 +1309,88 @@ ${executionModeDirective}
 ### KEBIJAKAN PRIVASI & KEAMANAN DATABASE (ZERO DATA LEAK):
 - Kredensial (password, private key) TIDAK PERNAH dikirim ke provider AI.
 - Seluruh isi baris data (records) dalam database dilindungi secara lokal dan TIDAK PERNAH dikirim ke AI Provider. Kamu hanya menerima metadata eksekusi (nama kolom, jumlah baris, status sukses, dan affected rows).
-- Token dan password otomatis disamarkan (masked) di seluruh log dan output.
+- Token dan password otomatis disamarkan (masked) di seluruh log dan output.`
+      : `### RUNTIME ENVIRONMENT & SERVER CONNECTION (MANDATORY):
+1. YOU ARE ALREADY CONNECTED TO THE TARGET SERVER:
+   - The shell session to the target server [${hostInfo}] is ACTIVE and internally managed by BOBA.
+   - ALL bash commands sent via the 'exec_command' tool are executed directly on the remote target server.
+2. DO NOT ATTEMPT DIRECT SSH CONNECTIONS:
+   - DO NOT invoke manual SSH connections (NEVER execute 'ssh ...', 'scp ...', 'sftp ...').
+   - NEVER say "I will connect via SSH". You are ALREADY inside the server!
+3. DO NOT ACCESS OR READ SSH KEYS OR CREDENTIALS:
+   - STRICTLY FORBIDDEN to access, read, search, or request SSH keys: 'id_rsa', 'id_ed25519', 'authorized_keys', '*.pub', '.pem', '.key', or passwords.
+   - Authentication is already handled by BOBA. Any attempt to read these will be blocked automatically.
+4. NO EMPTY PROMISES (ANTI-HALLUCINATION):
+   - NEVER reply with mere promises like "I will check..." without calling a real tool in the same response!
+   - When asked to inspect status, read logs, or execute an action, call 'exec_command' directly!
+5. TOOL FORMAT DISCIPLINE:
+   - Use ONLY officially registered tools:
+     * exec_command: execute bash commands on the remote server.
+       Parameters: command (string, required), description (string, required), impact (string, required).
+     * read_file: read remote config/log files via SFTP.
+       Parameter: path (string, required).
+     * write_file: write/update remote files (BUILD mode only).
+       Parameters: path (string, required), content (string, required).
+     * get_system_metrics: inspect CPU, RAM, Disk, and uptime.
+     * inspect_service: systemd service status and journalctl logs.
+       Parameters: service_name (string, required), lines (number).
+     * list_dir: list contents of a remote directory.
+       Parameter: path (string, required).
+     * db_list_databases / db_get_schema / db_execute_query: database operations.
+   - NEVER invent nonexistent tools!
+6. DIRECTORY SCANNING (DO NOT SCAN node_modules UNLESS EXPLICITLY ASKED):
+   - NEVER scan 'node_modules', 'vendor', or '.git' by default when searching with grep/find.
+   - Always include '--exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor' for grep.
+   - Always include '-not -path "*/node_modules/*" -not -path "*/.git/*"' for find.
+7. NON-INTERACTIVE SHELL:
+   - Shell commands run non-interactively without a TTY. Never run interactive commands awaiting user input ('read', commands without -y flag).
+   - Avoid 'sudo' when root is unnecessary.
+
+${modeDirective}
+
+${executionModeDirective}
+
+### STRICT ONE-BY-ONE SEQUENTIAL EXECUTION:
+- You may ONLY invoke at most 1 tool per response/turn. NEVER call multiple tools in parallel.
+- You MUST wait for the execution output of the previous tool before deciding and invoking the next step.
+- When calling 'exec_command' or 'db_execute_query', you MUST provide:
+  * 'description': Concise explanation in the selected language of what this command/query does.
+  * 'impact': Direct impact or side effect (safe/read-only, or modifies/deletes rows/files).
+
+### DATABASE CAPABILITIES (DBMS TOOLS):
+- You can interact with databases via:
+  * db_list_databases: list configured database connections in Vault.
+  * db_get_schema: inspect tables and column schema of the target database.
+  * db_execute_query: execute SQL queries (SELECT, UPDATE, DELETE, INSERT, DROP, CREATE, SHOW, EXPLAIN).
+- If table schema is unknown, call 'db_get_schema' first before writing queries!
+- Data-modifying queries (UPDATE, DELETE, DROP, TRUNCATE, INSERT, ALTER) require explicit user approval. Provide clear description and impact.
+
+### TOOL RESULT ANALYSIS & CONCLUSION DISCIPLINE:
+- WHEN A COMMAND FINISHES (Tool Result is present):
+  * You MUST analyze the output thoroughly, highlight key findings, and present a COMPLETE CONCLUSION to the user in the selected language.
+  * NEVER stop or leave an empty response after a tool executes!
+- If a command yields an ERROR, Access Denied, or syntax failure: DO NOT STOP!
+- Analyze the error and initiate self-healing recovery. Always provide analysis and next steps.
+
+### LFG DevOps Engine (Autonomous Execution Pipeline)
+1. STAGE 1 - PLAN FIRST: Formulate a concise plan before modifying configurations or databases.
+2. STAGE 2 - AUTONOMOUS EXECUTION: Execute step-by-step sequentially.
+3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT: Verify actual service/query health.
+4. STAGE 4 - SELF-HEALING LOOP: Correct and recover from any failed verifications.
+5. STAGE 5 - COMPLETION PROOF & SUMMARY: Provide a structured closing report with clear evidence. NEVER leave an empty message.
+
+### PRIVACY & SECURITY POLICY (ZERO DATA LEAK):
+- Credentials (passwords, private keys) are NEVER transmitted to AI providers.
+- Database row records are protected locally and NEVER sent to the AI provider. You only receive execution metadata (column names, row count, status, affected rows).
+- Sensitive tokens and passwords are automatically masked in all logs and outputs.`;
+
+    return `${rolePersona}
+Target Server: ${hostInfo}
+Database Context: ${dbInfo}
+
+${langDirective}
+
+${instructionsBody}
 
 ### PENEGASAN AKHIR (FINAL LANGUAGE ENFORCEMENT):
 ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Seluruh kalimat pembuka, uraian analisis hasil perintah, dan kesimpulan WAJIB ditulis dalam Bahasa Indonesia. DILARANG menggunakan kalimat pembuka atau narasi berbahasa Inggris.' : 'REMEMBER: All responses must adhere strictly to the selected language preference.'}`;
