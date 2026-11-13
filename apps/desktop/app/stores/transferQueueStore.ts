@@ -414,7 +414,7 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
   function clearCompleted() {
     const completedIds = new Set(transfers.value.filter(t => t.status === 'completed').map(t => t.id));
     completedIds.forEach(id => transferMap.delete(id));
-    transfers.value = transfers.value.filter(t => t.status === 'transferring' || t.status === 'pending');
+    transfers.value = transfers.value.filter(t => t.status !== 'completed');
     triggerRef(transfers);
   }
 
@@ -436,22 +436,45 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     triggerRef(transfers);
 
     try {
+      const isFolder = item.fileName.startsWith('📁');
       if (item.direction === 'download' && item.localPath) {
-        await tauriBridge.sftpDownloadStream(
-          item.sessionId,
-          item.id,
-          item.remotePath,
-          item.localPath,
-          item.bytesTransferred
-        );
+        if (isFolder) {
+          const parentDir = item.localPath.replace(/[/\\][^/\\]+$/, '');
+          await tauriBridge.sftpDownloadFolder(
+            item.sessionId,
+            item.remotePath,
+            parentDir || item.localPath,
+            maxConcurrent.value,
+            item.id
+          );
+        } else {
+          await tauriBridge.sftpDownloadStream(
+            item.sessionId,
+            item.id,
+            item.remotePath,
+            item.localPath,
+            item.bytesTransferred
+          );
+        }
       } else if (item.direction === 'upload' && item.localPath) {
-        await tauriBridge.sftpUploadStream(
-          item.sessionId,
-          item.id,
-          item.localPath,
-          item.remotePath,
-          item.bytesTransferred
-        );
+        if (isFolder) {
+          const remoteParent = item.remotePath.replace(/\/[^/]+$/, '') || '.';
+          await tauriBridge.sftpUploadFolder(
+            item.sessionId,
+            item.localPath,
+            remoteParent,
+            maxConcurrent.value,
+            item.id
+          );
+        } else {
+          await tauriBridge.sftpUploadStream(
+            item.sessionId,
+            item.id,
+            item.localPath,
+            item.remotePath,
+            item.bytesTransferred
+          );
+        }
       } else if (item.direction === 'remote-to-remote' && item.localPath) {
         const dstId = destinationSessionId || item.targetSessionId || (
           item.localPath.startsWith('Remote:') ? '' : undefined
@@ -490,22 +513,45 @@ export const useTransferQueueStore = defineStore('transferQueue', () => {
     triggerRef(transfers);
 
     try {
+      const isFolder = item.fileName.startsWith('📁');
       if (item.direction === 'download' && item.localPath) {
-        await tauriBridge.sftpDownloadStream(
-          item.sessionId,
-          item.id,
-          item.remotePath,
-          item.localPath,
-          0
-        );
+        if (isFolder) {
+          const parentDir = item.localPath.replace(/[/\\][^/\\]+$/, '');
+          await tauriBridge.sftpDownloadFolder(
+            item.sessionId,
+            item.remotePath,
+            parentDir || item.localPath,
+            maxConcurrent.value,
+            item.id
+          );
+        } else {
+          await tauriBridge.sftpDownloadStream(
+            item.sessionId,
+            item.id,
+            item.remotePath,
+            item.localPath,
+            0
+          );
+        }
       } else if (item.direction === 'upload' && item.localPath) {
-        await tauriBridge.sftpUploadStream(
-          item.sessionId,
-          item.id,
-          item.localPath,
-          item.remotePath,
-          0
-        );
+        if (isFolder) {
+          const remoteParent = item.remotePath.replace(/\/[^/]+$/, '') || '.';
+          await tauriBridge.sftpUploadFolder(
+            item.sessionId,
+            item.localPath,
+            remoteParent,
+            maxConcurrent.value,
+            item.id
+          );
+        } else {
+          await tauriBridge.sftpUploadStream(
+            item.sessionId,
+            item.id,
+            item.localPath,
+            item.remotePath,
+            0
+          );
+        }
       } else if (item.direction === 'remote-to-remote' && item.localPath) {
         const dstId = destinationSessionId || item.targetSessionId || (
           item.localPath.startsWith('Remote:') ? '' : undefined

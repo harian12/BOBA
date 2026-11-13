@@ -3058,9 +3058,12 @@ async function applyChmod() {
   const m = chmodModal.value;
   if (!m.item) return;
   const isLeft = m.side === 'left';
+  const isSudo = isLeft ? isLeftSudoActive.value : isRightSudoActive.value;
+  const sudoPfx = isSudo ? 'sudo ' : '';
   const activeId = isLeft ? await ensureLeftConnected() : await ensureConnected();
   const flag = m.recursive ? '-R ' : '';
-  const cmd = `chmod ${flag}${m.octal.replace(/^0+/, '')} "${m.item.path}"`;
+  const octalStr = m.octal.replace(/^0+/, '') || '0';
+  const cmd = `${sudoPfx}chmod ${flag}${octalStr} "${m.item.path}"`;
   try {
     await tauriBridge.sshExecCommand(activeId, cmd);
     chmodModal.value.visible = false;
@@ -3086,6 +3089,8 @@ function isArchiveFile(name: string): boolean {
 
 async function extractRemoteArchive(side: 'left' | 'right', item: RemoteFileItem) {
   const isLeft = side === 'left';
+  const isSudo = isLeft ? isLeftSudoActive.value : isRightSudoActive.value;
+  const sudoPfx = isSudo ? 'sudo ' : '';
   const activeId = isLeft ? await ensureLeftConnected() : await ensureConnected();
   const currentDir = isLeft ? leftRemotePathInput.value : remotePathInput.value;
 
@@ -3096,25 +3101,37 @@ async function extractRemoteArchive(side: 'left' | 'right', item: RemoteFileItem
   });
   if (!confirm) return;
 
-  let cmd = '';
+  const cdTarget = (!currentDir || currentDir === '.' || currentDir === '~')
+    ? '$HOME'
+    : (currentDir.startsWith('~/') ? `$HOME/${currentDir.slice(2)}` : `"${currentDir}"`);
+
+  let extractCmd = '';
   const n = item.name.toLowerCase();
   if (n.endsWith('.tar.gz') || n.endsWith('.tgz')) {
-    cmd = `cd "${currentDir}" && tar -xzf "${item.path}"`;
+    extractCmd = `${sudoPfx}tar -xzf "${item.path}"`;
   } else if (n.endsWith('.tar.bz2')) {
-    cmd = `cd "${currentDir}" && tar -xjf "${item.path}"`;
+    extractCmd = `${sudoPfx}tar -xjf "${item.path}"`;
   } else if (n.endsWith('.tar.xz')) {
-    cmd = `cd "${currentDir}" && tar -xJf "${item.path}"`;
+    extractCmd = `${sudoPfx}tar -xJf "${item.path}"`;
   } else if (n.endsWith('.zip')) {
-    cmd = `cd "${currentDir}" && (unzip -q -o "${item.path}" 2>/dev/null || tar -xf "${item.path}")`;
+    extractCmd = `(${sudoPfx}unzip -q -o "${item.path}" 2>/dev/null || ${sudoPfx}tar -xf "${item.path}")`;
   } else {
-    cmd = `cd "${currentDir}" && tar -xf "${item.path}"`;
+    extractCmd = `${sudoPfx}tar -xf "${item.path}"`;
   }
+
+  const cmd = `cd ${cdTarget} && ${extractCmd} && echo "__BOBA_SUCCESS__"`;
 
   // Non-blocking background task in footer transfer queue
   const opId = queueStore.addOperation(activeId, 'extract', item.name, currentDir);
   queueTab.value = 'active';
 
-  tauriBridge.sshExecCommand(activeId, cmd).then(async () => {
+  tauriBridge.sshExecCommand(activeId, cmd).then(async (out: string) => {
+    if (!out || !out.includes('__BOBA_SUCCESS__')) {
+      const errMsg = out?.trim() || 'Ekstraksi arsip gagal di server.';
+      queueStore.updateStatus(opId, 'error', errMsg);
+      dialogStore.showToast(`Ekstraksi gagal: ${errMsg}`, 'error', 5000);
+      return;
+    }
     queueStore.updateStatus(opId, 'completed');
     dialogStore.showToast(`Ekstraksi selesai: ${item.name}`, 'success');
     if (isLeft) {
@@ -3124,12 +3141,14 @@ async function extractRemoteArchive(side: 'left' | 'right', item: RemoteFileItem
     }
   }).catch((err: any) => {
     queueStore.updateStatus(opId, 'error', String(err));
-    dialogStore.showToast(`Ekstraksi gagal: ${err}`, 'error');
+    dialogStore.showToast(`Ekstraksi gagal: ${err}`, 'error', 5000);
   });
 }
 
 async function compressRemoteItem(side: 'left' | 'right', item: RemoteFileItem) {
   const isLeft = side === 'left';
+  const isSudo = isLeft ? isLeftSudoActive.value : isRightSudoActive.value;
+  const sudoPfx = isSudo ? 'sudo ' : '';
   const activeId = isLeft ? await ensureLeftConnected() : await ensureConnected();
   const currentDir = isLeft ? leftRemotePathInput.value : remotePathInput.value;
 
@@ -3138,18 +3157,34 @@ async function compressRemoteItem(side: 'left' | 'right', item: RemoteFileItem) 
     title: 'Compress on Server',
     description: `Buat arsip tar.gz untuk "${item.name}":`,
     placeholder: defaultArchive,
+    defaultValue: defaultArchive,
     confirmText: 'Compress',
   });
   if (!archiveName?.trim()) return;
 
-  const targetArchive = archiveName.trim();
-  const cmd = `cd "${currentDir}" && tar -czf "${targetArchive}" "${item.name}"`;
+  let targetArchive = archiveName.trim();
+  if (!targetArchive.endsWith('.tar.gz') && !targetArchive.endsWith('.tgz') && !targetArchive.endsWith('.tar.bz2') && !targetArchive.endsWith('.tar.xz') && !targetArchive.endsWith('.zip') && !targetArchive.endsWith('.tar')) {
+    targetArchive += '.tar.gz';
+  }
+
+  const cdTarget = (!currentDir || currentDir === '.' || currentDir === '~')
+    ? '$HOME'
+    : (currentDir.startsWith('~/') ? `$HOME/${currentDir.slice(2)}` : `"${currentDir}"`);
+
+  const cmd = `cd ${cdTarget} && ${sudoPfx}tar -czf "${targetArchive}" "${item.name}" && echo "__BOBA_SUCCESS__"`;
 
   // Non-blocking background task in footer transfer queue
-  const opId = queueStore.addOperation(activeId, 'compress', `${item.name} ➔ ${targetArchive}`, `${currentDir}/${targetArchive}`);
+  const displayTarget = currentDir === '.' ? targetArchive : `${currentDir.replace(/\/+$/, '')}/${targetArchive}`;
+  const opId = queueStore.addOperation(activeId, 'compress', `${item.name} ➔ ${targetArchive}`, displayTarget);
   queueTab.value = 'active';
 
-  tauriBridge.sshExecCommand(activeId, cmd).then(async () => {
+  tauriBridge.sshExecCommand(activeId, cmd).then(async (out: string) => {
+    if (!out || !out.includes('__BOBA_SUCCESS__')) {
+      const errMsg = out?.trim() || 'Perintah tar gagal dieksekusi di server.';
+      queueStore.updateStatus(opId, 'error', errMsg);
+      dialogStore.showToast(`Kompresi gagal: ${errMsg}`, 'error', 5000);
+      return;
+    }
     queueStore.updateStatus(opId, 'completed');
     dialogStore.showToast(`Kompresi selesai: ${targetArchive}`, 'success');
     if (isLeft) {
@@ -3159,7 +3194,7 @@ async function compressRemoteItem(side: 'left' | 'right', item: RemoteFileItem) 
     }
   }).catch((err: any) => {
     queueStore.updateStatus(opId, 'error', String(err));
-    dialogStore.showToast(`Kompresi gagal: ${err}`, 'error');
+    dialogStore.showToast(`Kompresi gagal: ${err}`, 'error', 5000);
   });
 }
 
@@ -4223,6 +4258,7 @@ async function renameItem(side: 'left' | 'right', item: LocalFileItem | RemoteFi
     title: `Rename ${item.is_dir ? 'Folder' : 'File'}`,
     description: `Enter new name for "${item.name}":`,
     placeholder: item.name,
+    defaultValue: item.name,
     confirmText: 'Rename',
   });
   if (!newName?.trim() || newName.trim() === item.name) return;
@@ -4875,6 +4911,7 @@ async function uploadLocalItem(item: LocalFileItem) {
       );
 
       try {
+        queueStore.updateStatus(transferId, 'transferring');
         await tauriBridge.sftpUploadStream(
           activeId,
           transferId,
@@ -4882,6 +4919,7 @@ async function uploadLocalItem(item: LocalFileItem) {
           targetRemotePath,
           0
         );
+        queueStore.updateStatus(transferId, 'completed');
       } catch (uploadErr: any) {
         queueStore.updateStatus(transferId, 'error', String(uploadErr));
         throw uploadErr;
@@ -4949,6 +4987,7 @@ async function downloadRemoteItem(file: RemoteFileItem) {
       );
 
       try {
+        queueStore.updateStatus(transferId, 'transferring');
         await tauriBridge.sftpDownloadStream(
           activeId,
           transferId,
@@ -4956,6 +4995,7 @@ async function downloadRemoteItem(file: RemoteFileItem) {
           targetLocalPath,
           0
         );
+        queueStore.updateStatus(transferId, 'completed');
       } catch (downloadErr: any) {
         queueStore.updateStatus(transferId, 'error', String(downloadErr));
         throw downloadErr;
@@ -5046,10 +5086,31 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
           const targetLocalPath = `${targetFolder.path}${sep}${draggedItem.name}`;
           const activeId = await ensureConnected();
           if (draggedItem.is_dir) {
-            await tauriBridge.sftpDownloadFolder(activeId, draggedItem.path, targetFolder.path, queueStore.maxConcurrent);
+            const folderTransferId = queueStore.addDownload(
+              activeId,
+              draggedItem.path,
+              `📁 ${draggedItem.name}`,
+              0,
+              targetLocalPath,
+              rightServerName.value,
+              'Local Machine'
+            );
+            try {
+              queueStore.updateStatus(folderTransferId, 'transferring');
+              await tauriBridge.sftpDownloadFolder(activeId, draggedItem.path, targetFolder.path, queueStore.maxConcurrent, folderTransferId);
+              queueStore.updateStatus(folderTransferId, 'completed');
+            } catch (e) {
+              queueStore.updateStatus(folderTransferId, 'error', String(e));
+            }
           } else {
             const transferId = queueStore.addDownload(activeId, draggedItem.path, draggedItem.name, draggedItem.size, targetLocalPath, rightServerName.value, 'Local Machine');
-            await tauriBridge.sftpDownloadStream(activeId, transferId, draggedItem.path, targetLocalPath, 0);
+            try {
+              queueStore.updateStatus(transferId, 'transferring');
+              await tauriBridge.sftpDownloadStream(activeId, transferId, draggedItem.path, targetLocalPath, 0);
+              queueStore.updateStatus(transferId, 'completed');
+            } catch (e) {
+              queueStore.updateStatus(transferId, 'error', String(e));
+            }
           }
           await fetchLocalFiles();
         } else {
@@ -5079,11 +5140,32 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
         if (isSrcLocal) {
           const activeId = await ensureConnected();
           if (draggedItem.is_dir) {
-            await tauriBridge.sftpUploadFolder(activeId, draggedItem.path, targetFolder.path, queueStore.maxConcurrent);
+            const folderTransferId = queueStore.addUpload(
+              activeId,
+              targetRemotePath,
+              `📁 ${draggedItem.name}`,
+              0,
+              draggedItem.path,
+              'Local Machine',
+              rightServerName.value
+            );
+            try {
+              queueStore.updateStatus(folderTransferId, 'transferring');
+              await tauriBridge.sftpUploadFolder(activeId, draggedItem.path, targetFolder.path, queueStore.maxConcurrent, folderTransferId);
+              queueStore.updateStatus(folderTransferId, 'completed');
+            } catch (e) {
+              queueStore.updateStatus(folderTransferId, 'error', String(e));
+            }
           } else {
             const targetRemotePath = `${targetFolder.path.replace(/\/+$/, '')}/${draggedItem.name}`;
             const transferId = queueStore.addUpload(activeId, targetRemotePath, draggedItem.name, draggedItem.size, draggedItem.path, 'Local Machine', rightServerName.value);
-            await tauriBridge.sftpUploadStream(activeId, transferId, draggedItem.path, targetRemotePath, 0);
+            try {
+              queueStore.updateStatus(transferId, 'transferring');
+              await tauriBridge.sftpUploadStream(activeId, transferId, draggedItem.path, targetRemotePath, 0);
+              queueStore.updateStatus(transferId, 'completed');
+            } catch (e) {
+              queueStore.updateStatus(transferId, 'error', String(e));
+            }
           }
         } else {
           const srcId = await ensureLeftConnected();

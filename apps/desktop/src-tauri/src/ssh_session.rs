@@ -287,6 +287,7 @@ pub struct LogStream {
     pub session_id: String,
     pub label: String,
     pub cancel: Arc<AtomicBool>,
+    pub cancel_notify: Arc<tokio::sync::Notify>,
     pub input_tx: mpsc::UnboundedSender<Vec<u8>>,
     pub resize_tx: mpsc::UnboundedSender<(u32, u32)>,
 }
@@ -305,7 +306,7 @@ pub struct SshManager {
     /// The remote process is NOT detached: it runs directly on the channel, so the
     /// server tears it down via SIGHUP/EOF as soon as we drop the channel.
     log_streams: Arc<Mutex<HashMap<String, LogStream>>>,
-    active_tunnels: Arc<Mutex<HashMap<String, (ActiveTunnelInfo, Arc<AtomicBool>)>>>,
+    active_tunnels: Arc<Mutex<HashMap<String, (ActiveTunnelInfo, Arc<AtomicBool>, Arc<tokio::sync::Notify>)>>>,
     app_handle: Arc<Mutex<Option<tauri::AppHandle>>>,
 }
 
@@ -405,6 +406,17 @@ impl SshManager {
                 if let Ok(kp) = russh_keys::decode_secret_key(pem_doc.as_str(), None) {
                     return Ok(kp);
                 }
+            }
+        }
+
+        let is_encrypted = clean_key.contains("ENCRYPTED")
+            || clean_key.contains("Proc-Type: 4,ENCRYPTED")
+            || clean_key.contains("bcrypt");
+        if is_encrypted {
+            if passphrase.is_none() || passphrase.unwrap().trim().is_empty() {
+                return Err("Private key ini terenkripsi dan memerlukan passphrase. Silakan masukkan passphrase pada konfigurasi SSH Key.".into());
+            } else {
+                return Err("Gagal membuka private key. Pastikan passphrase yang dimasukkan benar.".into());
             }
         }
 
@@ -529,15 +541,25 @@ impl SshManager {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    Some(input) = input_rx.recv() => {
-                        if let Err(_) = pty_channel.data(&input[..]).await {
-                            break;
+                    res = input_rx.recv() => {
+                        match res {
+                            Some(input) => {
+                                if pty_channel.data(&input[..]).await.is_err() {
+                                    break;
+                                }
+                            }
+                            None => break,
                         }
                     }
-                    Some((c, r)) = resize_rx.recv() => {
-                        let safe_cols = c.max(10);
-                        let safe_rows = r.max(2);
-                        let _ = pty_channel.window_change(safe_cols, safe_rows, 0, 0).await;
+                    res = resize_rx.recv() => {
+                        match res {
+                            Some((c, r)) => {
+                                let safe_cols = c.max(10);
+                                let safe_rows = r.max(2);
+                                let _ = pty_channel.window_change(safe_cols, safe_rows, 0, 0).await;
+                            }
+                            None => break,
+                        }
                     }
                     msg = pty_channel.wait() => {
                         match msg {
@@ -602,7 +624,7 @@ impl SshManager {
                     }
                 }
 
-                String::from_utf8(output).map_err(|e| format!("Exec output not UTF-8: {}", e))
+                Ok(String::from_utf8_lossy(&output).to_string())
             };
 
             return match tokio::time::timeout(std::time::Duration::from_secs(600), exec_fut).await {
@@ -652,11 +674,15 @@ impl SshManager {
         // Run compact multi-metric script
         let script = r#"
 echo "---CPU---"
-top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}'
+CPU_VAL=$(top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+if [ -z "$CPU_VAL" ]; then
+  CPU_VAL=$(awk '/^cpu / {usage=($2+$4)*100/($2+$4+$5); printf "%.1f", usage}' /proc/stat 2>/dev/null)
+fi
+echo "$CPU_VAL"
 echo "---RAM---"
 free -m 2>/dev/null | awk 'NR==2{printf "%s %s\n", $3,$2}'
 echo "---DISK---"
-df -h / 2>/dev/null | awk 'NR==2{printf "%s %s %s\n", $3,$2,$5}'
+(df -P -h / 2>/dev/null || df -h / 2>/dev/null) | awk 'NR==2{printf "%s %s %s\n", $3,$2,$5}'
 echo "---UPTIME---"
 uptime -p 2>/dev/null || uptime 2>/dev/null
 echo "---LOAD---"
@@ -723,11 +749,15 @@ uptime 2>/dev/null | awk -F'load average:' '{print $2}'
     pub async fn get_metrics_full(&self, session_id: &str) -> Result<ServerMetricsFull, String> {
         let script = r#"
 echo "---CPU---"
-top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}'
+CPU_VAL=$(top -bn1 2>/dev/null | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+if [ -z "$CPU_VAL" ]; then
+  CPU_VAL=$(awk '/^cpu / {usage=($2+$4)*100/($2+$4+$5); printf "%.1f", usage}' /proc/stat 2>/dev/null)
+fi
+echo "$CPU_VAL"
 echo "---RAM---"
 free -m 2>/dev/null | awk 'NR==2{printf "%s %s\n", $3,$2} NR==3{printf "%s %s\n", $3,$2}'
 echo "---DISK---"
-df -h / 2>/dev/null | awk 'NR==2{printf "%s %s %s\n", $3,$2,$5}'
+(df -P -h / 2>/dev/null || df -h / 2>/dev/null) | awk 'NR==2{printf "%s %s %s\n", $3,$2,$5}'
 echo "---UPTIME---"
 uptime -p 2>/dev/null || uptime 2>/dev/null
 echo "---LOAD---"
@@ -829,6 +859,7 @@ ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu 2>/dev/null | head -n 11 | tail -n 1
         // (`/usr/bin:/bin`). PM2 is usually installed outside that (npm global, nvm),
         // so `command -v pm2` alone would miss it entirely.
         let script = r#"
+export PATH="$HOME/.nvm/versions/node/$(ls -1 "$HOME/.nvm/versions/node" 2>/dev/null | tail -1)/bin:$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH"
 PM2=""
 for c in "$(command -v pm2 2>/dev/null)" \
          "$HOME/.npm-global/bin/pm2" \
@@ -977,6 +1008,7 @@ echo "---END---"
 
         let stream_id = format!("log_{}_{}", session_id, chrono::Local::now().timestamp_millis());
         let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_notify = Arc::new(tokio::sync::Notify::new());
 
         {
             let mut streams = self.log_streams.lock();
@@ -986,6 +1018,7 @@ echo "---END---"
                     session_id: session_id.to_string(),
                     label: label.to_string(),
                     cancel: cancel.clone(),
+                    cancel_notify: cancel_notify.clone(),
                     input_tx,
                     resize_tx,
                 },
@@ -997,6 +1030,7 @@ echo "---END---"
             let chunk_event = format!("log-stream-chunk:{}", stream_id);
             let ended_event = format!("log-stream-ended:{}", stream_id);
             let task_cancel = cancel.clone();
+            let task_cancel_notify = cancel_notify.clone();
             let task_stream_id = stream_id.clone();
             let log_streams_arc = self.log_streams.clone();
 
@@ -1009,15 +1043,28 @@ echo "---END---"
                         break;
                     }
                     tokio::select! {
-                        Some(input) = input_rx.recv() => {
-                            if let Err(_) = channel.data(&input[..]).await {
-                                break;
+                        _ = task_cancel_notify.notified() => {
+                            break;
+                        }
+                        res = input_rx.recv() => {
+                            match res {
+                                Some(input) => {
+                                    if channel.data(&input[..]).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                None => break,
                             }
                         }
-                        Some((cols, rows)) = resize_rx.recv() => {
-                            let safe_cols = cols.max(10);
-                            let safe_rows = rows.max(2);
-                            let _ = channel.window_change(safe_cols, safe_rows, 0, 0).await;
+                        res = resize_rx.recv() => {
+                            match res {
+                                Some((cols, rows)) => {
+                                    let safe_cols = cols.max(10);
+                                    let safe_rows = rows.max(2);
+                                    let _ = channel.window_change(safe_cols, safe_rows, 0, 0).await;
+                                }
+                                None => break,
+                            }
                         }
                         msg = channel.wait() => {
                             match msg {
@@ -1081,6 +1128,7 @@ echo "---END---"
         match removed {
             Some(s) => {
                 s.cancel.store(true, Ordering::SeqCst);
+                s.cancel_notify.notify_waiters();
                 Ok(())
             }
             None => Err("Stream tidak ditemukan atau sudah berhenti".into()),
@@ -1151,18 +1199,26 @@ echo "---END---"
         };
 
         let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_notify = Arc::new(tokio::sync::Notify::new());
         {
             let mut tunnels = self.active_tunnels.lock();
-            tunnels.insert(tunnel_id.to_string(), (info.clone(), cancel.clone()));
+            tunnels.insert(tunnel_id.to_string(), (info.clone(), cancel.clone(), cancel_notify.clone()));
         }
 
         let cancel_task = cancel.clone();
+        let cancel_notify_task = cancel_notify.clone();
         let session_handle_clone = handle_arc.clone();
         let remote_host_owned = remote_host.to_string();
 
         tokio::spawn(async move {
-            while !cancel_task.load(Ordering::Relaxed) {
+            loop {
+                if cancel_task.load(Ordering::SeqCst) {
+                    break;
+                }
                 tokio::select! {
+                    _ = cancel_notify_task.notified() => {
+                        break;
+                    }
                     accept_res = listener.accept() => {
                         match accept_res {
                             Ok((mut client_socket, peer_addr)) => {
@@ -1178,9 +1234,14 @@ echo "---END---"
                                             peer_addr.port() as u32,
                                         ).await
                                     };
-                                    if let Ok(ch) = channel_res {
-                                        let mut channel_stream = ch.into_stream();
-                                        let _ = tokio::io::copy_bidirectional(&mut client_socket, &mut channel_stream).await;
+                                    match channel_res {
+                                        Ok(ch) => {
+                                            let mut channel_stream = ch.into_stream();
+                                            let _ = tokio::io::copy_bidirectional(&mut client_socket, &mut channel_stream).await;
+                                        }
+                                        Err(e) => {
+                                            crate::commands::log_msg(&format!("Tunnel direct-tcpip channel failed to {}:{}: {}", r_host, remote_port, e));
+                                        }
                                     }
                                 });
                             }
@@ -1188,13 +1249,6 @@ echo "---END---"
                                 break;
                             }
                         }
-                    }
-                    _ = async {
-                        while !cancel_task.load(Ordering::Relaxed) {
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                        }
-                    } => {
-                        break;
                     }
                 }
             }
@@ -1206,8 +1260,9 @@ echo "---END---"
     pub async fn stop_tunnel(&self, tunnel_id: &str) -> Result<(), String> {
         let removed = self.active_tunnels.lock().remove(tunnel_id);
         match removed {
-            Some((_, cancel)) => {
+            Some((_, cancel, notify)) => {
                 cancel.store(true, Ordering::SeqCst);
+                notify.notify_waiters();
                 Ok(())
             }
             None => Err("Tunnel tidak ditemukan atau sudah tidak aktif".into()),
@@ -1218,11 +1273,11 @@ echo "---END---"
         let tunnels = self.active_tunnels.lock();
         tunnels
             .values()
-            .filter(|(info, _)| match session_id {
+            .filter(|(info, _, _)| match session_id {
                 Some(sid) => info.session_id == sid,
                 None => true,
             })
-            .map(|(info, _)| info.clone())
+            .map(|(info, _, _)| info.clone())
             .collect()
     }
 
@@ -1509,9 +1564,30 @@ echo "---END---"
     pub async fn delete_path(&self, session_id: &str, path: &str, is_dir: bool) -> Result<(), String> {
         let sftp = self.get_or_init_sftp(session_id).await?;
         if is_dir {
-            sftp.remove_dir(path).await.map_err(|e| format!("Failed to remove directory: {}", e))?;
+            if let Err(e) = sftp.remove_dir(path).await {
+                // If directory is not empty or fails via standard SFTP rmdir, fallback to shell rm -rf
+                let is_sudo = self.sftp_get_sudo_status(session_id);
+                let sudo_pfx = if is_sudo { "sudo " } else { "" };
+                let cmd = format!("{}rm -rf \"{}\"", sudo_pfx, path);
+                let output = self.exec_command(session_id, &cmd).await.map_err(|e2| {
+                    format!("Failed to remove directory '{}': {} (fallback shell: {})", path, e, e2)
+                })?;
+                if output.contains("rm: cannot") || output.contains("rm: failed") {
+                    return Err(output);
+                }
+            }
         } else {
-            sftp.remove_file(path).await.map_err(|e| format!("Failed to remove file: {}", e))?;
+            if let Err(e) = sftp.remove_file(path).await {
+                let is_sudo = self.sftp_get_sudo_status(session_id);
+                let sudo_pfx = if is_sudo { "sudo " } else { "" };
+                let cmd = format!("{}rm -f \"{}\"", sudo_pfx, path);
+                let output = self.exec_command(session_id, &cmd).await.map_err(|e2| {
+                    format!("Failed to remove file '{}': {} (fallback shell: {})", path, e, e2)
+                })?;
+                if output.contains("rm: cannot") || output.contains("rm: failed") {
+                    return Err(output);
+                }
+            }
         }
         Ok(())
     }
@@ -1755,21 +1831,23 @@ echo "---END---"
         let total_bytes = file_stat.size.unwrap_or(0);
         let initial_offset = resume_from.unwrap_or(0);
 
-        // Emit transferring status immediately so it shows up in "⚡ Proses" tab
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: session_id.clone(),
-            file_name: file_name.clone(),
-            remote_path: remote_path.clone(),
-            local_path: Some(local_path.clone()),
-            direction: "download".into(),
-            bytes_transferred: initial_offset,
-            total_bytes,
-            percentage: if total_bytes > 0 { (initial_offset as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-            speed_bps: 0.0,
-            status: "transferring".into(),
-            error_message: None,
-        });
+        // Emit transferring status immediately so it shows up in "⚡ Proses" tab (if top-level)
+        if !is_child_of_folder {
+            let _ = app.emit("sftp-progress", TransferProgress {
+                transfer_id: transfer_id.clone(),
+                session_id: session_id.clone(),
+                file_name: file_name.clone(),
+                remote_path: remote_path.clone(),
+                local_path: Some(local_path.clone()),
+                direction: "download".into(),
+                bytes_transferred: initial_offset,
+                total_bytes,
+                percentage: if total_bytes > 0 { (initial_offset as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                speed_bps: 0.0,
+                status: "transferring".into(),
+                error_message: None,
+            });
+        }
 
         let mut remote_file = match sftp.open(&remote_path).await {
             Ok(rf) => rf,
@@ -1879,22 +1957,6 @@ echo "---END---"
         let start_time = Instant::now();
         let mut last_emit = Instant::now();
 
-        // Emit transferring status immediately so it shows up in "⚡ Proses" tab
-        let _ = app.emit("sftp-progress", TransferProgress {
-            transfer_id: transfer_id.clone(),
-            session_id: session_id.clone(),
-            file_name: file_name.clone(),
-            remote_path: remote_path.clone(),
-            local_path: Some(local_path.clone()),
-            direction: "download".into(),
-            bytes_transferred: initial_offset,
-            total_bytes,
-            percentage: if total_bytes > 0 { (initial_offset as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-            speed_bps: 0.0,
-            status: "transferring".into(),
-            error_message: None,
-        });
-
         loop {
             let is_cancelled = cancel_flag.load(Ordering::SeqCst)
                 || self.cancel_epoch.load(Ordering::SeqCst) != start_epoch
@@ -1904,20 +1966,22 @@ echo "---END---"
                 drop(local_file);
                 let _ = tokio::fs::remove_file(&local_path).await;
 
-                let _ = app.emit("sftp-progress", TransferProgress {
-                    transfer_id: transfer_id.clone(),
-                    session_id: session_id.clone(),
-                    file_name: file_name.clone(),
-                    remote_path: remote_path.clone(),
-                    local_path: Some(local_path.clone()),
-                    direction: "download".into(),
-                    bytes_transferred: transferred,
-                    total_bytes,
-                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-                    speed_bps: 0.0,
-                    status: "cancelled".into(),
-                    error_message: Some("Transfer cancelled by user".into()),
-                });
+                if !is_child_of_folder {
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: remote_path.clone(),
+                        local_path: Some(local_path.clone()),
+                        direction: "download".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "cancelled".into(),
+                        error_message: Some("Transfer cancelled by user".into()),
+                    });
+                }
                 self.active_transfers.lock().remove(&transfer_id);
                 return Err("Transfer cancelled by user".into());
             }
@@ -2297,20 +2361,22 @@ echo "---END---"
                 let _ = remote_file.shutdown().await;
                 let _ = sftp.remove_file(&remote_path).await;
 
-                let _ = app.emit("sftp-progress", TransferProgress {
-                    transfer_id: transfer_id.clone(),
-                    session_id: session_id.clone(),
-                    file_name: file_name.clone(),
-                    remote_path: remote_path.clone(),
-                    local_path: Some(local_path.clone()),
-                    direction: "upload".into(),
-                    bytes_transferred: transferred,
-                    total_bytes,
-                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-                    speed_bps: 0.0,
-                    status: "cancelled".into(),
-                    error_message: Some("Transfer cancelled by user".into()),
-                });
+                if !is_child_of_folder {
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: remote_path.clone(),
+                        local_path: Some(local_path.clone()),
+                        direction: "upload".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "cancelled".into(),
+                        error_message: Some("Transfer cancelled by user".into()),
+                    });
+                }
                 self.active_transfers.lock().remove(&transfer_id);
                 return Err("Transfer cancelled by user".into());
             }
@@ -2934,20 +3000,22 @@ echo "---END---"
                 let _ = src_file.shutdown().await;
                 let _ = dst_sftp.remove_file(&dst_path).await;
 
-                let _ = app.emit("sftp-progress", TransferProgress {
-                    transfer_id: transfer_id.clone(),
-                    session_id: src_session_id.clone(),
-                    file_name: file_name.clone(),
-                    remote_path: src_path.clone(),
-                    local_path: Some(dst_path.clone()),
-                    direction: "remote-to-remote".into(),
-                    bytes_transferred: transferred,
-                    total_bytes,
-                    percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
-                    speed_bps: 0.0,
-                    status: "cancelled".into(),
-                    error_message: Some("Transfer cancelled by user".into()),
-                });
+                if !is_child_of_folder {
+                    let _ = app.emit("sftp-progress", TransferProgress {
+                        transfer_id: transfer_id.clone(),
+                        session_id: src_session_id.clone(),
+                        file_name: file_name.clone(),
+                        remote_path: src_path.clone(),
+                        local_path: Some(dst_path.clone()),
+                        direction: "remote-to-remote".into(),
+                        bytes_transferred: transferred,
+                        total_bytes,
+                        percentage: if total_bytes > 0 { (transferred as f32 / total_bytes as f32) * 100.0 } else { 0.0 },
+                        speed_bps: 0.0,
+                        status: "cancelled".into(),
+                        error_message: Some("Transfer cancelled by user".into()),
+                    });
+                }
                 self.active_transfers.lock().remove(&transfer_id);
                 return Err("Transfer cancelled by user".into());
             }
@@ -3365,14 +3433,24 @@ echo "---END---"
                                             .trim_start_matches('/');
                                         let full_dst = format!("{}/{}", dst_root_c, rel);
 
-                                        if entry.file_type().is_dir() {
+                                        let mut is_dir = entry.file_type().is_dir();
+                                        if !is_dir && entry.file_type().is_symlink() {
+                                            if let Ok(meta) = sftp_c.metadata(&full_src).await {
+                                                if meta.is_dir() {
+                                                    is_dir = true;
+                                                }
+                                            }
+                                        }
+
+                                        if is_dir {
                                             let is_new = {
                                                 let mut kd = known_dirs_c.lock().unwrap();
                                                 kd.insert(full_dst.clone())
                                             };
-                                            if is_new {
-                                                let _ = tokio::time::timeout(std::time::Duration::from_secs(15), this_c.ensure_dir_exists(&dst_id_c, &dst_sftp_c, &full_dst)).await;
+                                            if !is_new {
+                                                continue;
                                             }
+                                            let _ = tokio::time::timeout(std::time::Duration::from_secs(15), this_c.ensure_dir_exists(&dst_id_c, &dst_sftp_c, &full_dst)).await;
                                             active_dirs_c.fetch_add(1, Ordering::SeqCst);
                                             let _ = dir_tx_c.send(full_src).await;
                                         } else {
@@ -3826,9 +3904,10 @@ echo "---END---"
                                                 let mut kd = known_dirs_c.lock().unwrap();
                                                 kd.insert(remote_path.clone())
                                             };
-                                            if is_new {
-                                                let _ = this_c.ensure_dir_exists(&sess_c, &sftp_c, &remote_path).await;
+                                            if !is_new {
+                                                continue;
                                             }
+                                            let _ = this_c.ensure_dir_exists(&sess_c, &sftp_c, &remote_path).await;
                                             active_dirs_c.fetch_add(1, Ordering::SeqCst);
                                             let _ = dir_tx_c.send(path).await;
                                         } else {
@@ -4058,6 +4137,10 @@ echo "---END---"
         {
             local_dirs.lock().unwrap().insert(local_root.clone());
         }
+        let visited_remote_dirs = Arc::new(std::sync::Mutex::new(std::collections::HashSet::<String>::new()));
+        {
+            visited_remote_dirs.lock().unwrap().insert(remote_folder.clone());
+        }
 
         let total_files = Arc::new(AtomicU64::new(0));
         let done_files = Arc::new(AtomicU64::new(0));
@@ -4161,6 +4244,7 @@ echo "---END---"
         let scanner_remote_folder = remote_folder.clone();
         let scanner_local_root = local_root.clone();
         let scanner_local_dirs = local_dirs.clone();
+        let scanner_visited_remote_dirs = visited_remote_dirs.clone();
         let cancel_flag_scan = cancel_flag.clone();
         let folder_notify_scan = folder_notify.clone();
         let global_notify_scan = self.cancel_notify.clone();
@@ -4216,6 +4300,7 @@ echo "---END---"
                                 let remote_folder_c = scanner_remote_folder.clone();
                                 let local_root_c = scanner_local_root.clone();
                                 let local_dirs_c = scanner_local_dirs.clone();
+                                let visited_remote_dirs_c = scanner_visited_remote_dirs.clone();
                                 let dir_tx_c = dir_tx.clone();
                                 let tx_c = tx.clone();
                                 let active_dirs_c = active_dirs.clone();
@@ -4259,7 +4344,24 @@ echo "---END---"
                                             .unwrap_or(&full_remote)
                                             .trim_start_matches('/');
 
-                                        if entry.file_type().is_dir() {
+                                        let mut is_dir = entry.file_type().is_dir();
+                                        if !is_dir && entry.file_type().is_symlink() {
+                                            if let Ok(meta) = sftp_c.metadata(&full_remote).await {
+                                                if meta.is_dir() {
+                                                    is_dir = true;
+                                                }
+                                            }
+                                        }
+
+                                        if is_dir {
+                                            let is_new_remote = {
+                                                let mut vr = visited_remote_dirs_c.lock().unwrap();
+                                                vr.insert(full_remote.clone())
+                                            };
+                                            if !is_new_remote {
+                                                continue;
+                                            }
+
                                             let local_sub = local_root_c.join(rel.replace('/', "\\"));
                                             let is_new = {
                                                 let mut ld = local_dirs_c.lock().unwrap();
@@ -4462,6 +4564,7 @@ echo "---END---"
         for id in ids {
             if let Some(s) = streams.remove(&id) {
                 s.cancel.store(true, Ordering::SeqCst);
+                s.cancel_notify.notify_waiters();
             }
         }
 
@@ -4469,12 +4572,13 @@ echo "---END---"
         let mut tunnels = self.active_tunnels.lock();
         let tunnel_ids: Vec<String> = tunnels
             .iter()
-            .filter(|(_, (info, _))| info.session_id == session_id)
+            .filter(|(_, (info, _, _))| info.session_id == session_id)
             .map(|(id, _)| id.clone())
             .collect();
         for id in tunnel_ids {
-            if let Some((_, cancel)) = tunnels.remove(&id) {
+            if let Some((_, cancel, notify)) = tunnels.remove(&id) {
                 cancel.store(true, Ordering::SeqCst);
+                notify.notify_waiters();
             }
         }
     }

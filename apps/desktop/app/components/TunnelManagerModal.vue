@@ -284,6 +284,7 @@ const props = defineProps<{
   isOpen: boolean;
   sessionId: string;
   hostTitle: string;
+  sessionConfig?: any;
 }>();
 
 const emit = defineEmits(['close']);
@@ -299,7 +300,7 @@ interface UITunnelConfig extends TunnelConfig {
 const tunnels = ref<UITunnelConfig[]>([]);
 const isRefreshing = ref(false);
 
-const storageKey = computed(() => `boba_tunnels_${props.sessionId}`);
+const storageKey = computed(() => `boba_tunnels_${props.sessionConfig?.id || props.hostTitle}`);
 
 // Presets
 const presets = [
@@ -360,6 +361,7 @@ const loadTunnels = async () => {
 
     tunnels.value = stored.map(t => ({
       ...t,
+      sessionId: props.sessionId,
       is_active: activeList.some(a => a.tunnel_id === t.id && a.is_active),
       loading: false
     }));

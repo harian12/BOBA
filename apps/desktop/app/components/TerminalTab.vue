@@ -805,6 +805,7 @@
         v-if="isTunnelModalOpen"
         :isOpen="isTunnelModalOpen"
         :sessionId="tab.id"
+        :sessionConfig="tab.sessionConfig"
         :hostTitle="`${tab.sessionConfig.username}@${tab.sessionConfig.host}`"
         @close="isTunnelModalOpen = false"
       />
@@ -907,6 +908,7 @@ const isReconnecting = ref(false);
 const reconnectCountdown = ref(3);
 let reconnectTimer: any = null;
 let isExplicitlyClosed = false;
+const hasConnectedOnce = ref(false);
 
 // Docker Manager State
 const hasDocker = ref(false);
@@ -1179,12 +1181,13 @@ function focusThisTab(e?: MouseEvent) {
   }
 }
 
-// Watch active tab change: auto-focus terminal (only if modal is closed)
+// Watch active tab change: auto-focus terminal and fit viewport (only if modal is closed)
 watch(
   () => sessionStore.activeTabId,
   (newActiveId) => {
     if (newActiveId === props.tab.id && !isAnyModalOpen.value && term) {
       nextTick(() => {
+        fitTerminal();
         term?.focus();
       });
     }
@@ -1459,8 +1462,21 @@ function initTerminal() {
   // Key Event Interception: Handle text selection with Shift+Arrow & Navigation shortcuts
   term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
     if (e.type === 'keydown') {
+      // Standard Terminal Copy / Paste Shortcuts
+      if (e.ctrlKey && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+        handleCopy();
+        return false;
+      }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+        handlePaste();
+        return false;
+      }
+
+      // If in full-screen curses apps (vim, nano, htop, less), let editing keys pass directly to remote app
+      const isAltBuffer = term && term.buffer.active.type === 'alternate';
+
       // 1. Text Selection with Shift + Arrows & Ctrl + Shift + Left/Right (Word-by-word selection)
-      if (e.shiftKey && !e.altKey) {
+      if (!isAltBuffer && e.shiftKey && !e.altKey) {
         if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
           if (!term) return false;
           const buffer = term.buffer.active;
@@ -1583,7 +1599,7 @@ function initTerminal() {
       }
 
       // 2. Delete selected text on Backspace or Delete key
-      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      if (!isAltBuffer && (e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         if (term && term.hasSelection()) {
           const selText = term.getSelection();
           const pos = term.getSelectionPosition();
@@ -1845,10 +1861,12 @@ async function connectSsh() {
     // Disable any lingering mouse reporting modes from previous sessions
     term.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l');
     props.tab.connected = true;
+    hasConnectedOnce.value = true;
     term.focus();
 
     // Fetch initial metrics
     setTimeout(() => {
+      if (!props.tab.connected || isExplicitlyClosed) return;
       fetchMetrics();
       checkDockerAvailability();
       checkSystemdAvailability();
@@ -1857,8 +1875,12 @@ async function connectSsh() {
     props.tab.connected = false;
     props.tab.error = String(err);
     if (term) term.writeln(`\x1b[31mConnection error: ${err}\x1b[0m\r\n`);
-    // Jika koneksi gagal saat mencoba menyambungkan ulang, jadwalkan retry kembali
-    if (!isExplicitlyClosed) {
+
+    const errStr = String(err).toLowerCase();
+    const isAuthError = errStr.includes('auth') || errStr.includes('credential') || errStr.includes('password') || errStr.includes('key') || errStr.includes('denied');
+
+    // Only auto-reconnect if session was successfully established before and error is not authentication rejection
+    if (!isExplicitlyClosed && !isAuthError && hasConnectedOnce.value) {
       scheduleAutoReconnect();
     }
   }
@@ -1867,7 +1889,7 @@ async function connectSsh() {
 async function checkDockerAvailability() {
   if (!props.tab.connected) return;
   try {
-    const checkOut = await tauriBridge.sshExecCommand(props.tab.id, 'which docker || command -v docker');
+    const checkOut = await tauriBridge.sshExecCommand(props.tab.id, 'export PATH="$PATH:/usr/local/bin:/snap/bin"; which docker || command -v docker || [ -x /snap/bin/docker ] && echo "/snap/bin/docker"');
     if (checkOut && checkOut.trim() && !checkOut.toLowerCase().includes('not found') && !checkOut.toLowerCase().includes('no docker')) {
       hasDocker.value = true;
 
