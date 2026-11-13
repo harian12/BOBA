@@ -365,7 +365,8 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
       createdAt: Date.now(),
     };
 
-    const langPrompt = aiLanguage.value === 'id'
+    const isId = aiLanguage.value === 'id';
+    const langPrompt = isId
       ? '- Jawab LANGSUNG dalam Bahasa Indonesia, ringkas dan terstruktur.'
       : (aiLanguage.value === 'es'
         ? '- Responda DIRECTAMENTE en español, conciso y estructurado.'
@@ -375,12 +376,19 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
             ? '- 簡潔かつ構造化された日本語で直接回答してください。'
             : '- Answer DIRECTLY in English, concise and structured.')));
 
-    const systemPrompt = `${buildSystemPrompt(sessionId)}
-
-### KONTEKS KANAL INI: MONITORING DASHBOARD
+    const channelContext = isId
+      ? `### KONTEKS KANAL INI: MONITORING DASHBOARD
 Kamu sedang dipakai dari jendela Monitoring BOBA, bukan dari chat. Pertanyaan yang diberikan sudah berisi seluruh data yang dibutuhkan.
 ${langPrompt}
-- DILARANG memanggil tool apa pun. Semua data sudah tersedia di pesan pengguna.`;
+- DILARANG memanggil tool apa pun. Semua data sudah tersedia di pesan pengguna.`
+      : `### CHANNEL CONTEXT: MONITORING DASHBOARD
+You are being consulted from the BOBA Server Monitoring window, not an interactive chat. The diagnostic data is fully included in the message.
+${langPrompt}
+- DO NOT call any tools. All necessary data is already provided in the message.`;
+
+    const systemPrompt = `${buildSystemPrompt(sessionId)}
+
+${channelContext}`;
 
     let answer = '';
     try {

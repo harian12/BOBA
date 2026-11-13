@@ -819,7 +819,7 @@ const activeTab = computed(() => sessionStore.tabs.find(tab => tab.id === sessio
 
 function getCommandInsight(tc: any) {
   const cmd = tc.args?.command || tc.args?.cmd || tc.args?.bash || (typeof tc.args === 'string' ? tc.args : '');
-  return explainBashCommand(cmd, tc.args?.description, tc.args?.impact);
+  return explainBashCommand(cmd, tc.args?.description, tc.args?.impact, aiStore.aiLanguage);
 }
 
 function isDbMutationQuery(sql?: string): boolean {
@@ -829,12 +829,13 @@ function isDbMutationQuery(sql?: string): boolean {
 }
 
 function formatToolStatus(status: string): string {
+  const isEn = aiStore.aiLanguage === 'en';
   switch (status) {
-    case 'pending_approval': return 'Menunggu Izin';
-    case 'running': return 'Menjalankan...';
-    case 'completed': return 'Selesai';
-    case 'failed': return 'Gagal';
-    case 'rejected': return 'Dibatalkan';
+    case 'pending_approval': return isEn ? 'Pending Approval' : 'Menunggu Izin';
+    case 'running': return isEn ? 'Running...' : 'Menjalankan...';
+    case 'completed': return isEn ? 'Completed' : 'Selesai';
+    case 'failed': return isEn ? 'Failed' : 'Gagal';
+    case 'rejected': return isEn ? 'Cancelled' : 'Dibatalkan';
     default: return status;
   }
 }

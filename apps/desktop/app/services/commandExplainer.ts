@@ -227,25 +227,27 @@ function generateFallbackImpact(cmd: string, risk: CommandRiskLevel): string {
 export function explainBashCommand(
   cmd: string,
   aiDescription?: string,
-  aiImpact?: string
+  aiImpact?: string,
+  lang: string = 'id'
 ): CommandInsight {
+  const isEn = lang === 'en';
   const cleanCmd = (cmd || '').trim();
   const riskLevel = inspectCommandRisk(cleanCmd);
 
   const description = (aiDescription && aiDescription.trim().length > 0)
     ? aiDescription.trim()
-    : generateFallbackDescription(cleanCmd);
+    : (isEn ? `Execute command on remote server: ${cleanCmd.slice(0, 50)}` : generateFallbackDescription(cleanCmd));
 
   const impact = (aiImpact && aiImpact.trim().length > 0)
     ? aiImpact.trim()
-    : generateFallbackImpact(cleanCmd, riskLevel);
+    : (isEn ? (riskLevel === 'danger' ? 'High risk operation. Modifies or deletes server data.' : (riskLevel === 'safe' ? 'Safe (Read-only). Does not alter configuration.' : 'Modifies server state or configuration.')) : generateFallbackImpact(cleanCmd, riskLevel));
 
   if (riskLevel === 'danger') {
     return {
       description,
       impact,
       riskLevel: 'danger',
-      riskLabel: 'Berisiko Tinggi',
+      riskLabel: isEn ? 'High Risk' : 'Berisiko Tinggi',
       badgeClass: 'bg-rose-950 text-rose-300 border border-rose-800',
       buttonClass: 'bg-rose-600 hover:bg-rose-500 text-white',
       icon: '🚨',
@@ -257,7 +259,7 @@ export function explainBashCommand(
       description,
       impact,
       riskLevel: 'moderate',
-      riskLabel: 'Modifikasi Sistem',
+      riskLabel: isEn ? 'System Modification' : 'Modifikasi Sistem',
       badgeClass: 'bg-amber-950 text-amber-300 border border-amber-800',
       buttonClass: 'bg-amber-600 hover:bg-amber-500 text-white',
       icon: '⚠️',
@@ -268,7 +270,7 @@ export function explainBashCommand(
     description,
     impact,
     riskLevel: 'safe',
-    riskLabel: 'Aman: Read-only',
+    riskLabel: isEn ? 'Safe: Read-only' : 'Aman: Read-only',
     badgeClass: 'bg-emerald-950 text-emerald-300 border border-emerald-800',
     buttonClass: 'bg-emerald-600 hover:bg-emerald-500 text-white',
     icon: '🛡️',
