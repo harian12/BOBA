@@ -5139,6 +5139,7 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
       } else {
         if (isSrcLocal) {
           const activeId = await ensureConnected();
+          const targetRemotePath = `${targetFolder.path.replace(/\/+$/, '')}/${draggedItem.name}`;
           if (draggedItem.is_dir) {
             const folderTransferId = queueStore.addUpload(
               activeId,
@@ -5157,7 +5158,6 @@ async function onFolderDrop(targetSide: 'left' | 'right', targetFolder: LocalFil
               queueStore.updateStatus(folderTransferId, 'error', String(e));
             }
           } else {
-            const targetRemotePath = `${targetFolder.path.replace(/\/+$/, '')}/${draggedItem.name}`;
             const transferId = queueStore.addUpload(activeId, targetRemotePath, draggedItem.name, draggedItem.size, draggedItem.path, 'Local Machine', rightServerName.value);
             try {
               queueStore.updateStatus(transferId, 'transferring');
