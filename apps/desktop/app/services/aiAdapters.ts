@@ -760,7 +760,7 @@ export interface StreamCallbacks {
 function getPostToolLanguageReminder(aiLanguage: string): string {
   switch (aiLanguage) {
     case 'id':
-      return '\n\n[PENGINGAT BAHASA - SANGAT PENTING]: Perintah terminal baru saja selesai dieksekusi. Berikan observasi, penalaran langkah selanjutnya, analisis teknis, dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG KERAS menggunakan bahasa Inggris untuk kalimat pengantar, coretan observasi awal (seperti "likely domain not in nginx", "502 means upstream fail", "Check nginx conf", "this may be pre-existing", dsb), maupun kesimpulan akhir. Seluruh teks sebelum tool call berikutnya atau laporan penutup WAJIB 100% Bahasa Indonesia yang jelas dan alami.';
+      return '\n\n[PENGINGAT BAHASA INDONESIA - WAJIB]: Perintah terminal baru saja selesai dieksekusi. Berikan observasi, penalaran langkah selanjutnya, analisis teknis, dan kesimpulan Anda SEPENUHNYA DALAM BAHASA INDONESIA. DILARANG KERAS menggunakan bahasa Inggris untuk kalimat pengantar, judul bagian, coretan observasi awal (seperti "likely domain not in nginx", "502 means upstream fail", "Check nginx conf", "this may be pre-existing", "Action Plan", "Key Findings", "Summary", dsb), maupun kesimpulan akhir. Seluruh teks sebelum tool call berikutnya atau laporan penutup WAJIB 100% Bahasa Indonesia yang jelas dan alami.';
     case 'es':
       return '\n\n[RECORDATORIO DE IDIOMA]: El comando de terminal acaba de ejecutarse. Proporcione su análisis técnico y conclusión TOTALMENTE EN ESPAÑOL.';
     case 'zh':
@@ -1139,6 +1139,9 @@ export function sanitizeMessagesForOpenAi(
   }
 
   let effectiveSystemPrompt = systemPrompt;
+  if (aiLanguage === 'id') {
+    effectiveSystemPrompt += '\n\n[ATURAN BAHASA MUTLAK: BAHASA INDONESIA]\nSeluruh narasi, pembuka, observasi, analisis kendala, rekomendasi, judul, dan kesimpulan WAJIB 100% menggunakan Bahasa Indonesia. DILARANG menggunakan bahasa Inggris kecuali perintah bash, nama service/file, dan kode asli.';
+  }
   const lastMsg = windowedMessages[windowedMessages.length - 1];
   if (lastMsg && lastMsg.role === 'tool') {
     effectiveSystemPrompt += getPostToolLanguageReminder(aiLanguage);

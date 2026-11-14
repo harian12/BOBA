@@ -78,101 +78,150 @@
           <span class="hidden md:inline">SFTP</span>
         </button>
 
-        <!-- Responsive "Fitur / Tools" Dropdown -->
+        <!-- Backdrop for Tool Menus -->
+        <div
+          v-if="activeToolMenu"
+          class="fixed inset-0 z-40 cursor-default"
+          @click.stop="activeToolMenu = null"
+        ></div>
+
+        <!-- 1. Sistem Dropdown -->
         <div class="relative shrink-0">
           <button
-            @click.stop="isToolsMenuOpen = !isToolsMenuOpen"
+            @click.stop="activeToolMenu = activeToolMenu === 'system' ? null : 'system'"
             :class="[
               'px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 border shadow-sm cursor-pointer',
-              isToolsMenuOpen
-                ? 'bg-sky-950 border-sky-500 text-sky-200'
+              activeToolMenu === 'system'
+                ? 'bg-emerald-950 border-emerald-500 text-emerald-200'
                 : 'bg-[#1a1e29] hover:bg-[#232936] text-slate-300 border-[#2e3748]'
             ]"
-            title="Daftar Alat & Fitur Server"
+            title="Sistem & Layanan"
           >
-            <Icon icon="lucide:layout-grid" class="w-3 h-3 text-sky-400" />
-            <span class="font-medium">Fitur</span>
+            <Icon icon="lucide:server" class="w-3 h-3 text-emerald-400" />
+            <span class="font-medium">Sistem</span>
             <Icon icon="lucide:chevron-down" class="w-2.5 h-2.5 text-slate-400" />
           </button>
 
-          <!-- Transparent Click-Outside Backdrop -->
           <div
-            v-if="isToolsMenuOpen"
-            class="fixed inset-0 z-40 cursor-default"
-            @click.stop="isToolsMenuOpen = false"
-          ></div>
-
-          <!-- Dropdown Popover -->
-          <div
-            v-if="isToolsMenuOpen"
+            v-if="activeToolMenu === 'system'"
             class="absolute right-0 top-full mt-1.5 w-52 bg-[#141824] border border-[#262c3d] rounded-lg shadow-2xl py-1 z-50 text-xs font-sans text-slate-200 animate-in fade-in zoom-in-95 duration-100 max-h-[80vh] overflow-y-auto no-scrollbar"
             @click.stop
           >
             <button
-              @click="isSystemdModalOpen = true; isToolsMenuOpen = false"
-              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-violet-300 text-left cursor-pointer"
-            >
-              <Icon icon="lucide:cpu" class="w-3.5 h-3.5 text-violet-400" />
-              <span>Systemd Manager</span>
-            </button>
-            <button
-              @click="isDockerModalOpen = true; isToolsMenuOpen = false"
-              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-sky-300 text-left cursor-pointer"
-            >
-              <Icon icon="lucide:container" class="w-3.5 h-3.5 text-sky-400" />
-              <span>Docker Manager</span>
-            </button>
-            <button
-              @click="openMonitoringWindow(); isToolsMenuOpen = false"
+              @click="openMonitoringWindow(); activeToolMenu = null"
               class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-emerald-300 text-left cursor-pointer"
             >
               <Icon icon="lucide:activity" class="w-3.5 h-3.5 text-emerald-400" />
               <span>Monitoring Server</span>
             </button>
             <button
-              @click="openInstallerWindow(); isToolsMenuOpen = false"
+              @click="openInstallerWindow(); activeToolMenu = null"
               class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-emerald-300 text-left cursor-pointer"
             >
               <Icon icon="lucide:package-plus" class="w-3.5 h-3.5 text-emerald-400" />
               <span>App Installer & Setup</span>
             </button>
             <button
-              @click="isTunnelModalOpen = true; isToolsMenuOpen = false"
+              @click="isSystemdModalOpen = true; activeToolMenu = null"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-violet-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:cpu" class="w-3.5 h-3.5 text-violet-400" />
+              <span>Systemd Manager</span>
+            </button>
+            <button
+              @click="isDockerModalOpen = true; activeToolMenu = null"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-sky-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:container" class="w-3.5 h-3.5 text-sky-400" />
+              <span>Docker Manager</span>
+            </button>
+            <button
+              @click="isCronModalOpen = true; activeToolMenu = null"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-amber-300 text-left cursor-pointer"
+            >
+              <Icon icon="lucide:calendar-clock" class="w-3.5 h-3.5 text-amber-400" />
+              <span>Cron Job Manager</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Jaringan Dropdown -->
+        <div class="relative shrink-0">
+          <button
+            @click.stop="activeToolMenu = activeToolMenu === 'network' ? null : 'network'"
+            :class="[
+              'px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 border shadow-sm cursor-pointer',
+              activeToolMenu === 'network'
+                ? 'bg-sky-950 border-sky-500 text-sky-200'
+                : 'bg-[#1a1e29] hover:bg-[#232936] text-slate-300 border-[#2e3748]'
+            ]"
+            title="Jaringan & Koneksi"
+          >
+            <Icon icon="lucide:network" class="w-3 h-3 text-sky-400" />
+            <span class="font-medium">Jaringan</span>
+            <Icon icon="lucide:chevron-down" class="w-2.5 h-2.5 text-slate-400" />
+          </button>
+
+          <div
+            v-if="activeToolMenu === 'network'"
+            class="absolute right-0 top-full mt-1.5 w-52 bg-[#141824] border border-[#262c3d] rounded-lg shadow-2xl py-1 z-50 text-xs font-sans text-slate-200 animate-in fade-in zoom-in-95 duration-100 max-h-[80vh] overflow-y-auto no-scrollbar"
+            @click.stop
+          >
+            <button
+              @click="isTunnelModalOpen = true; activeToolMenu = null"
               class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-teal-300 text-left cursor-pointer"
             >
               <Icon icon="lucide:network" class="w-3.5 h-3.5 text-teal-400" />
               <span>SSH Tunnel / Port</span>
             </button>
             <button
-              @click="isWireguardModalOpen = true; isToolsMenuOpen = false"
+              @click="isWireguardModalOpen = true; activeToolMenu = null"
               class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-blue-300 text-left cursor-pointer"
             >
               <Icon icon="lucide:shield-check" class="w-3.5 h-3.5 text-blue-400" />
               <span>WireGuard VPN</span>
             </button>
             <button
-              @click="isCronModalOpen = true; isToolsMenuOpen = false"
-              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-amber-300 text-left cursor-pointer"
+              @click="isNetworkModalOpen = true; activeToolMenu = null"
+              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-cyan-300 text-left cursor-pointer"
             >
-              <Icon icon="lucide:calendar-clock" class="w-3.5 h-3.5 text-amber-400" />
-              <span>Cron Job Manager</span>
+              <Icon icon="lucide:network" class="w-3.5 h-3.5 text-cyan-400" />
+              <span>Network & SSL Inspector</span>
             </button>
+          </div>
+        </div>
+
+        <!-- 3. Keamanan Dropdown -->
+        <div class="relative shrink-0">
+          <button
+            @click.stop="activeToolMenu = activeToolMenu === 'security' ? null : 'security'"
+            :class="[
+              'px-2 py-0.5 rounded text-[10px] font-medium transition flex items-center space-x-1 border shadow-sm cursor-pointer',
+              activeToolMenu === 'security'
+                ? 'bg-rose-950 border-rose-500 text-rose-200'
+                : 'bg-[#1a1e29] hover:bg-[#232936] text-slate-300 border-[#2e3748]'
+            ]"
+            title="Keamanan Server"
+          >
+            <Icon icon="lucide:shield-alert" class="w-3 h-3 text-rose-400" />
+            <span class="font-medium">Keamanan</span>
+            <Icon icon="lucide:chevron-down" class="w-2.5 h-2.5 text-slate-400" />
+          </button>
+
+          <div
+            v-if="activeToolMenu === 'security'"
+            class="absolute right-0 top-full mt-1.5 w-52 bg-[#141824] border border-[#262c3d] rounded-lg shadow-2xl py-1 z-50 text-xs font-sans text-slate-200 animate-in fade-in zoom-in-95 duration-100 max-h-[80vh] overflow-y-auto no-scrollbar"
+            @click.stop
+          >
             <button
-              @click="isFirewallModalOpen = true; isToolsMenuOpen = false"
+              @click="isFirewallModalOpen = true; activeToolMenu = null"
               class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-rose-300 text-left cursor-pointer"
             >
               <Icon icon="lucide:shield-check" class="w-3.5 h-3.5 text-rose-400" />
               <span>Firewall & Ports</span>
             </button>
             <button
-              @click="isNetworkModalOpen = true; isToolsMenuOpen = false"
-              class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-cyan-300 text-left cursor-pointer"
-            >
-              <Icon icon="lucide:network" class="w-3.5 h-3.5 text-cyan-400" />
-              <span>Network & SSL Inspector</span>
-            </button>
-            <button
-              @click="isSecurityModalOpen = true; isToolsMenuOpen = false"
+              @click="isSecurityModalOpen = true; activeToolMenu = null"
               class="w-full px-3 py-1.5 hover:bg-[#1e2436] flex items-center space-x-2.5 text-rose-300 text-left cursor-pointer"
             >
               <Icon icon="lucide:shield-alert" class="w-3.5 h-3.5 text-rose-400" />
@@ -316,7 +365,7 @@
       >
         <div class="flex items-center space-x-2">
           <span class="text-xs">✨</span>
-          <span>{{ hasTextSelected ? 'Ask Copilot (Selection)' : 'Diagnose with Copilot' }}</span>
+          <span>{{ hasTextSelected ? 'Tanya Copilot (Teks Terpilih)' : 'Diagnosa dengan Copilot' }}</span>
         </div>
       </button>
 
@@ -833,8 +882,8 @@ const isSecurityModalOpen = ref(false);
 // Server Setup & App Installer State
 const isInstallerModalOpen = ref(false);
 
-// Responsive Tools Dropdown State
-const isToolsMenuOpen = ref(false);
+// Responsive Grouped Tool Dropdowns State
+const activeToolMenu = ref<'system' | 'network' | 'security' | null>(null);
 
 const isAnyModalOpen = computed(() =>
   isAddModalOpen.value ||
@@ -890,8 +939,8 @@ function closeContextMenu() {
   if (contextMenu.value.show) {
     contextMenu.value.show = false;
   }
-  if (isToolsMenuOpen.value) {
-    isToolsMenuOpen.value = false;
+  if (activeToolMenu.value) {
+    activeToolMenu.value = null;
   }
 }
 

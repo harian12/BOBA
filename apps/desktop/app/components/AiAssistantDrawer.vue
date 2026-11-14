@@ -84,12 +84,12 @@
           class="w-full bg-boba-950 border border-boba-800 text-sky-300 rounded px-2 py-0.5 text-[11px] focus:outline-none focus:border-boba-accent focus:ring-1 focus:ring-boba-accent/30 font-mono cursor-pointer transition"
         >
           <option value="">-- Pilih Target SSH / Database --</option>
-          <optgroup v-if="availableDatabases.length > 0" label="🗄️ Database Connections">
+          <optgroup v-if="availableDatabases.length > 0" :label="aiStore.aiLanguage === 'en' ? '🗄️ Database Connections' : '🗄️ Koneksi Database'">
             <option v-for="d in availableDatabases" :key="getDbTargetId(d.id)" :value="getDbTargetId(d.id)">
               🗄️ {{ d.name }} ({{ d.engine.toUpperCase() }} • {{ d.host || 'localhost' }})
             </option>
           </optgroup>
-          <optgroup v-if="availableSessions.length > 0" label="💻 SSH Remote Sessions">
+          <optgroup v-if="availableSessions.length > 0" :label="aiStore.aiLanguage === 'en' ? '💻 SSH Remote Sessions' : '💻 Sesi Remote SSH'">
             <option v-for="s in availableSessions" :key="s.id" :value="s.id">
               💻 {{ s.name }} ({{ s.username }}@{{ s.host }})
             </option>
@@ -585,7 +585,7 @@
                       class="hover:text-slate-300 transition text-[9px] normal-case lowercase flex items-center space-x-1"
                       title="Salin hasil output"
                     >
-                      <span>📋 salin</span>
+                      <span>📋 Salin</span>
                     </button>
                   </div>
                   <pre class="bg-boba-950 border border-boba-800/60 p-2 rounded-lg text-[10px] text-slate-300 overflow-x-auto max-h-40 no-scrollbar whitespace-pre-wrap font-mono">{{ typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2) }}</pre>

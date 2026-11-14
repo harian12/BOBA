@@ -33,7 +33,7 @@ export const useAiAgentStore = defineStore('aiAgent', () => {
   }
 
   function setAiLanguage(lang: string) {
-    aiLanguage.value = lang || 'en';
+    aiLanguage.value = lang || 'id';
     saveState();
   }
   const selectedSessionId = ref<string>('');
@@ -796,15 +796,15 @@ ${channelContext}`;
         const scope = (toolCall.args?.scope || 'full').toLowerCase();
         let cmd = '';
         if (scope === 'ssh') {
-          cmd = `echo "=== SSH CONFIG AUDIT ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication|X11Forwarding)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "No custom sshd_config lines")`;
+          cmd = `echo "=== AUDIT KONFIGURASI SSH ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication|X11Forwarding)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "Tidak ada baris kustom di sshd_config")`;
         } else if (scope === 'network') {
-          cmd = `echo "=== LISTENING PORTS ===" && (ss -tulpn 2>/dev/null || netstat -tulpn 2>/dev/null) && echo "=== FIREWALL STATUS ===" && (ufw status verbose 2>/dev/null || iptables -L -n -v 2>/dev/null || echo "No UFW/iptables info")`;
+          cmd = `echo "=== DAFTAR PORT AKTIF ===" && (ss -tulpn 2>/dev/null || netstat -tulpn 2>/dev/null) && echo "=== STATUS FIREWALL ===" && (ufw status verbose 2>/dev/null || iptables -L -n -v 2>/dev/null || echo "Tidak ada info UFW/iptables")`;
         } else if (scope === 'auth') {
-          cmd = `echo "=== FAILED LOGIN AUDIT ===" && (grep "Failed password" /var/log/auth.log 2>/dev/null | tail -n 20 || journalctl -u ssh -u sshd -n 20 --no-pager 2>/dev/null || echo "No auth logs accessible")`;
+          cmd = `echo "=== AUDIT LOGIN GAGAL ===" && (grep "Failed password" /var/log/auth.log 2>/dev/null | tail -n 20 || journalctl -u ssh -u sshd -n 20 --no-pager 2>/dev/null || echo "Log autentikasi tidak dapat diakses")`;
         } else if (scope === 'permissions') {
-          cmd = `echo "=== SUID BINARIES (TOP 15) ===" && find / -perm -4000 -type f 2>/dev/null | head -n 15 && echo "=== SUDOERS WITH NOPASSWD ===" && grep -rn "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo "None"`;
+          cmd = `echo "=== 15 BINARY SUID TERATAS ===" && find / -perm -4000 -type f 2>/dev/null | head -n 15 && echo "=== SUDOERS TANPA PASSWORD (NOPASSWD) ===" && grep -rn "NOPASSWD" /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo "Tidak ada"`;
         } else {
-          cmd = `echo "=== 1. SSH CONFIG ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "Default") && echo "=== 2. OPEN PORTS ===" && (ss -tulpn 2>/dev/null | grep LISTEN || netstat -tulpn 2>/dev/null | grep LISTEN) && echo "=== 3. FIREWALL ===" && (ufw status 2>/dev/null || echo "UFW not active") && echo "=== 4. CRON JOBS ===" && (ls -la /etc/cron* /var/spool/cron/crontabs 2>/dev/null | head -n 15) && echo "=== 5. USERS WITH SHELL ===" && (grep -v "/nologin\\|/false" /etc/passwd | cut -d: -f1,3,7)`;
+          cmd = `echo "=== 1. KONFIGURASI SSH ===" && (grep -E "^(PermitRootLogin|PasswordAuthentication|Port|PubkeyAuthentication)" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "Default") && echo "=== 2. PORT TERBUKA ===" && (ss -tulpn 2>/dev/null | grep LISTEN || netstat -tulpn 2>/dev/null | grep LISTEN) && echo "=== 3. FIREWALL ===" && (ufw status 2>/dev/null || echo "UFW tidak aktif") && echo "=== 4. CRON JOBS ===" && (ls -la /etc/cron* /var/spool/cron/crontabs 2>/dev/null | head -n 15) && echo "=== 5. USER DENGAN SHELL ===" && (grep -v "/nologin\\|/false" /etc/passwd | cut -d: -f1,3,7)`;
         }
         const output = await runSshCommandWithTimeout(realSessionId, cmd, toolCall.id, 60);
         const sanitized = maskSensitiveData(output);
@@ -817,7 +817,7 @@ ${channelContext}`;
         const cmd = `(grep "Failed password" /var/log/auth.log 2>/dev/null || journalctl -u ssh -u sshd --no-pager 2>/dev/null | grep "Failed password") | awk '{for(i=1;i<=NF;i++) if($i=="from") print $(i+1)}' | sort | uniq -c | sort -nr | head -n ${limit}`;
         const output = await runSshCommandWithTimeout(realSessionId, cmd, toolCall.id, 60);
         const formatted = output && output.trim().length > 0
-          ? `Top Brute-force Attacker IPs (Attempts Count | IP):\n${output}`
+          ? `Daftar IP Percobaan Serangan Brute-force Teratas (Jumlah Upaya | IP):\n${output}`
           : 'Tidak ditemukan aktivitas failed login password yang mencurigakan di log.';
         toolCall.result = formatted;
         toolCall.status = 'completed';
@@ -828,12 +828,12 @@ ${channelContext}`;
         const enableUfw = toolCall.args?.enable_ufw !== false;
         const installFail2ban = !!toolCall.args?.install_fail2ban;
 
-        let script = `echo "=== 1. SSH SAFEGUARD ===" && ufw allow ${port}/tcp && echo "SSH Port ${port} allowed in firewall."`;
+        let script = `echo "=== 1. PROTEKSI PORT SSH ===" && ufw allow ${port}/tcp && echo "Port SSH ${port} diizinkan pada firewall."`;
         if (enableUfw) {
-          script += ` && echo "y" | ufw enable && echo "UFW firewall enabled."`;
+          script += ` && echo "y" | ufw enable && echo "Firewall UFW telah aktif."`;
         }
         if (installFail2ban) {
-          script += ` && (which fail2ban-client >/dev/null 2>&1 || (apt-get update -y && apt-get install -y fail2ban) || yum install -y fail2ban || true) && systemctl enable --now fail2ban && echo "Fail2ban enabled."`;
+          script += ` && (which fail2ban-client >/dev/null 2>&1 || (apt-get update -y && apt-get install -y fail2ban) || yum install -y fail2ban || true) && systemctl enable --now fail2ban && echo "Service Fail2ban telah aktif."`;
         }
         const output = await runSshCommandWithTimeout(realSessionId, script, toolCall.id, 90);
         const sanitized = maskSensitiveData(output);
@@ -1216,10 +1216,10 @@ You are currently in BUILD Mode.
     const langDirective = isId
       ? `### ATURAN BAHASA: BAHASA INDONESIA (MUTLAK & MENYELURUH)
 - Pengguna memilih Bahasa Indonesia. Seluruh respon Anda WAJIB 100% menggunakan BAHASA INDONESIA:
-  1. Kalimat pembuka, observasi, penalaran langkah, dan penjelasan rencana sebelum pemanggilan perintah HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat pembuka atau coretan observasi berbahasa Inggris seperti "Port 8082 -> 200 OK. monitoring.filigrana 502 — likely domain not in nginx...", "502 means upstream fail. Check nginx conf...", "Note: this may be pre-existing. Check conf.", "CPU usage is at 100%, therefore examining...", dsb).
-  2. Kalimat pengantar observasi dan uraian temuan setelah eksekusi perintah terminal HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat berbahasa Inggris seperti "High CPU and memory usage is concentrated within several active processes...", dsb).
+  1. Judul bagian, kalimat pembuka, observasi, penalaran langkah, dan penjelasan rencana sebelum pemanggilan perintah HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat pembuka, judul, atau coretan observasi berbahasa Inggris seperti "Port 8082 -> 200 OK. monitoring.filigrana 502 — likely domain not in nginx...", "502 means upstream fail. Check nginx conf...", "Note: this may be pre-existing. Check conf.", "CPU usage is at 100%, therefore examining...", "Action Plan", "Key Findings", "Summary", dsb).
+  2. Kalimat pengantar observasi dan uraian temuan setelah eksekusi perintah terminal HARUS Bahasa Indonesia (DILARANG KERAS menggunakan kalimat berbahasa Inggris seperti "High CPU and memory usage is concentrated within several active processes...", "The command output shows...", dsb).
   3. Seluruh ringkasan temuan teknis, langkah perbaikan, dan kesimpulan akhir HARUS Bahasa Indonesia.
-- DILARANG mencampurkan kalimat pengantar, pemikiran, catatan awal, atau paragraf berbahasa Inggris. Semua narasi wajib Bahasa Indonesia yang mengalir alami dan profesional.
+- DILARANG mencampurkan kalimat pengantar, pemikiran, judul bagian, catatan awal, atau paragraf berbahasa Inggris. Semua narasi wajib Bahasa Indonesia yang mengalir alami dan profesional.
 - Contoh yang BENAR: "Port 8082 merespon normal (200 OK). Namun domain monitoring.filigrana menghasilkan 502 Bad Gateway yang menandakan koneksi ke upstream bermasalah. Saya akan memeriksa konfigurasi vhost Nginx dan log error terkait."
 - Tetap pertahankan HANYA sintaks perintah bash, nama service/paket, kode, dan istilah teknis standar (CPU, RAM, swap, PID, load average, disk, port, vhost) apa adanya.`
       : (langCode === 'es'
@@ -1303,18 +1303,18 @@ ${executionModeDirective}
 
 ### DISIPLIN MERESPON HASIL EKSEKUSI TOOL & KESIMPULAN (SANGAT PENTING):
 - KETIKA PERINTAH SELESAI DIEKSEKUSI (TERDAPAT 'Tool Result'):
-  * Anda WAJIB menganalisis output tersebut secara mendalam, jelaskan temuan teknis utama, dan sajikan KESIMPULAN LENGKAP (Conclusion & Summary) kepada pengguna.
+  * Anda WAJIB menganalisis output tersebut secara mendalam, jelaskan temuan teknis utama, dan sajikan KESIMPULAN LENGKAP & SOLUSI PERBAIKAN kepada pengguna dalam Bahasa Indonesia.
   * JANGAN PERNAH berhenti atau meninggalkan respon kosong setelah tool selesai dieksekusi!
 - Jika perintah menghasilkan ERROR, Access Denied, Permission Denied, atau sintaks salah: JANGAN PERNAH BERHENTI atau menganggap tugas selesai!
 - Analisis error tersebut dan ambil langkah pemulihan (Self-Healing).
 - Jangan tinggalkan respon kosong, selalu sertakan analisis dan langkah selanjutnya.
 
-### LFG DevOps Engine (Autonomous Execution Pipeline)
-1. STAGE 1 - PLAN FIRST: Rumuskan rencana singkat sebelum memodifikasi konfigurasi atau database.
-2. STAGE 2 - AUTONOMOUS EXECUTION: Jalankan langkah demi langkah secara berurutan.
-3. STAGE 3 - VERIFICATION EVIDENCE CONTRACT: Periksa keaktifan service/query secara nyata.
-4. STAGE 4 - SELF-HEALING LOOP: Perbaiki jika ditemukan kegagalan verifikasi.
-5. STAGE 5 - COMPLETION PROOF & SUMMARY: Berikan laporan penutup terstruktur dalam Bahasa Indonesia dengan istilah teknis dalam bahasa Inggris. DILARANG meninggalkan pesan kosong.
+### Alur Eksekusi Mandiri LFG DevOps (Tahapan Terstruktur):
+1. TAHAP 1 - RENCANA AWAL: Rumuskan rencana singkat sebelum memodifikasi konfigurasi atau database.
+2. TAHAP 2 - EKSEKUSI OTONOM: Jalankan langkah demi langkah secara berurutan.
+3. TAHAP 3 - BUKTI VERIFIKASI: Periksa keaktifan service/hasil query secara nyata.
+4. TAHAP 4 - PEMULIHAN MANDIRI (SELF-HEALING): Perbaiki jika ditemukan kegagalan verifikasi.
+5. TAHAP 5 - KESIMPULAN & LAPORAN AKHIR: Berikan laporan penutup terstruktur lengkap dalam Bahasa Indonesia. DILARANG membuat judul/paragraf dalam bahasa Inggris; pertahankan hanya nama perintah dan istilah teknis baku apa adanya. DILARANG meninggalkan pesan kosong.
 
 ### KEBIJAKAN PRIVASI & KEAMANAN DATABASE (ZERO DATA LEAK):
 - Kredensial (password, private key) TIDAK PERNAH dikirim ke provider AI.
@@ -1569,7 +1569,9 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
                         id: `msg_tool_err_${Date.now()}`,
                         role: 'tool',
                         toolCallId: pendingCall.id,
-                        content: `Error executing ${pendingCall.name}: ${e.message || String(e)}`,
+                        content: aiLanguage.value === 'id'
+                          ? `Gagal mengeksekusi ${pendingCall.name}: ${e.message || String(e)}`
+                          : `Error executing ${pendingCall.name}: ${e.message || String(e)}`,
                         createdAt: Date.now(),
                       });
                       executed = true;
@@ -1616,7 +1618,8 @@ ${isId ? 'INGAT: Bahasa respon yang dipilih pengguna adalah BAHASA INDONESIA. Se
       );
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        assistantMsg.content += `\n\n⚠️ Connection Error: ${err.message || String(err)}`;
+        const prefix = aiLanguage.value === 'id' ? '⚠️ Kendala Koneksi' : '⚠️ Connection Error';
+        assistantMsg.content += `\n\n${prefix}: ${err.message || String(err)}`;
       }
       isThinking.value = false;
       activeAbortController = null;
