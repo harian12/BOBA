@@ -1,15 +1,15 @@
 ﻿{
-    "platforms": {
-        "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjZlVXRoM01mZ3Y3T3dMTVZtSEd1eFhGK2JlUUI1cU1IdzdRNGQxMllkVFpsVTVvVXZuZkdGNTByb2U1NnZsejhKZW5CemthT0hmaGZ4Q3JlZndHbUFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzQ2OTU4CWZpbGU6Qk9CQV8wLjIuMjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4yNwptTkhvMmd2dzdJcWFJRzFLU1NMZVpoK0k5U1JnTWt2R20yUGJuMlBPVFUxUXhBSGh4MjYxTVJCVDQvK05PYnN0dU5BVW9GQmZoeU9nTmJmUmJBVDJDdz09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.27/BOBA_0.2.27_x64-setup.exe"
-        },
-        "windows-x86_64-nsis": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjZlVXRoM01mZ3Y3T3dMTVZtSEd1eFhGK2JlUUI1cU1IdzdRNGQxMllkVFpsVTVvVXZuZkdGNTByb2U1NnZsejhKZW5CemthT0hmaGZ4Q3JlZndHbUFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzQ2OTU4CWZpbGU6Qk9CQV8wLjIuMjdfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMi4yNwptTkhvMmd2dzdJcWFJRzFLU1NMZVpoK0k5U1JnTWt2R20yUGJuMlBPVFUxUXhBSGh4MjYxTVJCVDQvK05PYnN0dU5BVW9GQmZoeU9nTmJmUmJBVDJDdz09Cg==",
-            "url": "https://github.com/harian12/BOBA/releases/download/v0.2.27/BOBA_0.2.27_x64-setup.exe"
-        }
-    },
-    "pub_date": "2026-10-30T08:00:00Z",
-    "version": "0.2.27",
-    "notes": "Release v0.2.27 - Penanganan otomatis otentikasi password sudo interaktif pada live stream log WireGuard & live telemetry status traffic peer."
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVuUGFTNWVqTGdaRTl6VHJmNSt5SlJSVXFoNVQyNGZnWGw2aFJOK2x2cEd1TGM1VmJkM1hSNlpkdXRMYmtHUFZrcndJRkE2K2Z5RXQ3c2loWWdPckEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjE2NDE2CWZpbGU6Qk9CQV8wLjIuMjlfeDY0LXNldHVwLmV4ZQpGQWhxVGtZYWtjUmZhMUhhKzVITFJoVXpRekM4L1lqY2ZLUTk4aEZXbW1hb0U2RjJOcVUwMzRHOFVtV25ZTjNGM0ExcDhRWmVEU1U2WTNSMjZ5KzhBZz09Cg==",
+                                             "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.29/BOBA_0.2.29_x64-setup.exe"
+                                         },
+                      "windows-x86_64-nsis":  {
+                                                  "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUTVlBTUZPTGsyYjVuUGFTNWVqTGdaRTl6VHJmNSt5SlJSVXFoNVQyNGZnWGw2aFJOK2x2cEd1TGM1VmJkM1hSNlpkdXRMYmtHUFZrcndJRkE2K2Z5RXQ3c2loWWdPckEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NjE2NDE2CWZpbGU6Qk9CQV8wLjIuMjlfeDY0LXNldHVwLmV4ZQpGQWhxVGtZYWtjUmZhMUhhKzVITFJoVXpRekM4L1lqY2ZLUTk4aEZXbW1hb0U2RjJOcVUwMzRHOFVtV25ZTjNGM0ExcDhRWmVEU1U2WTNSMjZ5KzhBZz09Cg==",
+                                                  "url":  "https://github.com/harian12/BOBA/releases/download/v0.2.29/BOBA_0.2.29_x64-setup.exe"
+                                              }
+                  },
+    "pub_date":  "2026-11-14T00:35:12Z",
+    "version":  "0.2.29",
+    "notes":  "Release v0.2.29 - Penegasan bahasa Indonesia AI Copilot, pengelompokan menu fitur terminal, dan responsive command bar."
 }
